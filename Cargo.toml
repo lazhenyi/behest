@@ -35,6 +35,8 @@ path = "src/lib.rs"
 default = ["tls-rustls"]
 
 full = [
+    "openai",
+    "anthropic",
     "redis",
     "redis-cluster",
     "nats",
@@ -44,6 +46,9 @@ full = [
     "otel",
     "rag",
 ]
+
+openai = []
+anthropic = []
 
 storage-all = [
     "redis",

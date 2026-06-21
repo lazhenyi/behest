@@ -7,3 +7,9 @@ pub use crate::provider::{
     ModelName, ProviderCapabilities, ProviderHttpConfig, ProviderId, ProviderRegistry,
     ProviderResult, ResponseFormat, TokenUsage, ToolCall, ToolChoice, ToolSpec,
 };
+
+#[cfg(feature = "openai")]
+pub use crate::adapt::openai::{OpenAiChatAdapter, OpenAiEmbeddingAdapter};
+
+#[cfg(feature = "anthropic")]
+pub use crate::adapt::anthropic::AnthropicChatAdapter;

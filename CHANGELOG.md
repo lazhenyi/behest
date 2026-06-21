@@ -13,3 +13,6 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
 - Provider-neutral chat, streaming, tool, and embedding contracts.
 - In-memory provider registry with async dispatch.
 - Strict lint configuration, CI workflow, contribution guide, and licenses.
+- OpenAI-compatible adapter with chat completion, streaming, embeddings, and tool calling.
+- Anthropic Claude adapter with chat completion, streaming, and tool calling.
+- Shared SSE stream parser and HTTP client utilities for adapter implementations.

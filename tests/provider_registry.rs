@@ -1,4 +1,5 @@
 //! Integration tests for provider registration and dispatch.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

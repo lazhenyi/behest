@@ -2,6 +2,7 @@
 #![deny(missing_docs)]
 #![deny(unreachable_pub)]
 #![warn(rust_2018_idioms)]
+#![allow(unused)]
 
 //! Production-oriented building blocks for Rust-native AI agent runtimes.
 //!
@@ -12,5 +13,6 @@
 pub mod error;
 pub mod prelude;
 pub mod provider;
+pub mod adapt;
 
 pub use crate::error::{Error, ProviderError, Result};
