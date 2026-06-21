@@ -1,0 +1,19 @@
+# Rust
+/target/
+Cargo.lock.orig
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Generated reports
+coverage/
+tarpaulin-report.html

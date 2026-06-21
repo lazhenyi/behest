@@ -1,0 +1,234 @@
+[package]
+name = "agents"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+resolver = "3"
+
+description = "A Rust-native cloud agent runtime with typed tools, pluggable memory, queues, and observability."
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/agents"
+homepage = "https://github.com/your-org/agents"
+documentation = "https://docs.rs/agents"
+
+keywords = ["agent", "llm", "tool-calling", "runtime", "ai"]
+categories = ["asynchronous", "api-bindings", "development-tools"]
+
+authors = ["Your Name <you@example.com>"]
+
+include = [
+    "src/**",
+    "examples/**",
+    "benches/**",
+    "tests/**",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE*",
+]
+
+[lib]
+name = "agents"
+path = "src/lib.rs"
+
+[features]
+default = ["tls-rustls"]
+
+full = [
+    "redis",
+    "redis-cluster",
+    "nats",
+    "sqlx-postgres",
+    "mongodb",
+    "surrealdb",
+    "otel",
+    "rag",
+]
+
+storage-all = [
+    "redis",
+    "sqlx-postgres",
+    "sqlx-mysql",
+    "sqlx-sqlite",
+    "mongodb",
+    "surrealdb",
+]
+
+queue-all = [
+    "nats",
+    "redis",
+]
+
+rag = [
+    "qdrant",
+    "tantivy",
+]
+
+tls-rustls = [
+    "reqwest/rustls",
+    "redis?/tokio-rustls-comp",
+    "sqlx?/tls-rustls",
+]
+
+tls-native = [
+    "reqwest/default-tls",
+    "redis?/tokio-native-tls-comp",
+    "sqlx?/tls-native-tls",
+]
+
+redis = [
+    "dep:redis",
+    "redis/aio",
+    "redis/tokio-comp",
+    "redis/connection-manager",
+    "redis/streams",
+]
+
+redis-cluster = [
+    "redis",
+    "redis/cluster-async",
+]
+
+nats = [
+    "dep:async-nats",
+]
+
+sqlx = [
+    "dep:sqlx",
+    "sqlx/runtime-tokio",
+    "sqlx/chrono",
+    "sqlx/uuid",
+    "sqlx/json",
+    "sqlx/macros",
+    "sqlx/migrate",
+]
+
+sqlx-postgres = [
+    "sqlx",
+    "sqlx/postgres",
+]
+
+sqlx-mysql = [
+    "sqlx",
+    "sqlx/mysql",
+]
+
+sqlx-sqlite = [
+    "sqlx",
+    "sqlx/sqlite",
+]
+
+mongodb = [
+    "dep:mongodb",
+]
+
+surrealdb = [
+    "dep:surrealdb",
+]
+
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+]
+
+qdrant = [
+    "dep:qdrant-client",
+]
+
+tantivy = [
+    "dep:tantivy",
+]
+
+[dependencies]
+tokio = { version = "1.52", default-features = false, features = [
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+    "signal",
+] }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order", "raw_value"] }
+
+thiserror = "2.0"
+
+async-trait = "0.1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "stream",
+    "http2",
+    "charset",
+    "gzip",
+    "brotli",
+    "zstd",
+    "deflate",
+] }
+
+schemars = { version = "1.2", features = ["derive"] }
+jsonschema = "0.46"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "std",
+    "fmt",
+    "json",
+    "env-filter",
+    "registry",
+] }
+
+uuid = { version = "1.18", features = ["v4", "v7", "serde"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+
+secrecy = "0.10"
+dotenvy = "0.15"
+config = { version = "0.15", default-features = false, features = ["toml", "json", "yaml"] }
+
+indexmap = { version = "2", features = ["serde"] }
+bytes = "1"
+
+redis = { version = "1.2", default-features = false, optional = true }
+async-nats = { version = "0.49", optional = true }
+sqlx = { version = "0.9", default-features = false, optional = true }
+mongodb = { version = "3.7", optional = true }
+surrealdb = { version = "3.1", optional = true }
+
+opentelemetry = { version = "0.32", optional = true }
+opentelemetry_sdk = { version = "0.32", optional = true, features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", optional = true, features = ["grpc-tonic"] }
+tracing-opentelemetry = { version = "0.33", optional = true }
+
+qdrant-client = { version = "1.18", optional = true }
+tantivy = { version = "0.26", optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"
+pretty_assertions = "1"
+insta = { version = "1", features = ["json"] }
+proptest = "1"
+wiremock = "0.6"
+tracing-test = "0.2"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = { level = "deny", priority = 10 }
+unreachable_pub = { level = "deny", priority = 10 }
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = "deny"
+dbg_macro = "deny"
+expect_used = "deny"
+todo = "deny"
+unimplemented = "deny"
+unwrap_used = "deny"
