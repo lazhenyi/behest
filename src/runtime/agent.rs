@@ -6,6 +6,9 @@
 
 use std::sync::Arc;
 
+#[cfg(feature = "queue")]
+use crate::queue::EventPublisher;
+
 use chrono::Utc;
 use futures_util::StreamExt;
 use tokio::sync::broadcast;
@@ -41,6 +44,8 @@ pub struct AgentRuntime {
     store: Arc<RuntimeStore>,
     policy: RuntimePolicy,
     event_tx: broadcast::Sender<AgentEvent>,
+    #[cfg(feature = "queue")]
+    event_publisher: Option<Arc<dyn EventPublisher>>,
 }
 
 impl AgentRuntime {
@@ -61,7 +66,20 @@ impl AgentRuntime {
             store,
             policy,
             event_tx,
+            #[cfg(feature = "queue")]
+            event_publisher: None,
         }
+    }
+
+    /// Sets an external event publisher for the agent runtime.
+    ///
+    /// When set, every [`AgentEvent`] emitted during a run will also be
+    /// published to the configured [`EventPublisher`] via fire-and-forget.
+    #[cfg(feature = "queue")]
+    #[must_use]
+    pub fn with_event_publisher(mut self, publisher: Arc<dyn EventPublisher>) -> Self {
+        self.event_publisher = Some(publisher);
+        self
     }
 
     /// Subscribes to runtime events.
@@ -408,7 +426,18 @@ impl AgentRuntime {
     }
 
     fn emit(&self, event: AgentEvent) {
-        let _ = self.event_tx.send(event);
+        let _ = self.event_tx.send(event.clone());
+        #[cfg(feature = "queue")]
+        {
+            if let Some(publisher) = &self.event_publisher {
+                let publisher = Arc::clone(publisher);
+                tokio::spawn(async move {
+                    if let Err(e) = publisher.publish(event).await {
+                        tracing::warn!(error = %e, "failed to publish event externally");
+                    }
+                });
+            }
+        }
     }
 
     async fn update_status(&self, run_id: RunId, status: RunStatus) -> RuntimeResult<()> {
