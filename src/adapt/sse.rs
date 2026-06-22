@@ -82,14 +82,42 @@ where
 }
 
 fn extract_event(buffer: &mut String) -> Option<SseEvent> {
-    let double_newline = find_double_newline(buffer)?;
+    let boundary = find_event_boundary(buffer)?;
 
-    let raw: String = buffer.drain(..double_newline + 2).collect();
+    let raw: String = buffer.drain(..boundary.end).collect();
     parse_event_block(&raw)
 }
 
-fn find_double_newline(buffer: &str) -> Option<usize> {
-    buffer.find("\n\n")
+/// Locates the first SSE event boundary (double newline) in the buffer.
+///
+/// The SSE specification allows `\n\n`, `\r\n\r\n`, and `\r\r` as event
+/// delimiters. Returns the byte range to drain (including the delimiter).
+fn find_event_boundary(buffer: &str) -> Option<EventBoundary> {
+    let bytes = buffer.as_bytes();
+    for i in 0..bytes.len().saturating_sub(1) {
+        match bytes[i] {
+            b'\n' if bytes[i + 1] == b'\n' => {
+                return Some(EventBoundary { end: i + 2 });
+            }
+            b'\r'
+                if i + 3 < bytes.len()
+                    && bytes[i + 1] == b'\r'
+                    && bytes[i + 2] == b'\n'
+                    && bytes[i + 3] == b'\n' =>
+            {
+                return Some(EventBoundary { end: i + 4 });
+            }
+            b'\r' if bytes[i + 1] == b'\r' => {
+                return Some(EventBoundary { end: i + 2 });
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+struct EventBoundary {
+    end: usize,
 }
 
 fn parse_event_block(block: &str) -> Option<SseEvent> {
