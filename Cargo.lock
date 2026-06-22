@@ -23,6 +23,7 @@ version = "0.1.0"
 dependencies = [
  "async-nats",
  "async-trait",
+ "base64",
  "bytes",
  "chrono",
  "config",
@@ -32,6 +33,7 @@ dependencies = [
  "insta",
  "jsonschema",
  "mongodb",
+ "object_store",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
@@ -46,6 +48,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "surrealdb",
+ "surrealdb-types",
  "tantivy",
  "tempfile",
  "thiserror 2.0.18",
@@ -2577,6 +2580,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "rustls",
+ "rustls-native-certs",
  "tokio",
  "tokio-rustls",
  "tower-service",
@@ -3694,16 +3698,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "622acbc9100d3c10e2ee15804b0caa40e55c933d5aa53814cd520805b7958a49"
 dependencies = [
  "async-trait",
+ "base64",
  "bytes",
  "chrono",
+ "form_urlencoded",
  "futures-channel",
  "futures-core",
  "futures-util",
  "http",
+ "http-body-util",
  "humantime",
+ "hyper",
  "itertools 0.14.0",
+ "md-5 0.10.6",
  "parking_lot",
  "percent-encoding",
+ "quick-xml",
+ "rand 0.10.1",
+ "reqwest 0.12.28",
+ "ring",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -4399,6 +4415,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
+name = "quick-xml"
+version = "0.39.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdcc8dd4e2f670d309a5f0e83fe36dfdc05af317008fea29144da1a2ac858e5e"
+dependencies = [
+ "memchr",
+ "serde",
+]
+
+[[package]]
 name = "quick_cache"
 version = "0.6.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4772,6 +4798,7 @@ dependencies = [
  "pin-project-lite",
  "quinn",
  "rustls",
+ "rustls-native-certs",
  "rustls-pki-types",
  "serde",
  "serde_json",
