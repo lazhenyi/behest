@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
 
-use crate::adapt::http::{build_client, status_to_error, with_bearer_auth};
+use crate::adapt::http::{build_client, parse_retry_after, status_to_error, with_bearer_auth};
 use crate::error::ProviderError;
 use crate::provider::{
     Embedding, EmbeddingInput, EmbeddingProvider, EmbeddingRequest, EmbeddingResponse, ModelName,
@@ -47,6 +47,19 @@ impl OpenAiEmbeddingAdapter {
     fn url(&self) -> String {
         format!("{}/embeddings", self.config.base_url)
     }
+
+    fn wrap_transport(&self, source: reqwest::Error) -> ProviderError {
+        if source.is_timeout() {
+            ProviderError::Timeout {
+                provider: self.id.clone(),
+            }
+        } else {
+            ProviderError::Transport {
+                provider: self.id.clone(),
+                source,
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -69,18 +82,20 @@ impl EmbeddingProvider for OpenAiEmbeddingAdapter {
 
         let builder = self.client.post(self.url()).json(&body);
         let builder = with_bearer_auth(builder, &self.config);
-        let response = builder.send().await.map_err(wrap_transport)?;
+        let response = builder.send().await.map_err(|e| self.wrap_transport(e))?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(status_to_error(&self.id, status, &text));
+            let retry_after = parse_retry_after(response.headers());
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
+            return Err(status_to_error(&self.id, status, &text, retry_after));
         }
 
-        let parsed: OpenAiEmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::Decode {
+        let parsed: OpenAiEmbeddingResponse =
+            response.json().await.map_err(|e| ProviderError::Decode {
                 provider: self.id.clone(),
                 message: e.to_string(),
             })?;
@@ -94,9 +109,11 @@ fn extract_texts(inputs: &[EmbeddingInput]) -> Vec<String> {
         .iter()
         .map(|input| match input {
             EmbeddingInput::Text { text } => text.clone(),
-            EmbeddingInput::Tokens { tokens } => {
-                tokens.iter().map(ToString::to_string).collect::<Vec<_>>().join(" ")
-            }
+            EmbeddingInput::Tokens { tokens } => tokens
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" "),
         })
         .collect()
 }
@@ -112,7 +129,11 @@ fn from_response(
         .map(|d| Embedding::new(d.index, d.embedding.clone()))
         .collect();
 
-    let usage = response.usage.as_ref().map(|u| TokenUsage::new(u.prompt_tokens, 0));
+    // Embeddings only consume input tokens; output_tokens is always 0.
+    let usage = response
+        .usage
+        .as_ref()
+        .map(|u| TokenUsage::new(u.prompt_tokens, 0));
 
     EmbeddingResponse {
         provider: provider.clone(),
@@ -120,18 +141,5 @@ fn from_response(
         embeddings,
         usage,
         raw: None,
-    }
-}
-
-fn wrap_transport(source: reqwest::Error) -> ProviderError {
-    if source.is_timeout() {
-        ProviderError::Timeout {
-            provider: ProviderId::new("openai"),
-        }
-    } else {
-        ProviderError::Transport {
-            provider: ProviderId::new("openai"),
-            source,
-        }
     }
 }
