@@ -18,6 +18,8 @@
 //! - [`store`]: Persistence layer for sessions, embeddings, and artifacts
 //! - [`adapt`]: Concrete provider adapters (OpenAI, Anthropic)
 //! - [`error`]: Error types and result aliases
+//! - [`rag`]: Retrieval-Augmented Generation context adapter (feature = `rag`)
+//! - [`queue`]: External event publishing to message brokers (feature = `queue`)
 
 pub mod adapt;
 pub mod context;
@@ -27,6 +29,12 @@ pub mod provider;
 pub mod runtime;
 pub mod store;
 pub mod tool;
+
+#[cfg(feature = "rag")]
+pub mod rag;
+
+#[cfg(feature = "queue")]
+pub mod queue;
 
 pub use crate::error::{ContextError, Error, ProviderError, Result, StorageError, ToolError};
 pub use crate::runtime::{
