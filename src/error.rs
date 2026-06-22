@@ -28,6 +28,10 @@ pub enum Error {
     /// Error from a storage backend.
     #[error(transparent)]
     Storage(#[from] StorageError),
+
+    /// Configuration loading or validation error.
+    #[error("configuration error: {0}")]
+    Config(String),
 }
 
 /// Errors produced by provider implementations.

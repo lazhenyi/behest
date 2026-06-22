@@ -1,5 +1,9 @@
 //! Convenient imports for application and integration code.
 
+pub use crate::config::{
+    AgentConfig, AgentConfigBuilder, ConfigLoader, ProviderConfig, ProviderType, RuntimeConfig,
+    RuntimePolicyConfig, StoreBackend, StoreConfig,
+};
 pub use crate::context::{
     ContextAdapter, ContextFactory, ContextInput, ContextOutput, ContextResult, FunctionAdapter,
     StaticAdapter,
@@ -67,3 +71,9 @@ pub use crate::queue::NatsEventPublisher;
 
 #[cfg(all(feature = "queue", feature = "redis"))]
 pub use crate::queue::RedisStreamsPublisher;
+
+#[cfg(feature = "rag")]
+pub use crate::config::RagConfig;
+
+#[cfg(feature = "queue")]
+pub use crate::config::{QueueBackend, QueueConfig};

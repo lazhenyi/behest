@@ -1,0 +1,135 @@
+//! Runtime configuration section.
+
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+
+use crate::runtime::RuntimePolicy;
+
+/// Runtime configuration covering policy, context limits, and event channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeConfig {
+    /// Execution policy.
+    #[serde(default)]
+    pub policy: RuntimePolicyConfig,
+
+    /// Maximum number of history messages before trimming.
+    #[serde(default = "default_max_history_messages")]
+    pub max_history_messages: usize,
+
+    /// Internal broadcast channel capacity for local event subscribers.
+    #[serde(default = "default_event_channel_capacity")]
+    pub event_channel_capacity: usize,
+}
+
+/// Per-run execution limits and constraints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimePolicyConfig {
+    /// Maximum model call iterations per run.
+    #[serde(default = "default_max_iterations")]
+    pub max_iterations: usize,
+
+    /// Maximum total tokens per run (None = unlimited).
+    #[serde(default)]
+    pub max_tokens: Option<usize>,
+
+    /// Maximum concurrent tool executions.
+    #[serde(default = "default_max_tool_concurrency")]
+    pub max_tool_concurrency: usize,
+
+    /// Timeout for individual tool execution, in seconds.
+    #[serde(default = "default_tool_timeout_secs")]
+    pub tool_timeout_secs: u64,
+
+    /// Timeout for provider calls, in seconds.
+    #[serde(default = "default_provider_timeout_secs")]
+    pub provider_timeout_secs: u64,
+
+    /// Continue the run when a tool fails.
+    #[serde(default = "default_continue_on_tool_failure")]
+    pub continue_on_tool_failure: bool,
+
+    /// Retry on retryable provider errors.
+    #[serde(default = "default_retry_on_provider_error")]
+    pub retry_on_provider_error: bool,
+
+    /// Maximum retries for provider calls per attempt.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            policy: RuntimePolicyConfig::default(),
+            max_history_messages: default_max_history_messages(),
+            event_channel_capacity: default_event_channel_capacity(),
+        }
+    }
+}
+
+impl Default for RuntimePolicyConfig {
+    fn default() -> Self {
+        Self {
+            max_iterations: default_max_iterations(),
+            max_tokens: None,
+            max_tool_concurrency: default_max_tool_concurrency(),
+            tool_timeout_secs: default_tool_timeout_secs(),
+            provider_timeout_secs: default_provider_timeout_secs(),
+            continue_on_tool_failure: default_continue_on_tool_failure(),
+            retry_on_provider_error: default_retry_on_provider_error(),
+            max_retries: default_max_retries(),
+        }
+    }
+}
+
+impl From<RuntimePolicyConfig> for RuntimePolicy {
+    fn from(config: RuntimePolicyConfig) -> Self {
+        Self {
+            max_iterations: config.max_iterations,
+            max_tokens: config.max_tokens,
+            max_tool_concurrency: config.max_tool_concurrency,
+            tool_timeout: Duration::from_secs(config.tool_timeout_secs),
+            provider_timeout: Duration::from_secs(config.provider_timeout_secs),
+            continue_on_tool_failure: config.continue_on_tool_failure,
+            retry_on_provider_error: config.retry_on_provider_error,
+            max_retries: config.max_retries,
+        }
+    }
+}
+
+const fn default_max_iterations() -> usize {
+    10
+}
+
+const fn default_max_tool_concurrency() -> usize {
+    4
+}
+
+const fn default_tool_timeout_secs() -> u64 {
+    30
+}
+
+const fn default_provider_timeout_secs() -> u64 {
+    60
+}
+
+const fn default_continue_on_tool_failure() -> bool {
+    true
+}
+
+const fn default_retry_on_provider_error() -> bool {
+    true
+}
+
+const fn default_max_retries() -> usize {
+    2
+}
+
+const fn default_max_history_messages() -> usize {
+    50
+}
+
+const fn default_event_channel_capacity() -> usize {
+    256
+}

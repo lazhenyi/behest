@@ -11,7 +11,9 @@
 //! | `openai` | [`openai::OpenAiChatAdapter`] | ✅ | ✅ | ✅ | ✅ |
 //! | `anthropic` | [`anthropic::AnthropicChatAdapter`] | ✅ | ✅ | ❌ | ✅ |
 
+#[cfg(any(feature = "openai", feature = "anthropic"))]
 pub(crate) mod http;
+#[cfg(any(feature = "openai", feature = "anthropic"))]
 pub(crate) mod sse;
 
 #[cfg(feature = "openai")]

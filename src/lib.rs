@@ -11,6 +11,7 @@
 //!
 //! # Modules
 //!
+//! - [`config`]: Centralized configuration with file, env, and manual builder support
 //! - [`runtime`]: Agent runtime kernel with streaming-first execution
 //! - [`provider`]: Provider traits, request/response types, and registry
 //! - [`tool`]: Runtime tool registry and execution
@@ -22,6 +23,7 @@
 //! - [`queue`]: External event publishing to message brokers (feature = `queue`)
 
 pub mod adapt;
+pub mod config;
 pub mod context;
 pub mod error;
 pub mod prelude;
