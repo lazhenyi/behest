@@ -1,0 +1,203 @@
+//! In-memory implementations of runtime stores.
+
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use async_trait::async_trait;
+use tokio::sync::RwLock;
+use uuid::Uuid;
+
+use super::error::{RuntimeError, RuntimeResult};
+use super::run::{RunId, RunRecord, RunStatus};
+use super::store::{RunEventRecord, RunStore};
+
+/// In-memory implementation of [`RunStore`].
+pub struct MemoryRunStore {
+    runs: RwLock<HashMap<Uuid, RunRecord>>,
+    events: RwLock<HashMap<Uuid, Vec<RunEventRecord>>>,
+    sequence: AtomicU64,
+}
+
+impl MemoryRunStore {
+    /// Creates a new in-memory run store.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            runs: RwLock::new(HashMap::new()),
+            events: RwLock::new(HashMap::new()),
+            sequence: AtomicU64::new(0),
+        }
+    }
+}
+
+impl Default for MemoryRunStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl RunStore for MemoryRunStore {
+    async fn create_run(&self, record: RunRecord) -> RuntimeResult<()> {
+        let id = *record.id.as_uuid();
+        self.runs.write().await.insert(id, record);
+        Ok(())
+    }
+
+    async fn get_run(&self, run_id: RunId) -> RuntimeResult<Option<RunRecord>> {
+        Ok(self.runs.read().await.get(run_id.as_uuid()).cloned())
+    }
+
+    async fn update_run_status(&self, run_id: RunId, status: RunStatus) -> RuntimeResult<()> {
+        let mut runs = self.runs.write().await;
+        let record = runs
+            .get_mut(run_id.as_uuid())
+            .ok_or(RuntimeError::RunNotFound(run_id))?;
+        record.update_status(status);
+        Ok(())
+    }
+
+    async fn append_event(&self, mut record: RunEventRecord) -> RuntimeResult<()> {
+        record.sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
+        let run_id = *record.run_id.as_uuid();
+        self.events
+            .write()
+            .await
+            .entry(run_id)
+            .or_default()
+            .push(record);
+        Ok(())
+    }
+
+    async fn list_events(&self, run_id: RunId) -> RuntimeResult<Vec<RunEventRecord>> {
+        Ok(self
+            .events
+            .read()
+            .await
+            .get(run_id.as_uuid())
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    async fn list_runs(&self, session_id: Uuid) -> RuntimeResult<Vec<RunRecord>> {
+        Ok(self
+            .runs
+            .read()
+            .await
+            .values()
+            .filter(|r| r.session_id == session_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn delete_run(&self, run_id: RunId) -> RuntimeResult<()> {
+        self.runs.write().await.remove(run_id.as_uuid());
+        self.events.write().await.remove(run_id.as_uuid());
+        Ok(())
+    }
+
+    async fn health_check(&self) -> RuntimeResult<()> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::{ModelName, ProviderId};
+    use crate::runtime::event::{AgentEvent, RunStarted as RunStartedEvent};
+    use serde_json::Value;
+
+    fn make_run(session_id: Uuid, provider: &str, model: &str) -> RunRecord {
+        RunRecord::new(
+            RunId::new(),
+            session_id,
+            ProviderId::new(provider),
+            ModelName::new(model),
+            Value::Null,
+        )
+    }
+
+    #[tokio::test]
+    async fn memory_run_store_should_create_and_get() {
+        let store = MemoryRunStore::new();
+        let session_id = Uuid::new_v4();
+        let record = make_run(session_id, "test", "gpt-4");
+        let run_id = record.id;
+
+        store.create_run(record).await.unwrap();
+        let fetched = store.get_run(run_id).await.unwrap();
+        assert!(fetched.is_some());
+    }
+
+    #[tokio::test]
+    async fn memory_run_store_should_update_status() {
+        let store = MemoryRunStore::new();
+        let session_id = Uuid::new_v4();
+        let record = make_run(session_id, "test", "gpt-4");
+        let run_id = record.id;
+
+        store.create_run(record).await.unwrap();
+        store
+            .update_run_status(run_id, RunStatus::Completed)
+            .await
+            .unwrap();
+
+        let fetched = store.get_run(run_id).await.unwrap().unwrap();
+        assert_eq!(fetched.status, RunStatus::Completed);
+    }
+
+    #[tokio::test]
+    async fn memory_run_store_should_append_and_list_events() {
+        let store = MemoryRunStore::new();
+        let session_id = Uuid::new_v4();
+        let record = make_run(session_id, "test", "gpt-4");
+        let run_id = record.id;
+        store.create_run(record).await.unwrap();
+
+        let event = RunEventRecord::new(
+            0,
+            run_id,
+            AgentEvent::RunStarted(RunStartedEvent {
+                run_id,
+                session_id,
+                timestamp: chrono::Utc::now(),
+            }),
+        );
+        store.append_event(event).await.unwrap();
+
+        let events = store.list_events(run_id).await.unwrap();
+        assert_eq!(events.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn memory_run_store_should_list_by_session() {
+        let store = MemoryRunStore::new();
+        let session_id = Uuid::new_v4();
+
+        let r1 = make_run(session_id, "a", "m1");
+        let r2 = make_run(session_id, "b", "m2");
+        let r3 = make_run(Uuid::new_v4(), "c", "m3");
+
+        store.create_run(r1).await.unwrap();
+        store.create_run(r2).await.unwrap();
+        store.create_run(r3).await.unwrap();
+
+        let runs = store.list_runs(session_id).await.unwrap();
+        assert_eq!(runs.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn memory_run_store_should_delete() {
+        let store = MemoryRunStore::new();
+        let session_id = Uuid::new_v4();
+        let record = make_run(session_id, "test", "m");
+        let run_id = record.id;
+
+        store.create_run(record).await.unwrap();
+        store.delete_run(run_id).await.unwrap();
+
+        let fetched = store.get_run(run_id).await.unwrap();
+        assert!(fetched.is_none());
+    }
+}
