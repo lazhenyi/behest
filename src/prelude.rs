@@ -55,3 +55,15 @@ pub use crate::store::qdrant::QdrantEmbeddingStore;
 
 #[cfg(feature = "object_store")]
 pub use crate::store::object::{DiskArtifactStore, S3ArtifactStore};
+
+#[cfg(feature = "rag")]
+pub use crate::rag::RagContextAdapter;
+
+#[cfg(feature = "queue")]
+pub use crate::queue::{EventPublisher, NoOpPublisher, QueueError, QueueResult};
+
+#[cfg(all(feature = "queue", feature = "nats"))]
+pub use crate::queue::NatsEventPublisher;
+
+#[cfg(all(feature = "queue", feature = "redis"))]
+pub use crate::queue::RedisStreamsPublisher;
