@@ -74,8 +74,29 @@ pub enum AnthropicContentBlock {
     ToolResult {
         /// Tool call identifier being answered.
         tool_use_id: String,
-        /// Result content.
-        content: Vec<AnthropicContentBlock>,
+        /// Result content (only text and image blocks are valid here).
+        content: Vec<AnthropicToolResultContent>,
+    },
+}
+
+/// Content block allowed inside a tool result.
+///
+/// Unlike [`AnthropicContentBlock`], this type deliberately excludes `ToolResult`
+/// and `ToolUse` variants to prevent recursive nesting.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum AnthropicToolResultContent {
+    /// Plain text content.
+    #[serde(rename = "text")]
+    Text {
+        /// Text payload.
+        text: String,
+    },
+    /// Image content.
+    #[serde(rename = "image")]
+    Image {
+        /// Image source details.
+        source: AnthropicImageSource,
     },
 }
 

@@ -9,6 +9,7 @@ use crate::provider::{
 
 use super::types::{
     AnthropicContentBlock, AnthropicMessage, AnthropicRequest, AnthropicResponse, AnthropicToolDef,
+    AnthropicToolResultContent,
 };
 
 const DEFAULT_MAX_TOKENS: u32 = 4096;
@@ -93,15 +94,11 @@ fn convert_single_message(message: &Message) -> AnthropicMessage {
             role: "user".to_owned(),
             content: vec![AnthropicContentBlock::ToolResult {
                 tool_use_id: tool_call_id.clone(),
-                content: convert_user_content(content),
+                content: convert_tool_result_content(content),
             }],
         },
-        Message::System { .. } => AnthropicMessage {
-            role: "user".to_owned(),
-            content: vec![AnthropicContentBlock::Text {
-                text: String::new(),
-            }],
-        },
+        // System messages are filtered by `convert_messages` before reaching here.
+        Message::System { .. } => unreachable!("system messages are filtered by convert_messages"),
     }
 }
 
@@ -113,15 +110,32 @@ fn convert_user_content(parts: &[ContentPart]) -> Vec<AnthropicContentBlock> {
             ContentPart::Json { value } => AnthropicContentBlock::Text {
                 text: value.to_string(),
             },
-            ContentPart::ImageUrl { url, mime_type } => {
-                AnthropicContentBlock::Image {
-                    source: super::types::AnthropicImageSource {
-                        source_type: "url".to_owned(),
-                        url: url.clone(),
-                        media_type: mime_type.clone(),
-                    },
-                }
-            }
+            ContentPart::ImageUrl { url, mime_type } => AnthropicContentBlock::Image {
+                source: super::types::AnthropicImageSource {
+                    source_type: "url".to_owned(),
+                    url: url.clone(),
+                    media_type: mime_type.clone(),
+                },
+            },
+        })
+        .collect()
+}
+
+fn convert_tool_result_content(parts: &[ContentPart]) -> Vec<AnthropicToolResultContent> {
+    parts
+        .iter()
+        .map(|part| match part {
+            ContentPart::Text { text } => AnthropicToolResultContent::Text { text: text.clone() },
+            ContentPart::Json { value } => AnthropicToolResultContent::Text {
+                text: value.to_string(),
+            },
+            ContentPart::ImageUrl { url, mime_type } => AnthropicToolResultContent::Image {
+                source: super::types::AnthropicImageSource {
+                    source_type: "url".to_owned(),
+                    url: url.clone(),
+                    media_type: mime_type.clone(),
+                },
+            },
         })
         .collect()
 }
@@ -202,10 +216,9 @@ fn parse_content_blocks(blocks: &[AnthropicContentBlock]) -> (Vec<ContentPart>, 
 
 fn convert_stop_reason(reason: Option<&str>) -> FinishReason {
     match reason {
-        Some("end_turn") => FinishReason::Stop,
+        Some("end_turn" | "stop_sequence") => FinishReason::Stop,
         Some("tool_use") => FinishReason::ToolCalls,
         Some("max_tokens") => FinishReason::Length,
-        Some("stop_sequence") => FinishReason::Stop,
         Some(other) => FinishReason::Unknown(other.to_owned()),
         None => FinishReason::Unknown("null".to_owned()),
     }
@@ -213,4 +226,181 @@ fn convert_stop_reason(reason: Option<&str>) -> FinishReason {
 
 fn convert_usage(usage: &super::types::AnthropicUsage) -> TokenUsage {
     TokenUsage::new(usage.input_tokens, usage.output_tokens)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn sample_request() -> ChatRequest {
+        ChatRequest::new(ModelName::new("claude-3-sonnet")).with_user_text("Hello")
+    }
+
+    #[test]
+    fn to_anthropic_request_should_set_model_and_max_tokens() {
+        let req = sample_request();
+        let anthropic = to_anthropic_request(&req, false);
+
+        assert_eq!(anthropic.model, "claude-3-sonnet");
+        assert_eq!(anthropic.max_tokens, DEFAULT_MAX_TOKENS);
+        assert!(!anthropic.stream);
+    }
+
+    #[test]
+    fn to_anthropic_request_should_use_custom_max_tokens() {
+        let mut req = sample_request();
+        req.max_output_tokens = Some(1024);
+        let anthropic = to_anthropic_request(&req, false);
+        assert_eq!(anthropic.max_tokens, 1024);
+    }
+
+    #[test]
+    fn extract_system_text_should_join_system_messages() {
+        let messages = vec![
+            Message::system_text("You are helpful."),
+            Message::user_text("Hi"),
+            Message::system_text("Be concise."),
+        ];
+
+        let system = extract_system_text(&messages);
+        assert_eq!(system, Some("You are helpful.\n\nBe concise.".to_owned()));
+    }
+
+    #[test]
+    fn extract_system_text_should_return_none_when_no_system() {
+        let messages = vec![Message::user_text("Hi")];
+        assert_eq!(extract_system_text(&messages), None);
+    }
+
+    #[test]
+    fn convert_messages_should_filter_system_messages() {
+        let messages = vec![
+            Message::system_text("System"),
+            Message::user_text("User"),
+            Message::assistant_text("Assistant"),
+        ];
+
+        let converted = convert_messages(&messages);
+        assert_eq!(converted.len(), 2);
+        assert_eq!(converted[0].role, "user");
+        assert_eq!(converted[1].role, "assistant");
+    }
+
+    #[test]
+    fn convert_single_message_should_convert_tool_message_to_user_role() {
+        let msg = Message::tool_text("call_1", "weather", "Sunny");
+        let converted = convert_single_message(&msg);
+
+        assert_eq!(converted.role, "user");
+        assert_eq!(converted.content.len(), 1);
+        assert!(matches!(
+            &converted.content[0],
+            AnthropicContentBlock::ToolResult { tool_use_id, .. } if tool_use_id == "call_1"
+        ));
+    }
+
+    #[test]
+    fn convert_single_message_should_include_tool_calls_in_assistant() {
+        let msg = Message::Assistant {
+            content: vec![ContentPart::text("Let me check")],
+            tool_calls: vec![ToolCall::new(
+                "call_1",
+                "weather",
+                json!({"city": "London"}),
+            )],
+        };
+
+        let converted = convert_single_message(&msg);
+        assert_eq!(converted.role, "assistant");
+        assert_eq!(converted.content.len(), 2);
+        assert!(matches!(
+            &converted.content[1],
+            AnthropicContentBlock::ToolUse { name, .. } if name == "weather"
+        ));
+    }
+
+    #[test]
+    fn convert_tool_choice_should_return_none_when_no_tools() {
+        assert_eq!(convert_tool_choice(&ToolChoice::Auto, false), None);
+    }
+
+    #[test]
+    fn convert_tool_choice_should_map_auto() {
+        let result = convert_tool_choice(&ToolChoice::Auto, true);
+        assert_eq!(result, Some(json!({"type": "auto"})));
+    }
+
+    #[test]
+    fn convert_tool_choice_should_return_none_for_none_choice() {
+        assert_eq!(convert_tool_choice(&ToolChoice::None, true), None);
+    }
+
+    #[test]
+    fn from_anthropic_response_should_convert_text_response() {
+        let provider = ProviderId::new("anthropic");
+        let response = super::super::types::AnthropicResponse {
+            id: "msg_1".to_owned(),
+            model: "claude-3-sonnet".to_owned(),
+            content: vec![AnthropicContentBlock::Text {
+                text: "Hello!".to_owned(),
+            }],
+            stop_reason: Some("end_turn".to_owned()),
+            usage: Some(super::super::types::AnthropicUsage {
+                input_tokens: 10,
+                output_tokens: 5,
+            }),
+        };
+
+        let result = from_anthropic_response(&provider, &response);
+        assert_eq!(result.model.as_str(), "claude-3-sonnet");
+        assert_eq!(result.finish_reason, FinishReason::Stop);
+        assert!(matches!(result.message, Message::Assistant { .. }));
+        let usage = result.usage.unwrap();
+        assert_eq!(usage.input_tokens, 10);
+        assert_eq!(usage.output_tokens, 5);
+    }
+
+    #[test]
+    fn from_anthropic_response_should_extract_tool_calls() {
+        let provider = ProviderId::new("anthropic");
+        let response = super::super::types::AnthropicResponse {
+            id: "msg_2".to_owned(),
+            model: "claude-3-sonnet".to_owned(),
+            content: vec![AnthropicContentBlock::ToolUse {
+                id: "toolu_1".to_owned(),
+                name: "get_weather".to_owned(),
+                input: json!({"city": "London"}),
+            }],
+            stop_reason: Some("tool_use".to_owned()),
+            usage: None,
+        };
+
+        let result = from_anthropic_response(&provider, &response);
+        assert_eq!(result.finish_reason, FinishReason::ToolCalls);
+        if let Message::Assistant { tool_calls, .. } = &result.message {
+            assert_eq!(tool_calls.len(), 1);
+            assert_eq!(tool_calls[0].name, "get_weather");
+        } else {
+            panic!("expected assistant message with tool calls");
+        }
+    }
+
+    #[test]
+    fn convert_stop_reason_should_map_all_known_reasons() {
+        assert_eq!(convert_stop_reason(Some("end_turn")), FinishReason::Stop);
+        assert_eq!(
+            convert_stop_reason(Some("tool_use")),
+            FinishReason::ToolCalls
+        );
+        assert_eq!(
+            convert_stop_reason(Some("max_tokens")),
+            FinishReason::Length
+        );
+        assert_eq!(
+            convert_stop_reason(Some("stop_sequence")),
+            FinishReason::Stop
+        );
+    }
 }

@@ -1,11 +1,14 @@
 //! Anthropic chat provider adapter implementing [`ChatProvider`].
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use futures_util::StreamExt as _;
 use reqwest::Client;
 use secrecy::ExposeSecret;
+use tokio::sync::Mutex;
 
-use crate::adapt::http::{build_client, status_to_error};
+use crate::adapt::http::{build_client, parse_retry_after, status_to_error};
 use crate::adapt::sse::SseStream;
 use crate::error::ProviderError;
 use crate::provider::{
@@ -13,9 +16,11 @@ use crate::provider::{
     ProviderCapabilities, ProviderHttpConfig, ProviderId, ProviderResult, TokenUsage, ToolCall,
 };
 
-use super::convert::{from_anthropic_response, to_anthropic_request};
-use super::types::{AnthropicContentBlock, AnthropicDelta, AnthropicResponse, AnthropicStreamEvent};
 use super::API_VERSION;
+use super::convert::{from_anthropic_response, to_anthropic_request};
+use super::types::{
+    AnthropicContentBlock, AnthropicDelta, AnthropicResponse, AnthropicStreamEvent,
+};
 
 /// Anthropic Claude chat completion adapter.
 pub struct AnthropicChatAdapter {
@@ -66,6 +71,19 @@ impl AnthropicChatAdapter {
 
         builder
     }
+
+    fn wrap_transport(&self, source: reqwest::Error) -> ProviderError {
+        if source.is_timeout() {
+            ProviderError::Timeout {
+                provider: self.id.clone(),
+            }
+        } else {
+            ProviderError::Transport {
+                provider: self.id.clone(),
+                source,
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -87,18 +105,24 @@ impl ChatProvider for AnthropicChatAdapter {
 
     async fn complete(&self, request: ChatRequest) -> ProviderResult<ChatResponse> {
         let body = to_anthropic_request(&request, false);
-        let response = self.build_request(&body).send().await.map_err(wrap_transport)?;
+        let response = self
+            .build_request(&body)
+            .send()
+            .await
+            .map_err(|e| self.wrap_transport(e))?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(status_to_error(&self.id, status, &text));
+            let retry_after = parse_retry_after(response.headers());
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
+            return Err(status_to_error(&self.id, status, &text, retry_after));
         }
 
-        let parsed: AnthropicResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::Decode {
+        let parsed: AnthropicResponse =
+            response.json().await.map_err(|e| ProviderError::Decode {
                 provider: self.id.clone(),
                 message: e.to_string(),
             })?;
@@ -108,12 +132,20 @@ impl ChatProvider for AnthropicChatAdapter {
 
     async fn stream(&self, request: ChatRequest) -> ProviderResult<ChatStream> {
         let body = to_anthropic_request(&request, true);
-        let response = self.build_request(&body).send().await.map_err(wrap_transport)?;
+        let response = self
+            .build_request(&body)
+            .send()
+            .await
+            .map_err(|e| self.wrap_transport(e))?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(status_to_error(&self.id, status, &text));
+            let retry_after = parse_retry_after(response.headers());
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
+            return Err(status_to_error(&self.id, status, &text, retry_after));
         }
 
         let byte_stream = response.bytes_stream();
@@ -126,10 +158,13 @@ impl ChatProvider for AnthropicChatAdapter {
             model: model.clone(),
         };
 
-        let state = StreamState::new(provider_id.clone());
+        let state = Arc::new(Mutex::new(StreamState::new(provider_id.clone())));
         let mapped = sse_stream.filter_map(move |event| {
-            let mut st = state.clone();
-            async move { map_anthropic_event(&mut st, event) }
+            let state = Arc::clone(&state);
+            async move {
+                let mut st = state.lock().await;
+                map_anthropic_event(&mut st, event)
+            }
         });
 
         let combined = futures_util::stream::once(async { Ok(started) }).chain(mapped);
@@ -137,14 +172,12 @@ impl ChatProvider for AnthropicChatAdapter {
     }
 }
 
-#[derive(Clone)]
 struct StreamState {
     provider: ProviderId,
     model: Option<String>,
     tool_calls: Vec<ToolCallState>,
 }
 
-#[derive(Clone)]
 struct ToolCallState {
     id: String,
     name: String,
@@ -201,8 +234,7 @@ fn map_anthropic_event(
                 usage: usage.map(|u| TokenUsage::new(u.input_tokens, u.output_tokens)),
             }))
         }
-        AnthropicStreamEvent::MessageStop => None,
-        AnthropicStreamEvent::Other => None,
+        AnthropicStreamEvent::MessageStop | AnthropicStreamEvent::Other => None,
     }
 }
 
@@ -244,8 +276,7 @@ fn handle_block_delta(
             let call_id = state
                 .tool_calls
                 .get(index)
-                .map(|tc| tc.id.clone())
-                .unwrap_or_else(|| format!("call_{index}"));
+                .map_or_else(|| format!("call_{index}"), |tc| tc.id.clone());
             Some(Ok(ChatStreamEvent::ToolCallArgumentsDelta {
                 id: call_id,
                 delta: partial_json,
@@ -260,7 +291,14 @@ fn handle_block_stop(
     index: usize,
 ) -> Option<Result<ChatStreamEvent, ProviderError>> {
     let tc = state.tool_calls.get(index)?;
-    let arguments = serde_json::from_str(&tc.arguments).unwrap_or(serde_json::Value::Null);
+    let arguments = serde_json::from_str(&tc.arguments).unwrap_or_else(|e| {
+        tracing::warn!(
+            tool_name = %tc.name,
+            error = %e,
+            "failed to parse tool call arguments, falling back to null"
+        );
+        serde_json::Value::Null
+    });
     Some(Ok(ChatStreamEvent::ToolCallCompleted {
         call: ToolCall::new(tc.id.clone(), tc.name.clone(), arguments),
     }))
@@ -268,24 +306,10 @@ fn handle_block_stop(
 
 fn convert_stream_stop_reason(reason: Option<&str>) -> FinishReason {
     match reason {
-        Some("end_turn") => FinishReason::Stop,
+        Some("end_turn" | "stop_sequence") => FinishReason::Stop,
         Some("tool_use") => FinishReason::ToolCalls,
         Some("max_tokens") => FinishReason::Length,
-        Some("stop_sequence") => FinishReason::Stop,
         Some(other) => FinishReason::Unknown(other.to_owned()),
         None => FinishReason::Unknown("null".to_owned()),
-    }
-}
-
-fn wrap_transport(source: reqwest::Error) -> ProviderError {
-    if source.is_timeout() {
-        ProviderError::Timeout {
-            provider: ProviderId::new("anthropic"),
-        }
-    } else {
-        ProviderError::Transport {
-            provider: ProviderId::new("anthropic"),
-            source,
-        }
     }
 }
