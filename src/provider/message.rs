@@ -72,6 +72,7 @@ impl ChatRequest {
 /// Chat message role and content.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "role")]
+#[non_exhaustive]
 pub enum Message {
     /// System instruction message.
     System {
@@ -145,6 +146,7 @@ impl Message {
 /// A single content part inside a chat message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
+#[non_exhaustive]
 pub enum ContentPart {
     /// Plain text content.
     Text {
@@ -191,6 +193,7 @@ impl ContentPart {
 /// Output format requested from a chat provider.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
+#[non_exhaustive]
 pub enum ResponseFormat {
     /// Unconstrained text output.
     Text,
@@ -227,6 +230,7 @@ pub struct ChatResponse {
 /// Reason generation ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum FinishReason {
     /// Natural stop condition.
     Stop,

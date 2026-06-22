@@ -33,6 +33,7 @@ impl ToolSpec {
 /// Tool selection policy for a chat request.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
+#[non_exhaustive]
 pub enum ToolChoice {
     /// Let the provider or model decide whether a tool is needed.
     #[default]

@@ -7,6 +7,7 @@ use crate::provider::{FinishReason, ModelName, ProviderId, TokenUsage, ToolCall}
 /// Event emitted by a streaming chat provider.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
+#[non_exhaustive]
 pub enum ChatStreamEvent {
     /// Stream has started.
     Started {

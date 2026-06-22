@@ -54,6 +54,7 @@ impl EmbeddingRequest {
 /// A single embedding input.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
+#[non_exhaustive]
 pub enum EmbeddingInput {
     /// Plain text input.
     Text {
