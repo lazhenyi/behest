@@ -44,7 +44,8 @@ full = [
     "mongodb",
     "surrealdb",
     "otel",
-    "rag",
+    "rag-all",
+    "queue-all",
     "object_store",
 ]
 
@@ -60,14 +61,24 @@ storage-all = [
     "surrealdb",
 ]
 
-queue-all = [
-    "nats",
-    "redis",
-]
+# Core RAG context adapter (no deps, enables src/rag module)
+rag = []
 
-rag = [
+# RAG with all backends
+rag-all = [
+    "rag",
     "qdrant",
     "tantivy",
+]
+
+# Core queue event publisher (no deps, enables src/queue module)
+queue = []
+
+# Queue with all backends
+queue-all = [
+    "queue",
+    "nats",
+    "redis",
 ]
 
 tls-rustls = [
