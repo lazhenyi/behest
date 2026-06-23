@@ -70,6 +70,8 @@ pub enum TurnOutcome {
         /// Error message.
         message: String,
     },
+    /// Model output was truncated (FinishReason::Length). Recovery may be attempted.
+    OutputTruncated,
 }
 
 /// Action the loop executor should take after a transition.
@@ -113,7 +115,11 @@ impl TurnTransition {
             },
 
             // ── BuildingContext / Compacting ────────────────────────
-            (TurnState::BuildingContext | TurnState::Compacting, TurnOutcome::Success) => {
+            (
+                TurnState::BuildingContext | TurnState::Compacting,
+                TurnOutcome::Success,
+            )
+            | (TurnState::ProcessingResponse, TurnOutcome::OutputTruncated) => {
                 TurnAction::Continue {
                     next: TurnState::CallingModel,
                 }
@@ -289,6 +295,18 @@ mod tests {
             action,
             TurnAction::Continue {
                 next: TurnState::ExecutingTools
+            }
+        );
+    }
+
+    #[test]
+    fn output_truncated_continues_to_model() {
+        let action =
+            TurnTransition::resolve(TurnState::ProcessingResponse, &TurnOutcome::OutputTruncated);
+        assert_eq!(
+            action,
+            TurnAction::Continue {
+                next: TurnState::CallingModel
             }
         );
     }
