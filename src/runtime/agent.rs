@@ -21,6 +21,7 @@ use crate::provider::{
 };
 
 use super::accumulator::StreamAccumulator;
+use super::compaction::CompactionService;
 use super::context::ContextPipeline;
 use super::error::{RuntimeError, RuntimeResult};
 use super::event::{
@@ -30,19 +31,21 @@ use super::event::{
 };
 use super::policy::RuntimePolicy;
 use super::run::{RunId, RunRecord, RunRequest, RunStatus};
-use super::store::RuntimeStore;
+use super::store::{RunEventRecord, RuntimeStore};
 use super::tool::ToolRuntime;
 
 /// Streaming-first agent runtime kernel.
 ///
 /// Ties together provider registry, context pipeline, tool runtime,
-/// and persistent stores into a complete agent execution loop.
+/// compaction service, and persistent stores into a complete agent
+/// execution loop.
 pub struct AgentRuntime {
     providers: crate::provider::ProviderRegistry,
     context: ContextPipeline,
     tools: ToolRuntime,
     store: Arc<RuntimeStore>,
     policy: RuntimePolicy,
+    compaction: CompactionService,
     event_tx: broadcast::Sender<AgentEvent>,
     #[cfg(feature = "queue")]
     event_publisher: Option<Arc<dyn EventPublisher>>,
@@ -59,12 +62,14 @@ impl AgentRuntime {
         policy: RuntimePolicy,
     ) -> Self {
         let (event_tx, _) = broadcast::channel(256);
+        let compaction = CompactionService::new(providers.clone(), policy.compaction.clone());
         Self {
             providers,
             context,
             tools,
             store,
             policy,
+            compaction,
             event_tx,
             #[cfg(feature = "queue")]
             event_publisher: None,
@@ -100,10 +105,22 @@ impl AgentRuntime {
         &self.tools
     }
 
+    /// Returns the provider registry.
+    #[must_use]
+    pub fn providers(&self) -> &crate::provider::ProviderRegistry {
+        &self.providers
+    }
+
     /// Returns the context pipeline.
     #[must_use]
     pub fn context(&self) -> &ContextPipeline {
         &self.context
+    }
+
+    /// Returns the runtime store.
+    #[must_use]
+    pub fn store(&self) -> &Arc<RuntimeStore> {
+        &self.store
     }
 
     /// Executes an agent run to completion.
@@ -131,7 +148,7 @@ impl AgentRuntime {
         );
         self.store.runs().create_run(run_record).await?;
 
-        self.emit(AgentEvent::RunStarted(RunStarted {
+        self.emit(&AgentEvent::RunStarted(RunStarted {
             run_id,
             session_id,
             timestamp: Utc::now(),
@@ -178,6 +195,39 @@ impl AgentRuntime {
             self.update_status(run_id, RunStatus::BuildingContext)
                 .await?;
 
+            // --- Compaction: proactive overflow check ---
+            if self.policy.compaction.auto {
+                let caps = provider.capabilities();
+                if let (Some(model_ctx), Some(max_out)) =
+                    (caps.max_input_tokens, caps.max_output_tokens)
+                {
+                    let records = self
+                        .store
+                        .sessions()
+                        .list_messages(&session_id)
+                        .await
+                        .map_err(RuntimeError::from)?;
+
+                    if let Some(result) = self
+                        .compaction
+                        .compact_if_needed(
+                            &records,
+                            model_ctx,
+                            max_out,
+                            self.store.sessions(),
+                            session_id,
+                        )
+                        .await?
+                    {
+                        debug!(
+                            run_id = %run_id,
+                            tokens_saved = result.tokens_saved,
+                            "proactive compaction completed"
+                        );
+                    }
+                }
+            }
+
             let chat_request = self
                 .context
                 .build(
@@ -193,7 +243,7 @@ impl AgentRuntime {
                 )
                 .await?;
 
-            self.emit(AgentEvent::ContextBuilt(ContextBuilt {
+            self.emit(&AgentEvent::ContextBuilt(ContextBuilt {
                 run_id,
                 message_count: chat_request.messages.len(),
                 timestamp: Utc::now(),
@@ -201,7 +251,7 @@ impl AgentRuntime {
 
             self.update_status(run_id, RunStatus::CallingModel).await?;
 
-            self.emit(AgentEvent::ModelStarted(ModelStarted {
+            self.emit(&AgentEvent::ModelStarted(ModelStarted {
                 run_id,
                 provider: request.provider.clone(),
                 model: request.model.clone(),
@@ -210,14 +260,48 @@ impl AgentRuntime {
             }));
 
             let (assistant_message, finish_reason, usage) =
-                self.call_model(&provider, chat_request, run_id).await?;
+                match self.call_model(&provider, chat_request, run_id).await {
+                    Ok(result) => result,
+                    Err(RuntimeError::Provider(ref e)) if e.is_context_overflow() => {
+                        // Provider reported context overflow — compact and retry
+                        if self.policy.compaction.auto {
+                            let caps = provider.capabilities();
+                            let model_ctx = caps.max_input_tokens.unwrap_or(128_000);
+                            let max_out = caps.max_output_tokens.unwrap_or(16_384);
+                            let records = self
+                                .store
+                                .sessions()
+                                .list_messages(&session_id)
+                                .await
+                                .map_err(RuntimeError::from)?;
+
+                            let result = self
+                                .compaction
+                                .compact_after_overflow(
+                                    &records,
+                                    model_ctx,
+                                    max_out,
+                                    self.store.sessions(),
+                                    session_id,
+                                )
+                                .await?;
+                            debug!(
+                                run_id = %run_id,
+                                tokens_saved = result.tokens_saved,
+                                "reactive compaction after provider overflow"
+                            );
+                        }
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                };
 
             if let Some(u) = &usage {
                 total_usage = TokenUsage::new(
                     total_usage.input_tokens + u.input_tokens,
                     total_usage.output_tokens + u.output_tokens,
                 );
-                self.emit(AgentEvent::UsageRecorded(UsageRecorded {
+                self.emit(&AgentEvent::UsageRecorded(UsageRecorded {
                     run_id,
                     usage: *u,
                     timestamp: Utc::now(),
@@ -231,7 +315,7 @@ impl AgentRuntime {
                 .append_message(session_id, &assistant_message)
                 .await?;
 
-            self.emit(AgentEvent::AssistantMessageCommitted(MessageCommitted {
+            self.emit(&AgentEvent::AssistantMessageCommitted(MessageCommitted {
                 run_id,
                 message_id: assistant_msg_id,
                 timestamp: Utc::now(),
@@ -271,7 +355,7 @@ impl AgentRuntime {
                     .append_message(session_id, &outcome.message)
                     .await?;
 
-                self.emit(AgentEvent::ToolMessageCommitted(MessageCommitted {
+                self.emit(&AgentEvent::ToolMessageCommitted(MessageCommitted {
                     run_id,
                     message_id: tool_msg_id,
                     timestamp: Utc::now(),
@@ -287,7 +371,7 @@ impl AgentRuntime {
 
         self.update_status(run_id, RunStatus::Completed).await?;
 
-        self.emit(AgentEvent::RunCompleted(RunCompleted {
+        self.emit(&AgentEvent::RunCompleted(RunCompleted {
             run_id,
             finish_reason: last_finish.clone(),
             iterations: iteration,
@@ -348,7 +432,7 @@ impl AgentRuntime {
             match &event {
                 ChatStreamEvent::TextDelta { delta } => {
                     accumulator.append_text(delta);
-                    self.emit(AgentEvent::TextDelta(TextDelta {
+                    self.emit(&AgentEvent::TextDelta(TextDelta {
                         run_id,
                         delta: delta.clone(),
                         timestamp: Utc::now(),
@@ -356,7 +440,7 @@ impl AgentRuntime {
                 }
                 ChatStreamEvent::ToolCallStarted { id, name } => {
                     accumulator.start_tool_call(id.clone(), name.clone());
-                    self.emit(AgentEvent::ToolCallStarted(ToolCallStartedEvent {
+                    self.emit(&AgentEvent::ToolCallStarted(ToolCallStartedEvent {
                         run_id,
                         call_id: id.clone(),
                         tool_name: name.clone(),
@@ -365,7 +449,7 @@ impl AgentRuntime {
                 }
                 ChatStreamEvent::ToolCallArgumentsDelta { id, delta } => {
                     accumulator.append_tool_arguments(id, delta);
-                    self.emit(AgentEvent::ToolCallDelta(ToolCallDelta {
+                    self.emit(&AgentEvent::ToolCallDelta(ToolCallDelta {
                         run_id,
                         call_id: id.clone(),
                         delta: delta.clone(),
@@ -373,7 +457,7 @@ impl AgentRuntime {
                     }));
                 }
                 ChatStreamEvent::ToolCallCompleted { call } => {
-                    self.emit(AgentEvent::ToolCallCompleted(ToolCallCompleted {
+                    self.emit(&AgentEvent::ToolCallCompleted(ToolCallCompleted {
                         run_id,
                         call: call.clone(),
                         timestamp: Utc::now(),
@@ -407,7 +491,7 @@ impl AgentRuntime {
                 .map_err(RuntimeError::from)?;
 
         if let Some(text) = extract_assistant_text(&response.message) {
-            self.emit(AgentEvent::TextDelta(TextDelta {
+            self.emit(&AgentEvent::TextDelta(TextDelta {
                 run_id,
                 delta: text,
                 timestamp: Utc::now(),
@@ -415,7 +499,7 @@ impl AgentRuntime {
         }
 
         for tc in extract_tool_calls(&response.message) {
-            self.emit(AgentEvent::ToolCallCompleted(ToolCallCompleted {
+            self.emit(&AgentEvent::ToolCallCompleted(ToolCallCompleted {
                 run_id,
                 call: tc,
                 timestamp: Utc::now(),
@@ -425,12 +509,26 @@ impl AgentRuntime {
         Ok((response.message, response.finish_reason, response.usage))
     }
 
-    fn emit(&self, event: AgentEvent) {
+    fn emit(&self, event: &AgentEvent) {
         let _ = self.event_tx.send(event.clone());
+
+        // Persist event to RunStore (fire-and-forget).
+        {
+            let event = event.clone();
+            let store = Arc::clone(&self.store);
+            tokio::spawn(async move {
+                let record = RunEventRecord::new(0, event.run_id(), event);
+                if let Err(e) = store.runs().append_event(record).await {
+                    tracing::warn!(error = %e, "failed to persist agent event");
+                }
+            });
+        }
+
         #[cfg(feature = "queue")]
         {
             if let Some(publisher) = &self.event_publisher {
                 let publisher = Arc::clone(publisher);
+                let event = event.clone();
                 tokio::spawn(async move {
                     if let Err(e) = publisher.publish(event).await {
                         tracing::warn!(error = %e, "failed to publish event externally");
@@ -448,7 +546,7 @@ impl AgentRuntime {
         let error_msg = err.to_string();
         error!(%run_id, error = %error_msg, "run failed");
         let _ = self.update_status(run_id, RunStatus::Failed).await;
-        self.emit(AgentEvent::RunFailed(RunFailed {
+        self.emit(&AgentEvent::RunFailed(RunFailed {
             run_id,
             error: error_msg,
             timestamp: Utc::now(),
