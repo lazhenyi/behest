@@ -16,9 +16,7 @@ use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::provider::{
-    ChatRequest, ChatResponse, ChatStreamEvent, FinishReason, Message, TokenUsage, ToolCall,
-};
+use crate::provider::{ChatRequest, ChatStreamEvent, FinishReason, Message, TokenUsage, ToolCall};
 
 use super::accumulator::StreamAccumulator;
 use super::compaction::CompactionService;
@@ -29,16 +27,21 @@ use super::event::{
     TextDelta, ToolCallCompleted, ToolCallDelta, ToolCallStarted as ToolCallStartedEvent,
     UsageRecorded,
 };
+use super::job::{BackgroundJobPool, JobConditions, JobPriority, JobType};
 use super::policy::RuntimePolicy;
 use super::run::{RunId, RunRecord, RunRequest, RunStatus};
-use super::store::{RunEventRecord, RuntimeStore};
+use super::session_gate::SessionGate;
+use super::snapshot::{Snapshot, SnapshotStore};
+use super::store::RuntimeStore;
 use super::tool::ToolRuntime;
+use super::turn::{TurnAction, TurnOutcome, TurnState, TurnTransition};
+use crate::tool_scope::ScopeGuard;
 
 /// Streaming-first agent runtime kernel.
 ///
 /// Ties together provider registry, context pipeline, tool runtime,
-/// compaction service, and persistent stores into a complete agent
-/// execution loop.
+/// compaction service, persistent stores, and background job pool into a
+/// complete agent execution loop.
 pub struct AgentRuntime {
     providers: crate::provider::ProviderRegistry,
     context: ContextPipeline,
@@ -46,9 +49,12 @@ pub struct AgentRuntime {
     store: Arc<RuntimeStore>,
     policy: RuntimePolicy,
     compaction: CompactionService,
+    session_gate: SessionGate,
     event_tx: broadcast::Sender<AgentEvent>,
     #[cfg(feature = "queue")]
     event_publisher: Option<Arc<dyn EventPublisher>>,
+    background_jobs: Arc<BackgroundJobPool>,
+    snapshot_store: Option<Arc<dyn SnapshotStore>>,
 }
 
 impl AgentRuntime {
@@ -63,6 +69,13 @@ impl AgentRuntime {
     ) -> Self {
         let (event_tx, _) = broadcast::channel(256);
         let compaction = CompactionService::new(providers.clone(), policy.compaction.clone());
+        let background_jobs = BackgroundJobPool::new(
+            store.clone(),
+            #[cfg(feature = "queue")]
+            None,
+            None,
+        );
+        background_jobs.start();
         Self {
             providers,
             context,
@@ -70,9 +83,12 @@ impl AgentRuntime {
             store,
             policy,
             compaction,
+            session_gate: SessionGate::new(),
             event_tx,
             #[cfg(feature = "queue")]
             event_publisher: None,
+            background_jobs,
+            snapshot_store: None,
         }
     }
 
@@ -83,8 +99,29 @@ impl AgentRuntime {
     #[cfg(feature = "queue")]
     #[must_use]
     pub fn with_event_publisher(mut self, publisher: Arc<dyn EventPublisher>) -> Self {
+        self.background_jobs
+            .set_event_publisher(Arc::clone(&publisher));
         self.event_publisher = Some(publisher);
         self
+    }
+
+    /// Sets an optional snapshot store for FSM run recovery.
+    #[must_use]
+    pub fn with_snapshot_store(mut self, snapshot_store: Arc<dyn SnapshotStore>) -> Self {
+        self.snapshot_store = Some(snapshot_store);
+        self
+    }
+
+    /// Returns a reference to the background job pool.
+    #[must_use]
+    pub fn background_jobs(&self) -> &Arc<BackgroundJobPool> {
+        &self.background_jobs
+    }
+
+    /// Returns the session gate.
+    #[must_use]
+    pub fn session_gate(&self) -> &SessionGate {
+        &self.session_gate
     }
 
     /// Subscribes to runtime events.
@@ -139,6 +176,18 @@ impl AgentRuntime {
         let run_id = RunId::new();
         let session_id = self.store.ensure_session(request.session_id).await?;
 
+        // Acquire per-session lock — prevents concurrent runs from
+        // interleaving writes to the same session.
+        let _session_guard = self
+            .session_gate
+            .acquire(session_id)
+            .await
+            .map_err(|busy| RuntimeError::SessionBusy(busy.session_id))?;
+
+        // Push a Run-level tool scope. The RAII guard ensures cleanup
+        // on every exit path, including early returns and panics.
+        let _run_scope: ScopeGuard = self.tools.registry().push_scope_guarded();
+
         let run_record = RunRecord::new(
             run_id,
             session_id,
@@ -151,6 +200,8 @@ impl AgentRuntime {
         self.emit(&AgentEvent::RunStarted(RunStarted {
             run_id,
             session_id,
+            provider: request.provider.clone(),
+            model: request.model.clone(),
             timestamp: Utc::now(),
         }));
         self.update_status(run_id, RunStatus::SessionLoaded).await?;
@@ -167,213 +218,597 @@ impl AgentRuntime {
         let tool_specs = self.tools.registry().specs();
         let has_tools = !tool_specs.is_empty();
 
-        let mut iteration = 0usize;
-        let mut total_usage = TokenUsage::new(0, 0);
-        let mut last_finish;
+        self.run_loop(
+            run_id,
+            session_id,
+            provider,
+            request,
+            tool_specs,
+            has_tools,
+            0,
+            TokenUsage::new(0, 0),
+            None,
+            None,
+            None,
+            TurnState::CheckingPolicy,
+        )
+        .await
+    }
+
+    /// Resumes a crashed or halted agent run from its last saved snapshot.
+    ///
+    /// Loads the snapshot by `run_id`, re-acquires the session lock, pushes
+    /// a Run-level tool scope, and restarts the turn loop from the saved state.
+    ///
+    /// # Errors
+    ///
+    /// Returns `RuntimeError` if the snapshot is not found, the session is busy,
+    /// or resuming fails.
+    pub async fn resume(&self, run_id: RunId) -> RuntimeResult<RunOutput> {
+        let snapshot_store = self.snapshot_store.as_ref().ok_or_else(|| {
+            RuntimeError::RecoveryFailed("snapshot store not configured".to_string())
+        })?;
+
+        let snapshot = snapshot_store
+            .load(run_id)
+            .await?
+            .ok_or_else(|| RuntimeError::RunNotFound(run_id))?;
+
+        // Re-acquire per-session lock
+        let _session_guard = self
+            .session_gate
+            .acquire(snapshot.session_id)
+            .await
+            .map_err(|busy| RuntimeError::SessionBusy(busy.session_id))?;
+
+        // Re-push a Run-level tool scope
+        let _run_scope: ScopeGuard = self.tools.registry().push_scope_guarded();
+
+        let provider = self
+            .providers
+            .chat(&snapshot.request.provider)
+            .ok_or_else(|| RuntimeError::ProviderNotFound(snapshot.request.provider.to_string()))?;
+
+        let tool_specs = self.tools.registry().specs();
+        let has_tools = !tool_specs.is_empty();
+
+        // Resume the run in the database/store status as well
+        self.update_status(run_id, TurnTransition::status_for(snapshot.current_state))
+            .await?;
+
+        self.run_loop(
+            run_id,
+            snapshot.session_id,
+            provider,
+            snapshot.request,
+            tool_specs,
+            has_tools,
+            snapshot.iteration,
+            snapshot.total_usage,
+            snapshot.last_finish,
+            snapshot.assistant_message,
+            snapshot.assistant_msg_id,
+            snapshot.current_state,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn save_snapshot_helper(
+        &self,
+        run_id: RunId,
+        session_id: Uuid,
+        iteration: usize,
+        state: TurnState,
+        total_usage: TokenUsage,
+        last_finish: &Option<FinishReason>,
+        assistant_message: &Option<Message>,
+        assistant_msg_id: Option<Uuid>,
+        request: &RunRequest,
+    ) -> RuntimeResult<()> {
+        if let Some(store) = &self.snapshot_store {
+            let snapshot = Snapshot {
+                run_id,
+                session_id,
+                status: TurnTransition::status_for(state),
+                iteration,
+                current_state: state,
+                total_usage,
+                last_finish: last_finish.clone(),
+                assistant_message: assistant_message.clone(),
+                assistant_msg_id,
+                request: request.clone(),
+                timestamp: Utc::now(),
+            };
+            store.save(&snapshot).await?;
+        }
+        Ok(())
+    }
+
+    async fn delete_snapshot_helper(&self, run_id: RunId) -> RuntimeResult<()> {
+        if let Some(store) = &self.snapshot_store {
+            store.delete(run_id).await?;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run_loop(
+        &self,
+        run_id: RunId,
+        session_id: Uuid,
+        provider: Arc<dyn crate::provider::ChatProvider>,
+        request: RunRequest,
+        tool_specs: Vec<crate::provider::ToolSpec>,
+        has_tools: bool,
+        iteration: usize,
+        total_usage: TokenUsage,
+        last_finish: Option<FinishReason>,
+        assistant_message: Option<Message>,
+        assistant_msg_id: Option<Uuid>,
+        start_state: TurnState,
+    ) -> RuntimeResult<RunOutput> {
+        let result = self
+            .run_loop_inner(
+                run_id,
+                session_id,
+                provider,
+                request,
+                tool_specs,
+                has_tools,
+                iteration,
+                total_usage,
+                last_finish,
+                assistant_message,
+                assistant_msg_id,
+                start_state,
+            )
+            .await;
+
+        // Clean up snapshot on exit since the run has finished (either Completed or Failed).
+        let _ = self.delete_snapshot_helper(run_id).await;
+
+        result
+    }
+
+    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+    async fn run_loop_inner(
+        &self,
+        run_id: RunId,
+        session_id: Uuid,
+        provider: Arc<dyn crate::provider::ChatProvider>,
+        request: RunRequest,
+        tool_specs: Vec<crate::provider::ToolSpec>,
+        has_tools: bool,
+        mut iteration: usize,
+        mut total_usage: TokenUsage,
+        mut last_finish: Option<FinishReason>,
+        mut assistant_message: Option<Message>,
+        mut assistant_msg_id: Option<Uuid>,
+        start_state: TurnState,
+    ) -> RuntimeResult<RunOutput> {
+        let mut resume_from = start_state;
 
         loop {
-            iteration += 1;
-            if iteration > self.policy.max_iterations {
-                let err = RuntimeError::IterationLimitExceeded(self.policy.max_iterations);
-                self.fail_run(run_id, &err).await;
-                return Err(err);
+            // Increment iteration ONLY if we are starting a normal iteration (from CheckingPolicy)
+            if resume_from == TurnState::CheckingPolicy {
+                iteration += 1;
             }
 
-            if let Some(budget) = self.policy.max_tokens {
-                let budget_u64 = budget as u64;
-                if total_usage.total_tokens >= budget_u64 {
-                    #[allow(clippy::cast_possible_truncation)]
-                    let err = RuntimeError::TokenBudgetExceeded {
-                        used: total_usage.total_tokens as usize,
-                        limit: budget,
-                    };
-                    self.fail_run(run_id, &err).await;
-                    return Err(err);
-                }
-            }
-
-            self.update_status(run_id, RunStatus::BuildingContext)
-                .await?;
-
-            // --- Compaction: proactive overflow check ---
-            if self.policy.compaction.auto {
-                let caps = provider.capabilities();
-                if let (Some(model_ctx), Some(max_out)) =
-                    (caps.max_input_tokens, caps.max_output_tokens)
-                {
-                    let records = self
-                        .store
-                        .sessions()
-                        .list_messages(&session_id)
-                        .await
-                        .map_err(RuntimeError::from)?;
-
-                    if let Some(result) = self
-                        .compaction
-                        .compact_if_needed(
-                            &records,
-                            model_ctx,
-                            max_out,
-                            self.store.sessions(),
-                            session_id,
-                        )
-                        .await?
-                    {
-                        debug!(
-                            run_id = %run_id,
-                            tokens_saved = result.tokens_saved,
-                            "proactive compaction completed"
-                        );
-                    }
-                }
-            }
-
-            let chat_request = self
-                .context
-                .build(
-                    &self.store,
+            // ── TurnState::CheckingPolicy ──────────────────────────
+            if resume_from == TurnState::CheckingPolicy {
+                self.save_snapshot_helper(
+                    run_id,
                     session_id,
-                    request.model.clone(),
-                    if iteration == 1 {
-                        Some(&request.input)
-                    } else {
-                        None
-                    },
-                    if has_tools { Some(&tool_specs) } else { None },
+                    iteration,
+                    TurnState::CheckingPolicy,
+                    total_usage,
+                    &last_finish,
+                    &assistant_message,
+                    assistant_msg_id,
+                    &request,
                 )
                 .await?;
 
-            self.emit(&AgentEvent::ContextBuilt(ContextBuilt {
-                run_id,
-                message_count: chat_request.messages.len(),
-                timestamp: Utc::now(),
-            }));
+                let outcome = if iteration > self.policy.max_iterations {
+                    TurnOutcome::PolicyExceeded {
+                        reason: format!(
+                            "iteration {iteration} exceeds limit {}",
+                            self.policy.max_iterations
+                        ),
+                    }
+                } else if let Some(budget) = self.policy.max_tokens {
+                    let budget_u64 = budget as u64;
+                    if total_usage.total_tokens >= budget_u64 {
+                        #[allow(clippy::cast_possible_truncation)]
+                        TurnOutcome::PolicyExceeded {
+                            reason: format!(
+                                "token budget {budget} exceeded: {} used",
+                                total_usage.total_tokens
+                            ),
+                        }
+                    } else {
+                        TurnOutcome::Success
+                    }
+                } else {
+                    TurnOutcome::Success
+                };
 
-            self.update_status(run_id, RunStatus::CallingModel).await?;
+                match TurnTransition::resolve(TurnState::CheckingPolicy, &outcome) {
+                    TurnAction::Fail { reason: _ } => {
+                        if iteration > self.policy.max_iterations {
+                            let err =
+                                RuntimeError::IterationLimitExceeded(self.policy.max_iterations);
+                            self.fail_run(run_id, &err).await;
+                            return Err(err);
+                        }
+                        #[allow(clippy::cast_possible_truncation)]
+                        let err = RuntimeError::TokenBudgetExceeded {
+                            used: total_usage.total_tokens as usize,
+                            limit: self.policy.max_tokens.unwrap_or(0),
+                        };
+                        self.fail_run(run_id, &err).await;
+                        return Err(err);
+                    }
+                    TurnAction::Continue { .. } => {}
+                    _ => unreachable!("CheckingPolicy only produces Fail or Continue"),
+                }
+            }
 
-            self.emit(&AgentEvent::ModelStarted(ModelStarted {
-                run_id,
-                provider: request.provider.clone(),
-                model: request.model.clone(),
-                iteration,
-                timestamp: Utc::now(),
-            }));
+            // ── TurnState::BuildingContext ──────────────────────────
+            let mut chat_request = None;
+            if resume_from == TurnState::CheckingPolicy
+                || resume_from == TurnState::BuildingContext
+                || resume_from == TurnState::CallingModel
+            {
+                self.save_snapshot_helper(
+                    run_id,
+                    session_id,
+                    iteration,
+                    TurnState::BuildingContext,
+                    total_usage,
+                    &last_finish,
+                    &assistant_message,
+                    assistant_msg_id,
+                    &request,
+                )
+                .await?;
 
-            let (assistant_message, finish_reason, usage) =
-                match self.call_model(&provider, chat_request, run_id).await {
-                    Ok(result) => result,
-                    Err(RuntimeError::Provider(ref e)) if e.is_context_overflow() => {
-                        // Provider reported context overflow — compact and retry
-                        if self.policy.compaction.auto {
-                            let caps = provider.capabilities();
-                            let model_ctx = caps.max_input_tokens.unwrap_or(128_000);
-                            let max_out = caps.max_output_tokens.unwrap_or(16_384);
-                            let records = self
-                                .store
-                                .sessions()
-                                .list_messages(&session_id)
-                                .await
-                                .map_err(RuntimeError::from)?;
+                self.update_status(
+                    run_id,
+                    TurnTransition::status_for(TurnState::BuildingContext),
+                )
+                .await?;
 
-                            let result = self
-                                .compaction
-                                .compact_after_overflow(
-                                    &records,
-                                    model_ctx,
-                                    max_out,
-                                    self.store.sessions(),
-                                    session_id,
-                                )
-                                .await?;
+                // Proactive compaction
+                if self.policy.compaction.auto {
+                    let caps = provider.capabilities();
+                    if let (Some(model_ctx), Some(max_out)) =
+                        (caps.max_input_tokens, caps.max_output_tokens)
+                    {
+                        let records = self
+                            .store
+                            .sessions()
+                            .list_messages(&session_id)
+                            .await
+                            .map_err(RuntimeError::from)?;
+
+                        if let Some(result) = self
+                            .compaction
+                            .compact_if_needed(
+                                &records,
+                                model_ctx,
+                                max_out,
+                                self.store.sessions(),
+                                session_id,
+                            )
+                            .await?
+                        {
                             debug!(
                                 run_id = %run_id,
                                 tokens_saved = result.tokens_saved,
-                                "reactive compaction after provider overflow"
+                                "proactive compaction completed"
                             );
                         }
-                        continue;
                     }
-                    Err(e) => return Err(e),
-                };
+                }
 
-            if let Some(u) = &usage {
-                total_usage = TokenUsage::new(
-                    total_usage.input_tokens + u.input_tokens,
-                    total_usage.output_tokens + u.output_tokens,
-                );
-                self.emit(&AgentEvent::UsageRecorded(UsageRecorded {
+                let req = self
+                    .context
+                    .build(
+                        &self.store,
+                        session_id,
+                        request.model.clone(),
+                        if iteration == 1 {
+                            Some(&request.input)
+                        } else {
+                            None
+                        },
+                        if has_tools { Some(&tool_specs) } else { None },
+                    )
+                    .await?;
+
+                self.emit(&AgentEvent::ContextBuilt(ContextBuilt {
                     run_id,
-                    usage: *u,
+                    message_count: req.messages.len(),
                     timestamp: Utc::now(),
                 }));
+
+                chat_request = Some(req);
             }
 
-            last_finish = finish_reason.clone();
+            // ── TurnState::CallingModel ─────────────────────────────
+            let (next_assistant_message, next_finish_reason, _usage) = if resume_from
+                == TurnState::CheckingPolicy
+                || resume_from == TurnState::CallingModel
+            {
+                resume_from = TurnState::CheckingPolicy;
 
-            let assistant_msg_id = self
-                .store
-                .append_message(session_id, &assistant_message)
-                .await?;
-
-            self.emit(&AgentEvent::AssistantMessageCommitted(MessageCommitted {
-                run_id,
-                message_id: assistant_msg_id,
-                timestamp: Utc::now(),
-            }));
-
-            let tool_calls = match &assistant_message {
-                Message::Assistant { tool_calls, .. } if !tool_calls.is_empty() => {
-                    tool_calls.clone()
-                }
-                _ => Vec::new(),
-            };
-
-            if tool_calls.is_empty() {
-                break;
-            }
-
-            if !matches!(finish_reason, FinishReason::ToolCalls) {
-                break;
-            }
-
-            self.update_status(run_id, RunStatus::WaitingForTools)
-                .await?;
-
-            let outcomes = self
-                .tools
-                .execute_batch(
-                    tool_calls,
+                self.save_snapshot_helper(
+                    run_id,
                     session_id,
+                    iteration,
+                    TurnState::CallingModel,
+                    total_usage,
+                    &last_finish,
+                    &assistant_message,
                     assistant_msg_id,
-                    Some(self.store.executions()),
+                    &request,
                 )
                 .await?;
 
-            for outcome in &outcomes {
-                let tool_msg_id = self
-                    .store
-                    .append_message(session_id, &outcome.message)
+                self.update_status(run_id, TurnTransition::status_for(TurnState::CallingModel))
                     .await?;
 
-                self.emit(&AgentEvent::ToolMessageCommitted(MessageCommitted {
+                self.emit(&AgentEvent::ModelStarted(ModelStarted {
                     run_id,
-                    message_id: tool_msg_id,
+                    provider: request.provider.clone(),
+                    model: request.model.clone(),
+                    iteration,
                     timestamp: Utc::now(),
                 }));
+
+                let req = chat_request.take().ok_or_else(|| {
+                    RuntimeError::RecoveryFailed("chat request missing in CallingModel".to_string())
+                })?;
+
+                let (msg, finish, usg) = {
+                    let model_result = self.call_model(&provider, req, run_id).await;
+                    let outcome = match &model_result {
+                        Ok(_) => TurnOutcome::Success,
+                        Err(RuntimeError::Provider(e)) if e.is_context_overflow() => {
+                            TurnOutcome::ContextOverflow
+                        }
+                        Err(e) => TurnOutcome::ProviderError {
+                            message: e.to_string(),
+                        },
+                    };
+
+                    match TurnTransition::resolve(TurnState::CallingModel, &outcome) {
+                        TurnAction::Continue { .. } => model_result?,
+                        TurnAction::CompactAndRetry => {
+                            if self.policy.compaction.auto {
+                                let caps = provider.capabilities();
+                                let model_ctx = caps.max_input_tokens.unwrap_or(128_000);
+                                let max_out = caps.max_output_tokens.unwrap_or(16_384);
+                                let records = self
+                                    .store
+                                    .sessions()
+                                    .list_messages(&session_id)
+                                    .await
+                                    .map_err(RuntimeError::from)?;
+
+                                let result = self
+                                    .compaction
+                                    .compact_after_overflow(
+                                        &records,
+                                        model_ctx,
+                                        max_out,
+                                        self.store.sessions(),
+                                        session_id,
+                                    )
+                                    .await?;
+                                debug!(
+                                    run_id = %run_id,
+                                    tokens_saved = result.tokens_saved,
+                                    "reactive compaction after provider overflow"
+                                );
+                            }
+                            continue;
+                        }
+                        TurnAction::Fail { .. } => match model_result {
+                            Err(e) => return Err(e),
+                            Ok(_) => unreachable!("Fail action but model call succeeded"),
+                        },
+                        TurnAction::BreakLoop => {
+                            unreachable!("CallingModel never produces BreakLoop")
+                        }
+                    }
+                };
+
+                if let Some(u) = &usg {
+                    total_usage = TokenUsage::new(
+                        total_usage.input_tokens + u.input_tokens,
+                        total_usage.output_tokens + u.output_tokens,
+                    );
+                    self.emit(&AgentEvent::UsageRecorded(UsageRecorded {
+                        run_id,
+                        usage: *u,
+                        timestamp: Utc::now(),
+                    }));
+                }
+
+                last_finish = Some(finish.clone());
+
+                let msg_id = self.store.append_message(session_id, &msg).await?;
+
+                self.emit(&AgentEvent::AssistantMessageCommitted(MessageCommitted {
+                    run_id,
+                    message_id: msg_id,
+                    timestamp: Utc::now(),
+                }));
+
+                assistant_message = Some(msg);
+                assistant_msg_id = Some(msg_id);
+
+                (assistant_message.clone(), last_finish.clone(), usg)
+            } else {
+                (assistant_message.clone(), last_finish.clone(), None)
+            };
+
+            // ── TurnState::ProcessingResponse ───────────────────────
+            let mut tool_calls = Vec::new();
+            if resume_from == TurnState::CheckingPolicy
+                || resume_from == TurnState::ProcessingResponse
+            {
+                resume_from = TurnState::CheckingPolicy;
+
+                let msg = next_assistant_message.as_ref().ok_or_else(|| {
+                    RuntimeError::RecoveryFailed(
+                        "assistant message missing in ProcessingResponse".to_string(),
+                    )
+                })?;
+                let finish = next_finish_reason.as_ref().ok_or_else(|| {
+                    RuntimeError::RecoveryFailed(
+                        "last finish missing in ProcessingResponse".to_string(),
+                    )
+                })?;
+
+                let calls = match msg {
+                    Message::Assistant { tool_calls, .. } if !tool_calls.is_empty() => {
+                        tool_calls.clone()
+                    }
+                    _ => Vec::new(),
+                };
+
+                let response_outcome = if calls.is_empty() {
+                    TurnOutcome::NoToolCalls
+                } else if !matches!(finish, FinishReason::ToolCalls) {
+                    TurnOutcome::NotToolCalls {
+                        finish_reason: finish.clone(),
+                    }
+                } else {
+                    TurnOutcome::Success
+                };
+
+                match TurnTransition::resolve(TurnState::ProcessingResponse, &response_outcome) {
+                    TurnAction::BreakLoop => break,
+                    TurnAction::Continue { .. } => {
+                        tool_calls = calls;
+                    }
+                    _ => unreachable!("ProcessingResponse only produces BreakLoop or Continue"),
+                }
+            } else if let Some(Message::Assistant {
+                tool_calls: calls, ..
+            }) = &assistant_message
+            {
+                tool_calls = calls.clone();
             }
 
-            self.update_status(run_id, RunStatus::Persisting).await?;
+            // ── TurnState::ExecutingTools ───────────────────────────
+            if resume_from == TurnState::CheckingPolicy || resume_from == TurnState::ExecutingTools
+            {
+                resume_from = TurnState::CheckingPolicy;
 
-            if !matches!(last_finish, FinishReason::ToolCalls) {
-                break;
+                self.save_snapshot_helper(
+                    run_id,
+                    session_id,
+                    iteration,
+                    TurnState::ExecutingTools,
+                    total_usage,
+                    &last_finish,
+                    &assistant_message,
+                    assistant_msg_id,
+                    &request,
+                )
+                .await?;
+
+                self.update_status(
+                    run_id,
+                    TurnTransition::status_for(TurnState::ExecutingTools),
+                )
+                .await?;
+
+                let msg_id = assistant_msg_id.ok_or_else(|| {
+                    RuntimeError::RecoveryFailed(
+                        "assistant message ID missing in ExecutingTools".to_string(),
+                    )
+                })?;
+
+                let outcomes = self
+                    .tools
+                    .execute_batch(
+                        tool_calls,
+                        session_id,
+                        msg_id,
+                        Some(self.store.executions()),
+                    )
+                    .await?;
+
+                for outcome in &outcomes {
+                    let tool_msg_id = self
+                        .store
+                        .append_message(session_id, &outcome.message)
+                        .await?;
+
+                    self.emit(&AgentEvent::ToolMessageCommitted(MessageCommitted {
+                        run_id,
+                        message_id: tool_msg_id,
+                        timestamp: Utc::now(),
+                    }));
+                }
             }
+
+            // ── TurnState::Persisting ───────────────────────────────
+            if resume_from == TurnState::CheckingPolicy || resume_from == TurnState::Persisting {
+                resume_from = TurnState::CheckingPolicy;
+
+                self.save_snapshot_helper(
+                    run_id,
+                    session_id,
+                    iteration,
+                    TurnState::Persisting,
+                    total_usage,
+                    &last_finish,
+                    &assistant_message,
+                    assistant_msg_id,
+                    &request,
+                )
+                .await?;
+
+                self.update_status(run_id, TurnTransition::status_for(TurnState::Persisting))
+                    .await?;
+
+                let finish = last_finish.as_ref().ok_or_else(|| {
+                    RuntimeError::RecoveryFailed("last finish missing in Persisting".to_string())
+                })?;
+
+                let persisting_outcome = if matches!(finish, FinishReason::ToolCalls) {
+                    TurnOutcome::Success
+                } else {
+                    TurnOutcome::NotToolCalls {
+                        finish_reason: finish.clone(),
+                    }
+                };
+
+                match TurnTransition::resolve(TurnState::Persisting, &persisting_outcome) {
+                    TurnAction::BreakLoop => break,
+                    TurnAction::Continue { .. } => {}
+                    _ => unreachable!(),
+                }
+            }
+
+            // Clear assistant message info for the next iteration
+            assistant_message = None;
+            assistant_msg_id = None;
         }
 
         self.update_status(run_id, RunStatus::Completed).await?;
 
+        let final_finish = last_finish.clone().unwrap_or(FinishReason::Stop);
         self.emit(&AgentEvent::RunCompleted(RunCompleted {
             run_id,
-            finish_reason: last_finish.clone(),
+            finish_reason: final_finish.clone(),
             iterations: iteration,
             timestamp: Utc::now(),
         }));
@@ -384,7 +819,7 @@ impl AgentRuntime {
             run_id,
             session_id,
             iterations: iteration,
-            finish_reason: last_finish,
+            finish_reason: final_finish,
             total_usage,
         })
     }
@@ -484,11 +919,10 @@ impl AgentRuntime {
         request: ChatRequest,
         run_id: RunId,
     ) -> RuntimeResult<(Message, FinishReason, Option<TokenUsage>)> {
-        let response: ChatResponse =
-            timeout(self.policy.provider_timeout, provider.complete(request))
-                .await
-                .map_err(|_| RuntimeError::ProviderNotFound("provider timeout".to_owned()))?
-                .map_err(RuntimeError::from)?;
+        let response = timeout(self.policy.provider_timeout, provider.complete(request))
+            .await
+            .map_err(|_| RuntimeError::ProviderNotFound("provider timeout".to_owned()))?
+            .map_err(RuntimeError::from)?;
 
         if let Some(text) = extract_assistant_text(&response.message) {
             self.emit(&AgentEvent::TextDelta(TextDelta {
@@ -501,7 +935,7 @@ impl AgentRuntime {
         for tc in extract_tool_calls(&response.message) {
             self.emit(&AgentEvent::ToolCallCompleted(ToolCallCompleted {
                 run_id,
-                call: tc,
+                call: tc.clone(),
                 timestamp: Utc::now(),
             }));
         }
@@ -512,29 +946,34 @@ impl AgentRuntime {
     fn emit(&self, event: &AgentEvent) {
         let _ = self.event_tx.send(event.clone());
 
-        // Persist event to RunStore (fire-and-forget).
-        {
-            let event = event.clone();
-            let store = Arc::clone(&self.store);
-            tokio::spawn(async move {
-                let record = RunEventRecord::new(0, event.run_id(), event);
-                if let Err(e) = store.runs().append_event(record).await {
-                    tracing::warn!(error = %e, "failed to persist agent event");
-                }
-            });
-        }
+        let jobs = Arc::clone(&self.background_jobs);
+        let event = event.clone();
+        tokio::spawn(async move {
+            jobs.schedule(
+                JobPriority::Normal,
+                JobType::PersistEvent {
+                    run_id: event.run_id(),
+                    event: event.clone(),
+                },
+                JobConditions::default(),
+            )
+            .await;
+        });
 
         #[cfg(feature = "queue")]
-        {
-            if let Some(publisher) = &self.event_publisher {
-                let publisher = Arc::clone(publisher);
-                let event = event.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = publisher.publish(event).await {
-                        tracing::warn!(error = %e, "failed to publish event externally");
-                    }
-                });
-            }
+        if self.event_publisher.is_some() {
+            let jobs = Arc::clone(&self.background_jobs);
+            let event = event.clone();
+            tokio::spawn(async move {
+                jobs.schedule(
+                    JobPriority::High,
+                    JobType::PublishExternalEvent {
+                        event: event.clone(),
+                    },
+                    JobConditions::default(),
+                )
+                .await;
+            });
         }
     }
 
@@ -600,6 +1039,7 @@ mod tests {
         ChatProvider, ChatResponse, ModelName, ProviderCapabilities, ProviderId, ProviderResult,
     };
     use crate::runtime::memory::MemoryRunStore;
+    use crate::runtime::snapshot::{FileSnapshotStore, Snapshot};
     use crate::store::memory::{MemoryExecutionStore, MemorySessionStore};
     use crate::tool::{FunctionTool, ToolRegistry};
     use async_trait::async_trait;
@@ -844,5 +1284,77 @@ mod tests {
             result.unwrap_err(),
             RuntimeError::ProviderNotFound(_)
         ));
+    }
+
+    #[tokio::test]
+    async fn run_should_create_snapshots_and_resume_successfully() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let snapshot_store = Arc::new(FileSnapshotStore::new(temp_dir.path().to_path_buf()));
+
+        let provider = MockProvider::new(vec![
+            MockProvider::tool_call_response("call_rec", "echo", json!({"message": "rec"})),
+            MockProvider::text_response("Done after resume!"),
+        ]);
+
+        let mut tools = ToolRegistry::new();
+        tools.register(FunctionTool::new(
+            "echo",
+            "Echoes message",
+            json!({"type": "object"}),
+            |args: serde_json::Value| -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = crate::tool::ToolResult<serde_json::Value>>
+                        + Send,
+                >,
+            > {
+                Box::pin(async move { Ok(args.get("message").cloned().unwrap_or_default()) })
+            },
+        ));
+
+        let runtime = make_runtime(provider, tools).with_snapshot_store(snapshot_store.clone());
+
+        let request = RunRequest::new(
+            ProviderId::new("mock"),
+            ModelName::new("test"),
+            "test snapshot and resume",
+        );
+
+        let run_id = RunId::new();
+        let session_id = runtime.store().ensure_session(None).await.unwrap();
+
+        // Real runs would already have a run record in the store before crashing/suspending.
+        let run_record = RunRecord::new(
+            run_id,
+            session_id,
+            ProviderId::new("mock"),
+            ModelName::new("test"),
+            serde_json::Value::Null,
+        );
+        runtime.store().runs().create_run(run_record).await.unwrap();
+
+        let snapshot = Snapshot {
+            run_id,
+            session_id,
+            status: RunStatus::CallingModel,
+            iteration: 1,
+            current_state: TurnState::CallingModel,
+            total_usage: TokenUsage::new(5, 5),
+            last_finish: Some(FinishReason::ToolCalls),
+            assistant_message: Some(Message::Assistant {
+                content: vec![],
+                tool_calls: vec![ToolCall::new("call_rec", "echo", json!({"message": "rec"}))],
+            }),
+            assistant_msg_id: Some(Uuid::new_v4()),
+            request: request.clone(),
+            timestamp: Utc::now(),
+        };
+
+        snapshot_store.save(&snapshot).await.unwrap();
+
+        let output = runtime.resume(run_id).await.unwrap();
+
+        assert_eq!(output.run_id, run_id);
+        assert_eq!(output.session_id, session_id);
+        assert!(matches!(output.finish_reason, FinishReason::Stop));
     }
 }
