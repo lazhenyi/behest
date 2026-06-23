@@ -90,6 +90,39 @@ impl RunStore for MemoryRunStore {
             .collect())
     }
 
+    async fn list_runs_filtered(
+        &self,
+        session_id: Option<Uuid>,
+        status: Option<RunStatus>,
+        limit: usize,
+        offset: usize,
+    ) -> RuntimeResult<Vec<RunRecord>> {
+        let runs = self.runs.read().await;
+        let mut result: Vec<RunRecord> = runs
+            .values()
+            .filter(|r| {
+                if let Some(sid) = session_id {
+                    if r.session_id != sid {
+                        return false;
+                    }
+                }
+                if let Some(s) = &status {
+                    if r.status != *s {
+                        return false;
+                    }
+                }
+                true
+            })
+            .cloned()
+            .collect();
+        result.sort_by_key(|r| std::cmp::Reverse(r.created_at));
+        Ok(result
+            .into_iter()
+            .skip(offset)
+            .take(limit.clamp(1, 1000))
+            .collect())
+    }
+
     async fn delete_run(&self, run_id: RunId) -> RuntimeResult<()> {
         self.runs.write().await.remove(run_id.as_uuid());
         self.events.write().await.remove(run_id.as_uuid());
