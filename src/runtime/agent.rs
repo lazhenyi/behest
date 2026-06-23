@@ -21,11 +21,12 @@ use crate::provider::{ChatRequest, ChatStreamEvent, FinishReason, Message, Token
 use super::accumulator::StreamAccumulator;
 use super::compaction::CompactionService;
 use super::context::ContextPipeline;
+use super::doom_loop::{DoomLoopDetector, DoomLoopType};
 use super::error::{RuntimeError, RuntimeResult};
 use super::event::{
-    AgentEvent, ContextBuilt, MessageCommitted, ModelStarted, RunCompleted, RunFailed, RunStarted,
-    TextDelta, ToolCallCompleted, ToolCallDelta, ToolCallStarted as ToolCallStartedEvent,
-    UsageRecorded,
+    AgentEvent, ContextBuilt, DoomLoopDetected, MessageCommitted, ModelStarted, RunCompleted,
+    RunFailed, RunStarted, TextDelta, ToolCallCompleted, ToolCallDelta,
+    ToolCallStarted as ToolCallStartedEvent, UsageRecorded,
 };
 use super::job::{BackgroundJobPool, JobConditions, JobPriority, JobType};
 use super::policy::RuntimePolicy;
@@ -197,6 +198,9 @@ impl AgentRuntime {
         );
         self.store.runs().create_run(run_record).await?;
 
+        // Create doom loop detector for this run.
+        let mut doom_detector = DoomLoopDetector::new(self.policy.doom_loop.clone());
+
         self.emit(&AgentEvent::RunStarted(RunStarted {
             run_id,
             session_id,
@@ -347,6 +351,7 @@ impl AgentRuntime {
         assistant_message: Option<Message>,
         assistant_msg_id: Option<Uuid>,
         start_state: TurnState,
+        doom_detector: &mut DoomLoopDetector,
     ) -> RuntimeResult<RunOutput> {
         let result = self
             .run_loop_inner(
@@ -362,6 +367,7 @@ impl AgentRuntime {
                 assistant_message,
                 assistant_msg_id,
                 start_state,
+                doom_detector,
             )
             .await;
 
@@ -386,6 +392,7 @@ impl AgentRuntime {
         mut assistant_message: Option<Message>,
         mut assistant_msg_id: Option<Uuid>,
         start_state: TurnState,
+        doom_detector: &mut DoomLoopDetector,
     ) -> RuntimeResult<RunOutput> {
         let mut resume_from = start_state;
 
