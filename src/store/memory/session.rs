@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::provider::TokenUsage;
+use crate::provider::{ModelName, TokenUsage};
 use crate::store::{MessageRecord, Session, SessionStore, StoreResult};
 
 /// In-memory session store for testing and development.
@@ -53,6 +53,24 @@ impl SessionStore for MemorySessionStore {
         self.sessions.write().await.remove(id);
         self.messages.write().await.remove(id);
         Ok(())
+    }
+
+    async fn update_session(
+        &self,
+        id: &Uuid,
+        title: &str,
+        model: Option<&ModelName>,
+    ) -> StoreResult<Session> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions
+            .get_mut(id)
+            .ok_or_else(|| crate::error::StorageError::NotFound { id: id.to_string() })?;
+        title.clone_into(&mut session.title);
+        session.updated_at = chrono::Utc::now();
+        if let Some(m) = model {
+            session.model = m.clone();
+        }
+        Ok(session.clone())
     }
 
     async fn append_message(&self, message: MessageRecord) -> StoreResult<MessageRecord> {
