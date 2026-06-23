@@ -19,13 +19,13 @@ use uuid::Uuid;
 use crate::provider::{ChatRequest, ChatStreamEvent, FinishReason, Message, TokenUsage, ToolCall};
 
 use super::accumulator::StreamAccumulator;
-use super::compaction::CompactionService;
+use super::compaction::{CompactionCircuitBreaker, CompactionService};
 use super::context::ContextPipeline;
 use super::doom_loop::{DoomLoopDetector, DoomLoopType};
 use super::error::{RuntimeError, RuntimeResult};
 use super::event::{
-    AgentEvent, ContextBuilt, DoomLoopDetected, MessageCommitted, ModelStarted, RunCompleted,
-    RunFailed, RunStarted, TextDelta, ToolCallCompleted, ToolCallDelta,
+    AgentEvent, CompactionCircuitOpened, ContextBuilt, DoomLoopDetected, MessageCommitted,
+    ModelStarted, RunCompleted, RunFailed, RunStarted, TextDelta, ToolCallCompleted, ToolCallDelta,
     ToolCallStarted as ToolCallStartedEvent, UsageRecorded,
 };
 use super::input::{InputAdmission, InputRecord};
@@ -56,7 +56,7 @@ pub struct AgentRuntime {
     event_tx: broadcast::Sender<AgentEvent>,
     #[cfg(feature = "queue")]
     event_publisher: Option<Arc<dyn EventPublisher>>,
-    background_jobs: Arc<BackgroundJobPool>,
+    background_jobs: Option<Arc<BackgroundJobPool>>,
     snapshot_store: Option<Arc<dyn SnapshotStore>>,
 }
 
@@ -73,13 +73,6 @@ impl AgentRuntime {
         let (event_tx, _) = broadcast::channel(256);
         let compaction = CompactionService::new(providers.clone(), policy.compaction.clone());
         let input_admission = InputAdmission::new(policy.input_admission.clone());
-        let background_jobs = BackgroundJobPool::new(
-            store.clone(),
-            #[cfg(feature = "queue")]
-            None,
-            None,
-        );
-        background_jobs.start();
         Self {
             providers,
             context,
@@ -92,9 +85,19 @@ impl AgentRuntime {
             event_tx,
             #[cfg(feature = "queue")]
             event_publisher: None,
-            background_jobs,
+            background_jobs: None,
             snapshot_store: None,
         }
+    }
+
+    /// Injects a background job pool for event persistence and publishing.
+    ///
+    /// Callers are responsible for calling [`BackgroundJobPool::start`]
+    /// on the pool before passing it in.
+    #[must_use]
+    pub fn with_background_jobs(mut self, pool: Arc<BackgroundJobPool>) -> Self {
+        self.background_jobs = Some(pool);
+        self
     }
 
     /// Sets an external event publisher for the agent runtime.
@@ -104,8 +107,9 @@ impl AgentRuntime {
     #[cfg(feature = "queue")]
     #[must_use]
     pub fn with_event_publisher(mut self, publisher: Arc<dyn EventPublisher>) -> Self {
-        self.background_jobs
-            .set_event_publisher(Arc::clone(&publisher));
+        if let Some(ref jobs) = self.background_jobs {
+            jobs.set_event_publisher(Arc::clone(&publisher));
+        }
         self.event_publisher = Some(publisher);
         self
     }
@@ -117,10 +121,10 @@ impl AgentRuntime {
         self
     }
 
-    /// Returns a reference to the background job pool.
+    /// Returns a reference to the background job pool, if configured.
     #[must_use]
-    pub fn background_jobs(&self) -> &Arc<BackgroundJobPool> {
-        &self.background_jobs
+    pub fn background_jobs(&self) -> Option<&Arc<BackgroundJobPool>> {
+        self.background_jobs.as_ref()
     }
 
     /// Returns the session gate.
@@ -224,6 +228,10 @@ impl AgentRuntime {
         // Create doom loop detector for this run.
         let mut doom_detector = DoomLoopDetector::new(self.policy.doom_loop.clone());
 
+        // Create compaction circuit breaker for this run.
+        let mut compaction_breaker =
+            CompactionCircuitBreaker::new(self.policy.compaction.circuit_breaker_threshold);
+
         self.emit(&AgentEvent::RunStarted(RunStarted {
             run_id,
             session_id,
@@ -259,6 +267,8 @@ impl AgentRuntime {
             None,
             TurnState::CheckingPolicy,
             &mut doom_detector,
+            &mut compaction_breaker,
+            0,
         )
         .await
     }
@@ -306,6 +316,9 @@ impl AgentRuntime {
 
         let mut doom_detector = DoomLoopDetector::new(self.policy.doom_loop.clone());
 
+        let mut compaction_breaker =
+            CompactionCircuitBreaker::new(self.policy.compaction.circuit_breaker_threshold);
+
         self.run_loop(
             run_id,
             snapshot.session_id,
@@ -320,6 +333,8 @@ impl AgentRuntime {
             snapshot.assistant_msg_id,
             snapshot.current_state,
             &mut doom_detector,
+            &mut compaction_breaker,
+            snapshot.output_recovery_count,
         )
         .await
     }
@@ -336,6 +351,7 @@ impl AgentRuntime {
         assistant_message: &Option<Message>,
         assistant_msg_id: Option<Uuid>,
         request: &RunRequest,
+        output_recovery_count: u32,
     ) -> RuntimeResult<()> {
         if let Some(store) = &self.snapshot_store {
             let snapshot = Snapshot {
@@ -349,6 +365,7 @@ impl AgentRuntime {
                 assistant_message: assistant_message.clone(),
                 assistant_msg_id,
                 request: request.clone(),
+                output_recovery_count,
                 timestamp: Utc::now(),
             };
             store.save(&snapshot).await?;
@@ -379,6 +396,8 @@ impl AgentRuntime {
         assistant_msg_id: Option<Uuid>,
         start_state: TurnState,
         doom_detector: &mut DoomLoopDetector,
+        breaker: &mut CompactionCircuitBreaker,
+        output_recovery_count: u32,
     ) -> RuntimeResult<RunOutput> {
         let result = self
             .run_loop_inner(
@@ -395,6 +414,8 @@ impl AgentRuntime {
                 assistant_msg_id,
                 start_state,
                 doom_detector,
+                breaker,
+                output_recovery_count,
             )
             .await;
 
@@ -420,6 +441,8 @@ impl AgentRuntime {
         mut assistant_msg_id: Option<Uuid>,
         start_state: TurnState,
         doom_detector: &mut DoomLoopDetector,
+        breaker: &mut CompactionCircuitBreaker,
+        mut output_recovery_count: u32,
     ) -> RuntimeResult<RunOutput> {
         let mut resume_from = start_state;
 
@@ -441,6 +464,7 @@ impl AgentRuntime {
                     &assistant_message,
                     assistant_msg_id,
                     &request,
+                    output_recovery_count,
                 )
                 .await?;
 
@@ -505,6 +529,7 @@ impl AgentRuntime {
                     &assistant_message,
                     assistant_msg_id,
                     &request,
+                    output_recovery_count,
                 )
                 .await?;
 
@@ -514,8 +539,8 @@ impl AgentRuntime {
                 )
                 .await?;
 
-                // Proactive compaction
-                if self.policy.compaction.auto {
+                // Proactive compaction (gated by circuit breaker)
+                if self.policy.compaction.auto && !breaker.is_open() {
                     let caps = provider.capabilities();
                     if let (Some(model_ctx), Some(max_out)) =
                         (caps.max_input_tokens, caps.max_output_tokens)
@@ -527,7 +552,7 @@ impl AgentRuntime {
                             .await
                             .map_err(RuntimeError::from)?;
 
-                        if let Some(result) = self
+                        let compact_result = self
                             .compaction
                             .compact_if_needed(
                                 &records,
@@ -536,13 +561,37 @@ impl AgentRuntime {
                                 self.store.sessions(),
                                 session_id,
                             )
-                            .await?
-                        {
-                            debug!(
-                                run_id = %run_id,
-                                tokens_saved = result.tokens_saved,
-                                "proactive compaction completed"
-                            );
+                            .await;
+
+                        match compact_result {
+                            Ok(Some(result)) => {
+                                breaker.record_success();
+                                debug!(
+                                    run_id = %run_id,
+                                    tokens_saved = result.tokens_saved,
+                                    "proactive compaction completed"
+                                );
+                            }
+                            Ok(None) => {
+                                // No compaction needed — not a failure
+                            }
+                            Err(e) => {
+                                if breaker.record_failure() {
+                                    warn!(
+                                        run_id = %run_id,
+                                        failures = breaker.consecutive_failures(),
+                                        "compaction circuit breaker opened"
+                                    );
+                                    self.emit(&AgentEvent::CompactionCircuitOpened(
+                                        CompactionCircuitOpened {
+                                            run_id,
+                                            consecutive_failures: breaker.consecutive_failures(),
+                                            timestamp: Utc::now(),
+                                        },
+                                    ));
+                                }
+                                return Err(e);
+                            }
                         }
                     }
                 }
@@ -588,6 +637,7 @@ impl AgentRuntime {
                     &assistant_message,
                     assistant_msg_id,
                     &request,
+                    output_recovery_count,
                 )
                 .await?;
 
@@ -632,7 +682,7 @@ impl AgentRuntime {
                                     .await
                                     .map_err(RuntimeError::from)?;
 
-                                let result = self
+                                let compact_result = self
                                     .compaction
                                     .compact_after_overflow(
                                         &records,
@@ -641,12 +691,36 @@ impl AgentRuntime {
                                         self.store.sessions(),
                                         session_id,
                                     )
-                                    .await?;
-                                debug!(
-                                    run_id = %run_id,
-                                    tokens_saved = result.tokens_saved,
-                                    "reactive compaction after provider overflow"
-                                );
+                                    .await;
+
+                                match compact_result {
+                                    Ok(result) => {
+                                        breaker.record_success();
+                                        debug!(
+                                            run_id = %run_id,
+                                            tokens_saved = result.tokens_saved,
+                                            "reactive compaction after provider overflow"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        if breaker.record_failure() {
+                                            warn!(
+                                                run_id = %run_id,
+                                                failures = breaker.consecutive_failures(),
+                                                "compaction circuit breaker opened"
+                                            );
+                                            self.emit(&AgentEvent::CompactionCircuitOpened(
+                                                CompactionCircuitOpened {
+                                                    run_id,
+                                                    consecutive_failures: breaker
+                                                        .consecutive_failures(),
+                                                    timestamp: Utc::now(),
+                                                },
+                                            ));
+                                        }
+                                        return Err(e);
+                                    }
+                                }
                             }
                             continue;
                         }
@@ -708,6 +782,22 @@ impl AgentRuntime {
                     )
                 })?;
 
+                if matches!(finish, FinishReason::Length)
+                    && (output_recovery_count as usize) < self.policy.max_output_recovery_attempts
+                {
+                    output_recovery_count += 1;
+                    let continue_msg = Message::user_text(
+                        "Your previous response was truncated due to output length limit. \
+                         Please continue from where you left off.",
+                    );
+                    self.store.append_message(session_id, &continue_msg).await?;
+                    let outcome = TurnOutcome::OutputTruncated;
+                    match TurnTransition::resolve(TurnState::ProcessingResponse, &outcome) {
+                        TurnAction::Continue { .. } => continue,
+                        _ => unreachable!(),
+                    }
+                }
+
                 let calls = match msg {
                     Message::Assistant { tool_calls, .. } if !tool_calls.is_empty() => {
                         tool_calls.clone()
@@ -730,7 +820,9 @@ impl AgentRuntime {
                     TurnAction::Continue { .. } => {
                         tool_calls = calls;
                     }
-                    _ => unreachable!("ProcessingResponse only produces BreakLoop or Continue"),
+                    _ => unreachable!(
+                        "ProcessingResponse only produces BreakLoop, Continue, or OutputTruncated"
+                    ),
                 }
             } else if let Some(Message::Assistant {
                 tool_calls: calls, ..
@@ -754,6 +846,7 @@ impl AgentRuntime {
                     &assistant_message,
                     assistant_msg_id,
                     &request,
+                    output_recovery_count,
                 )
                 .await?;
 
@@ -837,6 +930,7 @@ impl AgentRuntime {
                     &assistant_message,
                     assistant_msg_id,
                     &request,
+                    output_recovery_count,
                 )
                 .await?;
 
@@ -916,7 +1010,11 @@ impl AgentRuntime {
     ) -> RuntimeResult<(Message, FinishReason, Option<TokenUsage>)> {
         let stream = timeout(self.policy.provider_timeout, provider.stream(request))
             .await
-            .map_err(|_| RuntimeError::ProviderNotFound("provider timeout".to_owned()))?
+            .map_err(|_| {
+                RuntimeError::Provider(crate::error::ProviderError::Timeout {
+                    provider: provider.id(),
+                })
+            })?
             .map_err(RuntimeError::from)?;
 
         let mut accumulator = StreamAccumulator::new();
@@ -985,7 +1083,11 @@ impl AgentRuntime {
     ) -> RuntimeResult<(Message, FinishReason, Option<TokenUsage>)> {
         let response = timeout(self.policy.provider_timeout, provider.complete(request))
             .await
-            .map_err(|_| RuntimeError::ProviderNotFound("provider timeout".to_owned()))?
+            .map_err(|_| {
+                RuntimeError::Provider(crate::error::ProviderError::Timeout {
+                    provider: provider.id(),
+                })
+            })?
             .map_err(RuntimeError::from)?;
 
         if let Some(text) = extract_assistant_text(&response.message) {
@@ -1008,36 +1110,42 @@ impl AgentRuntime {
     }
 
     fn emit(&self, event: &AgentEvent) {
-        let _ = self.event_tx.send(event.clone());
+        if let Err(e) = self.event_tx.send(event.clone()) {
+            warn!(lag = ?e, "event channel full, consumer too slow — event dropped");
+        }
 
-        let jobs = Arc::clone(&self.background_jobs);
-        let event = event.clone();
-        tokio::spawn(async move {
-            jobs.schedule(
-                JobPriority::Normal,
-                JobType::PersistEvent {
-                    run_id: event.run_id(),
-                    event: event.clone(),
-                },
-                JobConditions::default(),
-            )
-            .await;
-        });
-
-        #[cfg(feature = "queue")]
-        if self.event_publisher.is_some() {
-            let jobs = Arc::clone(&self.background_jobs);
+        if let Some(ref jobs) = self.background_jobs {
+            let jobs = Arc::clone(jobs);
             let event = event.clone();
             tokio::spawn(async move {
                 jobs.schedule(
-                    JobPriority::High,
-                    JobType::PublishExternalEvent {
+                    JobPriority::Normal,
+                    JobType::PersistEvent {
+                        run_id: event.run_id(),
                         event: event.clone(),
                     },
                     JobConditions::default(),
                 )
                 .await;
             });
+        }
+
+        #[cfg(feature = "queue")]
+        if self.event_publisher.is_some() {
+            if let Some(ref jobs) = self.background_jobs {
+                let jobs = Arc::clone(jobs);
+                let event = event.clone();
+                tokio::spawn(async move {
+                    jobs.schedule(
+                        JobPriority::High,
+                        JobType::PublishExternalEvent {
+                            event: event.clone(),
+                        },
+                        JobConditions::default(),
+                    )
+                    .await;
+                });
+            }
         }
     }
 
@@ -1145,6 +1253,17 @@ mod tests {
                 },
                 finish_reason: FinishReason::ToolCalls,
                 usage: Some(TokenUsage::new(15, 25)),
+                raw: None,
+            }
+        }
+
+        fn length_response(text: &str) -> ChatResponse {
+            ChatResponse {
+                provider: ProviderId::new("mock"),
+                model: ModelName::new("test"),
+                message: Message::assistant_text(text),
+                finish_reason: FinishReason::Length,
+                usage: Some(TokenUsage::new(10, 20)),
                 raw: None,
             }
         }
@@ -1410,6 +1529,7 @@ mod tests {
             }),
             assistant_msg_id: Some(Uuid::new_v4()),
             request: request.clone(),
+            output_recovery_count: 0,
             timestamp: Utc::now(),
         };
 
@@ -1420,5 +1540,69 @@ mod tests {
         assert_eq!(output.run_id, run_id);
         assert_eq!(output.session_id, session_id);
         assert!(matches!(output.finish_reason, FinishReason::Stop));
+    }
+
+    #[tokio::test]
+    async fn run_should_recover_from_length_finish() {
+        let provider = MockProvider::new(vec![
+            MockProvider::length_response("First half..."),
+            MockProvider::length_response("Second half..."),
+            MockProvider::text_response("Complete response."),
+        ]);
+        let mut policy = RuntimePolicy::new();
+        policy.max_output_recovery_attempts = 2;
+        let runtime = make_runtime_with_policy(provider, ToolRegistry::new(), policy);
+
+        let request = RunRequest::new(
+            ProviderId::new("mock"),
+            ModelName::new("test"),
+            "Long story",
+        );
+        let output = runtime.run(request).await.unwrap();
+
+        assert_eq!(output.iterations, 3);
+        assert!(matches!(output.finish_reason, FinishReason::Stop));
+    }
+
+    #[tokio::test]
+    async fn run_should_stop_recovery_after_max_attempts() {
+        let provider = MockProvider::new(vec![
+            MockProvider::length_response("Try 1..."),
+            MockProvider::length_response("Try 2..."),
+            MockProvider::length_response("Still truncated..."),
+        ]);
+        let mut policy = RuntimePolicy::new();
+        policy.max_output_recovery_attempts = 2;
+        let runtime = make_runtime_with_policy(provider, ToolRegistry::new(), policy);
+
+        let request = RunRequest::new(
+            ProviderId::new("mock"),
+            ModelName::new("test"),
+            "Even longer story",
+        );
+        let output = runtime.run(request).await.unwrap();
+
+        assert_eq!(output.iterations, 3);
+        assert!(matches!(output.finish_reason, FinishReason::Length));
+    }
+
+    fn make_runtime_with_policy(
+        provider: MockProvider,
+        tools: ToolRegistry,
+        policy: RuntimePolicy,
+    ) -> AgentRuntime {
+        let mut registry = crate::provider::ProviderRegistry::new();
+        registry.register_chat(provider);
+        let sessions = MemorySessionStore::new();
+        let executions = MemoryExecutionStore::new();
+        let runs = MemoryRunStore::new();
+        let store = Arc::new(RuntimeStore::new(
+            Box::new(sessions),
+            Box::new(executions),
+            Box::new(runs),
+        ));
+        let tool_runtime = ToolRuntime::new(tools, policy.clone());
+        let context = ContextPipeline::new();
+        AgentRuntime::new(registry, context, tool_runtime, store, policy)
     }
 }
