@@ -235,6 +235,7 @@ impl AgentRuntime {
             None,
             None,
             TurnState::CheckingPolicy,
+            &mut doom_detector,
         )
         .await
     }
@@ -280,6 +281,8 @@ impl AgentRuntime {
         self.update_status(run_id, TurnTransition::status_for(snapshot.current_state))
             .await?;
 
+        let mut doom_detector = DoomLoopDetector::new(self.policy.doom_loop.clone());
+
         self.run_loop(
             run_id,
             snapshot.session_id,
@@ -293,6 +296,7 @@ impl AgentRuntime {
             snapshot.assistant_message,
             snapshot.assistant_msg_id,
             snapshot.current_state,
+            &mut doom_detector,
         )
         .await
     }
