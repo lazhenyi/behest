@@ -21,6 +21,7 @@ use crate::provider::{Message, ToolCall};
 use crate::store::{ExecutionStore, ToolExecution};
 use crate::tool::{ToolOutput, ToolRegistry};
 use crate::tool_output::{self, ToolOutputConfig};
+use crate::tool_scope::ScopedToolRegistry;
 
 /// Result of a single tool execution within the runtime.
 #[derive(Debug)]
@@ -35,7 +36,7 @@ pub struct ToolExecutionOutcome {
 
 /// Runtime layer that orchestrates tool execution with policy enforcement.
 pub struct ToolRuntime {
-    registry: ToolRegistry,
+    registry: Arc<ScopedToolRegistry>,
     policy: RuntimePolicy,
     semaphore: Arc<Semaphore>,
 }
@@ -46,16 +47,21 @@ impl ToolRuntime {
     pub fn new(registry: ToolRegistry, policy: RuntimePolicy) -> Self {
         let semaphore = Arc::new(Semaphore::new(policy.max_tool_concurrency));
         Self {
-            registry,
+            registry: Arc::new(ScopedToolRegistry::new(registry)),
             policy,
             semaphore,
         }
     }
 
-    /// Returns a reference to the underlying tool registry.
+    /// Returns a reference to the underlying scoped tool registry.
     #[must_use]
-    pub fn registry(&self) -> &ToolRegistry {
+    pub fn registry(&self) -> &Arc<ScopedToolRegistry> {
         &self.registry
+    }
+
+    /// Returns a mutable reference to the underlying scoped tool registry.
+    pub fn registry_mut(&mut self) -> &mut Arc<ScopedToolRegistry> {
+        &mut self.registry
     }
 
     /// Returns the runtime policy.
@@ -126,7 +132,7 @@ impl ToolRuntime {
     }
 
     async fn execute_single(
-        registry: &ToolRegistry,
+        registry: &ScopedToolRegistry,
         call: &ToolCall,
         tool_timeout: std::time::Duration,
         continue_on_failure: bool,
@@ -267,7 +273,7 @@ impl ToolRuntime {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::type_complexity, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::store::memory::MemoryExecutionStore;
