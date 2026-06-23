@@ -20,6 +20,10 @@ pub struct RuntimeConfig {
     /// Internal broadcast channel capacity for local event subscribers.
     #[serde(default = "default_event_channel_capacity")]
     pub event_channel_capacity: usize,
+
+    /// Directory for storing run recovery snapshots.
+    #[serde(default)]
+    pub snapshot_dir: Option<String>,
 }
 
 /// Per-run execution limits and constraints.
@@ -64,6 +68,7 @@ impl Default for RuntimeConfig {
             policy: RuntimePolicyConfig::default(),
             max_history_messages: default_max_history_messages(),
             event_channel_capacity: default_event_channel_capacity(),
+            snapshot_dir: None,
         }
     }
 }

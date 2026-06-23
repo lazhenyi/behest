@@ -193,8 +193,17 @@ impl AgentConfigBuilder {
     /// Returns an error when the file cannot be read or parsed.
     pub fn with_file(mut self, path: impl Into<String>) -> Result<Self> {
         let path = path.into();
-        let file_config: AgentConfig = loader::load_file(&path)?;
-        self.config = merge_configs(self.config, file_config);
+        let file_value: serde_json::Value = loader::load_file(&path)?;
+
+        let mut base_value = serde_json::to_value(&self.config)
+            .map_err(|e| Error::Config(format!("failed to serialize base config: {e}")))?;
+
+        loader::merge_json(&mut base_value, file_value);
+        loader::substitute_json(&mut base_value);
+
+        self.config = serde_json::from_value(base_value)
+            .map_err(|e| Error::Config(format!("failed to deserialize merged config: {e}")))?;
+
         self.file_sources.push(path);
         Ok(self)
     }
@@ -206,8 +215,17 @@ impl AgentConfigBuilder {
     /// Returns an error when the environment-based config cannot be parsed.
     pub fn with_env(mut self, prefix: impl Into<String>) -> Result<Self> {
         let prefix = prefix.into();
-        let env_config: AgentConfig = loader::load_env(&prefix)?;
-        self.config = merge_configs(self.config, env_config);
+        let env_value: serde_json::Value = loader::load_env(&prefix)?;
+
+        let mut base_value = serde_json::to_value(&self.config)
+            .map_err(|e| Error::Config(format!("failed to serialize base config: {e}")))?;
+
+        loader::merge_json(&mut base_value, env_value);
+        loader::substitute_json(&mut base_value);
+
+        self.config = serde_json::from_value(base_value)
+            .map_err(|e| Error::Config(format!("failed to deserialize merged config: {e}")))?;
+
         self.env_prefixes.push(prefix);
         Ok(self)
     }
@@ -254,7 +272,19 @@ impl AgentConfigBuilder {
     /// # Errors
     ///
     /// Returns an error when the configuration fails validation.
-    pub fn build(self) -> Result<AgentConfig> {
+    pub fn build(mut self) -> Result<AgentConfig> {
+        let mut value = serde_json::to_value(&self.config).map_err(|e| {
+            Error::Config(format!(
+                "failed to serialize config for placeholder substitution: {e}"
+            ))
+        })?;
+        loader::substitute_json(&mut value);
+        self.config = serde_json::from_value(value).map_err(|e| {
+            Error::Config(format!(
+                "failed to deserialize config after placeholder substitution: {e}"
+            ))
+        })?;
+
         self.config.validate()?;
         Ok(self.config)
     }
@@ -632,14 +662,117 @@ async fn build_event_publisher(
     }
 }
 
+#[allow(dead_code)]
 fn merge_configs(base: AgentConfig, overlay: AgentConfig) -> AgentConfig {
     let mut merged = base;
 
-    merged.runtime = overlay.runtime;
-    merged.stores = overlay.stores;
+    // For runtime:
+    merged.runtime.max_history_messages = if overlay.runtime.max_history_messages != 50 {
+        overlay.runtime.max_history_messages
+    } else {
+        merged.runtime.max_history_messages
+    };
 
+    merged.runtime.event_channel_capacity = if overlay.runtime.event_channel_capacity != 256 {
+        overlay.runtime.event_channel_capacity
+    } else {
+        merged.runtime.event_channel_capacity
+    };
+
+    // policy:
+    if overlay.runtime.policy.max_iterations != 10 {
+        merged.runtime.policy.max_iterations = overlay.runtime.policy.max_iterations;
+    }
+    if overlay.runtime.policy.max_tokens.is_some() {
+        merged.runtime.policy.max_tokens = overlay.runtime.policy.max_tokens;
+    }
+    if overlay.runtime.policy.max_tool_concurrency != 4 {
+        merged.runtime.policy.max_tool_concurrency = overlay.runtime.policy.max_tool_concurrency;
+    }
+    if overlay.runtime.policy.tool_timeout_secs != 30 {
+        merged.runtime.policy.tool_timeout_secs = overlay.runtime.policy.tool_timeout_secs;
+    }
+    if overlay.runtime.policy.provider_timeout_secs != 60 {
+        merged.runtime.policy.provider_timeout_secs = overlay.runtime.policy.provider_timeout_secs;
+    }
+    if !overlay.runtime.policy.continue_on_tool_failure {
+        merged.runtime.policy.continue_on_tool_failure = false;
+    }
+    if !overlay.runtime.policy.retry_on_provider_error {
+        merged.runtime.policy.retry_on_provider_error = false;
+    }
+    if overlay.runtime.policy.max_retries != 2 {
+        merged.runtime.policy.max_retries = overlay.runtime.policy.max_retries;
+    }
+
+    // For stores:
+    if overlay.stores.session_backend != StoreBackend::Memory {
+        merged.stores.session_backend = overlay.stores.session_backend;
+    }
+    if overlay.stores.execution_backend != StoreBackend::Memory {
+        merged.stores.execution_backend = overlay.stores.execution_backend;
+    }
+    if overlay.stores.run_backend != StoreBackend::Memory {
+        merged.stores.run_backend = overlay.stores.run_backend;
+    }
+    if overlay.stores.embedding_backend != StoreBackend::Memory {
+        merged.stores.embedding_backend = overlay.stores.embedding_backend;
+    }
+    if overlay.stores.artifact_backend != StoreBackend::Memory {
+        merged.stores.artifact_backend = overlay.stores.artifact_backend;
+    }
+    if overlay.stores.redis_url.is_some() {
+        merged.stores.redis_url = overlay.stores.redis_url;
+    }
+    if overlay.stores.sql_url.is_some() {
+        merged.stores.sql_url = overlay.stores.sql_url;
+    }
+    if overlay.stores.mongo_url.is_some() {
+        merged.stores.mongo_url = overlay.stores.mongo_url;
+    }
+    if overlay.stores.surreal_url.is_some() {
+        merged.stores.surreal_url = overlay.stores.surreal_url;
+    }
+    if overlay.stores.qdrant_url.is_some() {
+        merged.stores.qdrant_url = overlay.stores.qdrant_url;
+    }
+    if !overlay.stores.qdrant_collection.is_empty() {
+        merged.stores.qdrant_collection = overlay.stores.qdrant_collection;
+    }
+    if overlay.stores.qdrant_dimensions != 1536 {
+        merged.stores.qdrant_dimensions = overlay.stores.qdrant_dimensions;
+    }
+
+    // providers:
     for (id, cfg) in overlay.providers {
-        merged.providers.insert(id, cfg);
+        let entry = merged.providers.entry(id).or_insert_with(|| cfg.clone());
+        if cfg.base_url != entry.base_url
+            && !cfg.base_url.is_empty()
+            && cfg.base_url != "https://api.openai.com/v1"
+        {
+            entry.base_url = cfg.base_url;
+        }
+        if cfg.api_key.is_some() {
+            entry.api_key = cfg.api_key;
+        }
+        if cfg.provider_type.is_some() {
+            entry.provider_type = cfg.provider_type;
+        }
+        if cfg.model.is_some() {
+            entry.model = cfg.model;
+        }
+        if !cfg.models.is_empty() {
+            entry.models = cfg.models;
+        }
+        if cfg.compaction_model.is_some() {
+            entry.compaction_model = cfg.compaction_model;
+        }
+        if cfg.organization.is_some() {
+            entry.organization = cfg.organization;
+        }
+        if cfg.timeout_secs != 60 {
+            entry.timeout_secs = cfg.timeout_secs;
+        }
     }
 
     #[cfg(feature = "rag")]
@@ -841,5 +974,78 @@ mod tests {
         assert_eq!(merged.runtime.max_history_messages, 42);
         assert_eq!(merged.runtime.policy.max_iterations, 10);
         assert_eq!(merged.stores.session_backend, StoreBackend::Memory);
+    }
+
+    #[test]
+    fn test_env_placeholder_substitution() {
+        let provider = ProviderConfig {
+            base_url: String::from("${HOME}"),
+            ..ProviderConfig::new("https://api.example.com")
+        };
+        let config = AgentConfig::builder()
+            .with_provider("example", provider)
+            .build()
+            .unwrap();
+        let expected = std::env::var("HOME").unwrap();
+        assert_eq!(
+            config
+                .providers
+                .get(&crate::provider::ProviderId::new("example"))
+                .unwrap()
+                .base_url,
+            expected
+        );
+    }
+
+    #[test]
+    fn test_env_placeholder_substitution_with_default() {
+        // Var is NOT set, should fall back to default
+        let provider = ProviderConfig {
+            base_url: String::from("${NONEXISTENT_VAR:-http://default-host}"),
+            ..ProviderConfig::new("https://api.example.com")
+        };
+        let config = AgentConfig::builder()
+            .with_provider("example", provider)
+            .build()
+            .unwrap();
+        assert_eq!(
+            config
+                .providers
+                .get(&crate::provider::ProviderId::new("example"))
+                .unwrap()
+                .base_url,
+            "http://default-host"
+        );
+    }
+
+    #[test]
+    fn test_deep_merge_preserves_non_configured_base_values() {
+        use std::io::Write as _;
+
+        // 1. Pre-configure base with some manual values
+        let base_runtime = RuntimeConfig {
+            max_history_messages: 99,
+            policy: RuntimePolicyConfig {
+                max_iterations: 88,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        // 2. Write an overlay file that only overrides max_history_messages
+        let toml_content = "[runtime]\nmax_history_messages = 123\n";
+        let mut tmp = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
+        write!(tmp, "{toml_content}").unwrap();
+
+        // 3. Build and check if manual override max_iterations (88) was preserved
+        let config = AgentConfig::builder()
+            .with_runtime(base_runtime)
+            .with_file(tmp.path().display().to_string())
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert_eq!(config.runtime.max_history_messages, 123); // overridden by file
+        assert_eq!(config.runtime.policy.max_iterations, 88); // PRESERVED manual override!
     }
 }
