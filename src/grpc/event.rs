@@ -77,5 +77,13 @@ fn event_payload(event: &AgentEvent) -> (&'static str, serde_json::Value) {
             "run.cancelled",
             serde_json::json!({"run_id": e.run_id.to_string()}),
         ),
+        AgentEvent::DoomLoopDetected(e) => (
+            "doom_loop.detected",
+            serde_json::json!({"run_id": e.run_id.to_string(), "iterations": e.iterations}),
+        ),
+        AgentEvent::CompactionCircuitOpened(e) => (
+            "compaction.circuit_opened",
+            serde_json::json!({"run_id": e.run_id.to_string(), "consecutive_failures": e.consecutive_failures}),
+        ),
     }
 }
