@@ -104,6 +104,8 @@ mod tests {
         let event = AgentEvent::RunStarted(RunStarted {
             run_id: RunId::new(),
             session_id: Uuid::new_v4(),
+            provider: crate::provider::ProviderId::new("test"),
+            model: crate::provider::ModelName::new("test"),
             timestamp: chrono::Utc::now(),
         });
         let result = publisher.publish(event).await;
