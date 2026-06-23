@@ -101,6 +101,7 @@ impl From<RuntimePolicyConfig> for RuntimePolicy {
             max_retries: config.max_retries,
             compaction: CompactionConfig::default(),
             tool_output: crate::tool_output::ToolOutputConfig::default(),
+            doom_loop: crate::runtime::doom_loop::DoomLoopConfig::default(),
         }
     }
 }

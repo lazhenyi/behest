@@ -142,6 +142,9 @@ impl RunState {
             AgentEvent::AssistantMessageCommitted(e) | AgentEvent::ToolMessageCommitted(e) => {
                 self.updated_at = e.timestamp;
             }
+            AgentEvent::DoomLoopDetected(e) => {
+                self.updated_at = e.timestamp;
+            }
         }
     }
 }

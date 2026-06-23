@@ -42,6 +42,8 @@ pub enum AgentEvent {
     RunFailed(RunFailed),
     /// Run has been cancelled.
     RunCancelled(RunCancelled),
+    /// Doom loop has been detected.
+    DoomLoopDetected(DoomLoopDetected),
 }
 
 impl AgentEvent {
@@ -65,6 +67,7 @@ impl AgentEvent {
             AgentEvent::RunCompleted(e) => e.run_id,
             AgentEvent::RunFailed(e) => e.run_id,
             AgentEvent::RunCancelled(e) => e.run_id,
+            AgentEvent::DoomLoopDetected(e) => e.run_id,
         }
     }
 
@@ -264,5 +267,16 @@ pub struct RunCancelled {
     /// Run identifier.
     pub run_id: RunId,
     /// When the run was cancelled.
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Doom loop detected event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DoomLoopDetected {
+    /// Run identifier.
+    pub run_id: RunId,
+    /// Description of the doom loop pattern detected.
+    pub description: String,
+    /// When the doom loop was detected.
     pub timestamp: DateTime<Utc>,
 }
