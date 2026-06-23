@@ -223,11 +223,15 @@ impl ScopedToolRegistry {
         self.base.get(name)
     }
 
-    /// Generates merged [`ToolSpec`]s from all scopes and base.
+    /// Generates merged [`ToolSpec`]s from all scopes and base,
+    /// sorted alphabetically by tool name.
     ///
     /// Tools in higher scopes shadow those with the same name in lower
     /// scopes or the base. The returned list contains one entry per
     /// unique tool name.
+    ///
+    /// The sorted output ensures deterministic prompt caching across
+    /// turns and provider calls.
     #[must_use]
     pub fn specs(&self) -> Vec<ToolSpec> {
         let state = self.lock_state_poison_safe();
@@ -247,7 +251,9 @@ impl ScopedToolRegistry {
             }
         }
 
-        merged.values().map(|t| t.to_spec()).collect()
+        let mut specs: Vec<ToolSpec> = merged.values().map(|t| t.to_spec()).collect();
+        specs.sort_by(|a, b| a.name.cmp(&b.name));
+        specs
     }
 
     /// Returns the number of active scopes.
@@ -466,16 +472,16 @@ mod tests {
     #[test]
     fn pop_scope_non_top_should_return_false() {
         let base = ToolRegistry::new();
-        let scoped = ScopedToolRegistry::new(base);
+        let registry = ScopedToolRegistry::new(base);
 
-        let scope1 = scoped.push_scope();
-        let scope2 = scoped.push_scope();
+        let scope1 = registry.push_scope();
+        let scope2 = registry.push_scope();
 
-        assert!(!scoped.pop_scope(scope1));
-        assert_eq!(scoped.scope_depth(), 2);
+        assert!(!registry.pop_scope(scope1));
+        assert_eq!(registry.scope_depth(), 2);
 
-        assert!(scoped.pop_scope(scope2));
-        assert_eq!(scoped.scope_depth(), 1);
+        assert!(registry.pop_scope(scope2));
+        assert_eq!(registry.scope_depth(), 1);
     }
 
     #[test]
@@ -488,28 +494,28 @@ mod tests {
     #[test]
     fn multiple_scopes_shadow_correctly() {
         let base = ToolRegistry::new();
-        let scoped = ScopedToolRegistry::new(base);
+        let registry = ScopedToolRegistry::new(base);
 
-        let scope1 = scoped.push_scope();
-        scoped
+        let scope1 = registry.push_scope();
+        registry
             .register_in_scope(scope1, make_tool("tool"))
             .ok()
             .unwrap();
 
-        let scope2 = scoped.push_scope();
-        scoped
+        let scope2 = registry.push_scope();
+        registry
             .register_in_scope(scope2, make_tool("tool"))
             .ok()
             .unwrap();
 
-        assert_eq!(scoped.specs().len(), 1);
+        assert_eq!(registry.specs().len(), 1);
 
-        scoped.pop_scope(scope2);
-        assert!(scoped.get("tool").is_some());
-        assert_eq!(scoped.specs().len(), 1);
+        registry.pop_scope(scope2);
+        assert!(registry.get("tool").is_some());
+        assert_eq!(registry.specs().len(), 1);
 
-        scoped.pop_scope(scope1);
-        assert!(scoped.get("tool").is_none());
+        registry.pop_scope(scope1);
+        assert!(registry.get("tool").is_none());
     }
 
     #[test]
@@ -686,5 +692,25 @@ mod tests {
         }
 
         assert_eq!(scoped.scope_depth(), 4);
+    }
+
+    #[test]
+    fn specs_should_return_sorted_by_name() {
+        let mut base = ToolRegistry::new();
+        base.register(make_tool("zebra"));
+        base.register(make_tool("alpha"));
+        let scoped = ScopedToolRegistry::new(base);
+
+        let scope = scoped.push_scope();
+        scoped
+            .register_in_scope(scope, make_tool("mike"))
+            .ok()
+            .unwrap();
+
+        let specs = scoped.specs();
+        assert_eq!(specs.len(), 3);
+        assert_eq!(specs[0].name, "alpha");
+        assert_eq!(specs[1].name, "mike");
+        assert_eq!(specs[2].name, "zebra");
     }
 }
