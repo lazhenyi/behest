@@ -91,6 +91,18 @@ pub trait Tool: Send + Sync {
     /// Executes the tool with the given arguments.
     async fn execute(&self, arguments: Value) -> ToolResult<ToolOutput>;
 
+    /// Returns `true` if the tool does not modify any external state.
+    /// Defaults to `false` (fail-closed).
+    fn is_read_only(&self) -> bool {
+        false
+    }
+
+    /// Returns `true` if the tool can be safely executed concurrently with
+    /// other concurrent-safe tools. Defaults to `false` (fail-closed).
+    fn is_concurrency_safe(&self) -> bool {
+        false
+    }
+
     /// Converts this tool into a [`ToolSpec`] for provider requests.
     fn to_spec(&self) -> ToolSpec {
         ToolSpec::new(self.name(), self.description(), self.parameters_schema())
@@ -103,6 +115,8 @@ pub struct FunctionTool<F> {
     description: String,
     parameters_schema: Value,
     handler: F,
+    read_only: bool,
+    concurrency_safe: bool,
 }
 
 impl<F, Fut> FunctionTool<F>
@@ -123,7 +137,23 @@ where
             description: description.into(),
             parameters_schema,
             handler,
+            read_only: false,
+            concurrency_safe: false,
         }
+    }
+
+    /// Marks this tool as read-only (does not modify external state).
+    #[must_use]
+    pub fn read_only(mut self) -> Self {
+        self.read_only = true;
+        self
+    }
+
+    /// Marks this tool as safe for concurrent execution.
+    #[must_use]
+    pub fn concurrency_safe(mut self) -> Self {
+        self.concurrency_safe = true;
+        self
     }
 }
 
@@ -149,6 +179,14 @@ where
         let value = (self.handler)(arguments).await?;
         Ok(ToolOutput::new(value))
     }
+
+    fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    fn is_concurrency_safe(&self) -> bool {
+        self.concurrency_safe
+    }
 }
 
 /// External tool that delegates execution to an external system.
@@ -167,6 +205,8 @@ pub struct ExternalTool {
     description: String,
     parameters_schema: Value,
     endpoint: Option<String>,
+    read_only: bool,
+    concurrency_safe: bool,
 }
 
 impl ExternalTool {
@@ -182,6 +222,8 @@ impl ExternalTool {
             description: description.into(),
             parameters_schema,
             endpoint: None,
+            read_only: false,
+            concurrency_safe: false,
         }
     }
 
@@ -196,6 +238,20 @@ impl ExternalTool {
     #[must_use]
     pub fn endpoint(&self) -> Option<&str> {
         self.endpoint.as_deref()
+    }
+
+    /// Marks this tool as read-only (does not modify external state).
+    #[must_use]
+    pub fn read_only(mut self) -> Self {
+        self.read_only = true;
+        self
+    }
+
+    /// Marks this tool as safe for concurrent execution.
+    #[must_use]
+    pub fn concurrency_safe(mut self) -> Self {
+        self.concurrency_safe = true;
+        self
     }
 }
 
@@ -217,6 +273,14 @@ impl Tool for ExternalTool {
         Err(ToolError::NotImplemented {
             name: self.name.clone(),
         })
+    }
+
+    fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    fn is_concurrency_safe(&self) -> bool {
+        self.concurrency_safe
     }
 }
 
@@ -274,10 +338,16 @@ impl ToolRegistry {
         self.tools.is_empty()
     }
 
-    /// Generates [`ToolSpec`] definitions for all registered tools.
+    /// Generates [`ToolSpec`] definitions for all registered tools,
+    /// sorted alphabetically by tool name.
+    ///
+    /// The sorted output ensures deterministic prompt caching across
+    /// turns and provider calls.
     #[must_use]
     pub fn specs(&self) -> Vec<ToolSpec> {
-        self.tools.values().map(|t| t.to_spec()).collect()
+        let mut specs: Vec<ToolSpec> = self.tools.values().map(|t| t.to_spec()).collect();
+        specs.sort_by(|a, b| a.name.cmp(&b.name));
+        specs
     }
 
     /// Executes a tool call and returns the output.
@@ -449,5 +519,66 @@ mod tests {
         let tool = ExternalTool::new("external", "External tool", json!({}));
         let result = tool.execute(json!({})).await;
         assert!(matches!(result, Err(ToolError::NotImplemented { .. })));
+    }
+
+    #[test]
+    fn specs_should_return_sorted_by_name() {
+        let mut registry = ToolRegistry::new();
+        registry.register(FunctionTool::new(
+            "zebra",
+            "Zebra tool",
+            json!({}),
+            echo_handler,
+        ));
+        registry.register(FunctionTool::new(
+            "alpha",
+            "Alpha tool",
+            json!({}),
+            echo_handler,
+        ));
+        registry.register(FunctionTool::new(
+            "mike",
+            "Mike tool",
+            json!({}),
+            echo_handler,
+        ));
+
+        let specs = registry.specs();
+        assert_eq!(specs.len(), 3);
+        assert_eq!(specs[0].name, "alpha");
+        assert_eq!(specs[1].name, "mike");
+        assert_eq!(specs[2].name, "zebra");
+    }
+
+    #[test]
+    fn function_tool_default_classification_is_false() {
+        let tool = FunctionTool::new("test", "desc", json!({}), |_| async { Ok(json!(null)) });
+        assert!(!tool.is_read_only());
+        assert!(!tool.is_concurrency_safe());
+    }
+
+    #[test]
+    fn function_tool_classification_builder() {
+        let tool = FunctionTool::new("test", "desc", json!({}), |_| async { Ok(json!(null)) })
+            .read_only()
+            .concurrency_safe();
+        assert!(tool.is_read_only());
+        assert!(tool.is_concurrency_safe());
+    }
+
+    #[test]
+    fn external_tool_default_classification_is_false() {
+        let tool = ExternalTool::new("test", "desc", json!({}));
+        assert!(!tool.is_read_only());
+        assert!(!tool.is_concurrency_safe());
+    }
+
+    #[test]
+    fn external_tool_classification_builder() {
+        let tool = ExternalTool::new("test", "desc", json!({}))
+            .read_only()
+            .concurrency_safe();
+        assert!(tool.is_read_only());
+        assert!(tool.is_concurrency_safe());
     }
 }
