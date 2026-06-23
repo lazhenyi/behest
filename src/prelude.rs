@@ -1,5 +1,8 @@
 //! Convenient imports for application and integration code.
 
+pub use crate::agent::{
+    AgentDefinition, AgentMode, AgentRegistry, PermissionEffect, PermissionRule,
+};
 pub use crate::config::{
     AgentConfig, AgentConfigBuilder, ConfigLoader, ProviderConfig, ProviderType, RuntimeConfig,
     RuntimePolicyConfig, StoreBackend, StoreConfig,
@@ -16,18 +19,24 @@ pub use crate::provider::{
     ProviderResult, ResponseFormat, TokenUsage, ToolCall, ToolChoice, ToolSpec,
 };
 pub use crate::runtime::{
-    AgentEvent, AgentRuntime, ContextPipeline, ModelRouter, RunId, RunOutput, RunRequest,
-    RunStatus, RuntimeError, RuntimePolicy, RuntimeStore, ToolRuntime,
+    AgentEvent, AgentRuntime, CompactionConfig, CompactionResult, CompactionService,
+    ContextPipeline, ModelRouter, RunId, RunOutput, RunRequest, RunStatus, RuntimeError,
+    RuntimePolicy, RuntimeStore, ToolRuntime,
 };
 pub use crate::store::memory::{
     MemoryArtifactStore, MemoryEmbeddingStore, MemoryExecutionStore, MemorySessionStore,
 };
 pub use crate::store::{
-    Artifact, ArtifactStore, EmbeddingRecord, EmbeddingStore, ExecutionStore, MessageRecord,
-    MessageRole, ScoredEmbedding, Session, SessionStats, SessionStore, StoreResult, ToolExecution,
-    ToolExecutionStatus, UsageRecord,
+    Artifact, ArtifactStore, CompactionMeta, EmbeddingRecord, EmbeddingStore, ExecutionStore,
+    MessageRecord, MessageRole, ScoredEmbedding, Session, SessionStats, SessionStore, StoreResult,
+    ToolExecution, ToolExecutionStatus, UsageRecord,
+};
+pub use crate::token::{
+    estimate_content_part_tokens, estimate_message_tokens, estimate_messages_tokens,
+    estimate_record_tokens, estimate_records_tokens, estimate_tokens,
 };
 pub use crate::tool::{ExternalTool, FunctionTool, Tool, ToolOutput, ToolRegistry, ToolResult};
+pub use crate::tool_output::{ToolOutputConfig, TruncationResult, truncate_output};
 
 #[cfg(feature = "openai")]
 pub use crate::adapt::openai::{OpenAiChatAdapter, OpenAiEmbeddingAdapter};

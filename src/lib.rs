@@ -23,6 +23,7 @@
 //! - [`queue`]: External event publishing to message brokers (feature = `queue`)
 
 pub mod adapt;
+pub mod agent;
 pub mod config;
 pub mod context;
 pub mod error;
@@ -30,7 +31,9 @@ pub mod prelude;
 pub mod provider;
 pub mod runtime;
 pub mod store;
+pub mod token;
 pub mod tool;
+pub mod tool_output;
 
 #[cfg(feature = "rag")]
 pub mod rag;
@@ -38,8 +41,12 @@ pub mod rag;
 #[cfg(feature = "queue")]
 pub mod queue;
 
+#[cfg(feature = "server")]
+pub mod grpc;
+
 pub use crate::error::{ContextError, Error, ProviderError, Result, StorageError, ToolError};
 pub use crate::runtime::{
-    AgentEvent, AgentRuntime, ModelRouter, RunId, RunOutput, RunRequest, RunStatus, RuntimeError,
-    RuntimePolicy,
+    AgentEvent, AgentRuntime, CompactionResult, CompactionService, ModelRouter, RunId, RunOutput,
+    RunRequest, RunStatus, RuntimeError, RuntimePolicy,
 };
+pub use crate::tool_output::{ToolOutputConfig, TruncationResult};
