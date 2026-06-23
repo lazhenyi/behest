@@ -44,6 +44,40 @@ pub enum AgentEvent {
     RunCancelled(RunCancelled),
 }
 
+impl AgentEvent {
+    /// Returns the run identifier for any event variant.
+    #[must_use]
+    pub fn run_id(&self) -> RunId {
+        match self {
+            AgentEvent::RunStarted(e) => e.run_id,
+            AgentEvent::ContextBuilt(e) => e.run_id,
+            AgentEvent::ModelStarted(e) => e.run_id,
+            AgentEvent::TextDelta(e) => e.run_id,
+            AgentEvent::ToolCallStarted(e) => e.run_id,
+            AgentEvent::ToolCallDelta(e) => e.run_id,
+            AgentEvent::ToolCallCompleted(e) => e.run_id,
+            AgentEvent::ToolExecutionStarted(e) => e.run_id,
+            AgentEvent::ToolExecutionFinished(e) => e.run_id,
+            AgentEvent::AssistantMessageCommitted(e) | AgentEvent::ToolMessageCommitted(e) => {
+                e.run_id
+            }
+            AgentEvent::UsageRecorded(e) => e.run_id,
+            AgentEvent::RunCompleted(e) => e.run_id,
+            AgentEvent::RunFailed(e) => e.run_id,
+            AgentEvent::RunCancelled(e) => e.run_id,
+        }
+    }
+
+    /// Returns true when this event signals a terminal run state.
+    #[must_use]
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            AgentEvent::RunCompleted(_) | AgentEvent::RunFailed(_) | AgentEvent::RunCancelled(_)
+        )
+    }
+}
+
 /// Run started event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunStarted {

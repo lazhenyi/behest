@@ -62,6 +62,25 @@ pub trait RunStore: Send + Sync {
     /// Lists runs for a session.
     async fn list_runs(&self, session_id: Uuid) -> RuntimeResult<Vec<RunRecord>>;
 
+    /// Lists runs with optional filters and pagination.
+    ///
+    /// Default implementation iterates all sessions; backends should override
+    /// with a native query for efficiency.
+    async fn list_runs_filtered(
+        &self,
+        session_id: Option<Uuid>,
+        status: Option<RunStatus>,
+        limit: usize,
+        offset: usize,
+    ) -> RuntimeResult<Vec<RunRecord>> {
+        let _ = (session_id, status, limit, offset);
+        Err(RuntimeError::Storage(crate::StorageError::BackendError {
+            backend: "run".to_owned(),
+            message: "list_runs_filtered not implemented".to_owned(),
+            source: None,
+        }))
+    }
+
     /// Deletes a run and its events.
     async fn delete_run(&self, run_id: RunId) -> RuntimeResult<()>;
 
@@ -188,7 +207,8 @@ fn message_to_record(session_id: Uuid, message: &Message) -> MessageRecord {
 }
 
 /// Converts a store MessageRecord back to a provider Message.
-fn record_to_message(record: MessageRecord) -> Option<Message> {
+#[must_use]
+pub fn record_to_message(record: MessageRecord) -> Option<Message> {
     match record.role {
         MessageRole::System => Some(Message::System {
             content: record.content,

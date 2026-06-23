@@ -41,6 +41,15 @@ pub enum RuntimeError {
         limit: usize,
     },
 
+    /// Context length exceeded the model's maximum.
+    #[error("context length exceeded: model context {context}, estimated {estimated}")]
+    ContextOverflow {
+        /// Model context window size.
+        context: u32,
+        /// Estimated token usage.
+        estimated: usize,
+    },
+
     /// Tool execution timeout.
     #[error("tool execution timeout: {tool}")]
     ToolTimeout {

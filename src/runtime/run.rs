@@ -23,6 +23,12 @@ impl RunId {
         Self(Uuid::new_v4())
     }
 
+    /// Creates a run identifier from an existing UUID.
+    #[must_use]
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
     /// Returns the underlying UUID.
     #[must_use]
     pub fn as_uuid(&self) -> &Uuid {

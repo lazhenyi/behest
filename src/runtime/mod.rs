@@ -6,6 +6,7 @@
 
 pub mod accumulator;
 pub mod agent;
+pub mod compaction;
 pub mod context;
 pub mod error;
 pub mod event;
@@ -17,10 +18,11 @@ pub mod store;
 pub mod tool;
 
 pub use agent::{AgentRuntime, RunOutput};
+pub use compaction::{CompactionResult, CompactionService};
 pub use context::ContextPipeline;
 pub use error::RuntimeError;
 pub use event::AgentEvent;
-pub use policy::RuntimePolicy;
+pub use policy::{CompactionConfig, RuntimePolicy};
 pub use router::ModelRouter;
 pub use run::{RunId, RunRequest, RunStatus};
 pub use store::RuntimeStore;

@@ -20,6 +20,7 @@ use super::policy::RuntimePolicy;
 use crate::provider::{Message, ToolCall};
 use crate::store::{ExecutionStore, ToolExecution};
 use crate::tool::{ToolOutput, ToolRegistry};
+use crate::tool_output::{self, ToolOutputConfig};
 
 /// Result of a single tool execution within the runtime.
 #[derive(Debug)]
@@ -101,9 +102,14 @@ impl ToolRuntime {
                         tool: call.name.clone(),
                     })?;
 
-                    let outcome =
-                        Self::execute_single(&registry, &call, tool_timeout, continue_on_failure)
-                            .await;
+                    let outcome = Self::execute_single(
+                        &registry,
+                        &call,
+                        tool_timeout,
+                        continue_on_failure,
+                        &self.policy.tool_output,
+                    )
+                    .await;
 
                     if let Some(store) = execution_store {
                         Self::record_execution(store, session_id, message_id, &call, &outcome)
@@ -124,6 +130,7 @@ impl ToolRuntime {
         call: &ToolCall,
         tool_timeout: std::time::Duration,
         continue_on_failure: bool,
+        truncation_config: &ToolOutputConfig,
     ) -> ToolExecutionOutcome {
         let Some(tool) = registry.get(&call.name) else {
             let error_msg = format!("tool not found: {}", call.name);
@@ -170,11 +177,10 @@ impl ToolRuntime {
             Ok(Ok(output)) => {
                 let duration = start.elapsed();
                 debug!(tool = %call.name, ?duration, "tool executed successfully");
-                let msg = Message::tool_text(
-                    call.id.clone(),
-                    call.name.clone(),
-                    output.value.to_string(),
-                );
+                let raw_text = output.value.to_string();
+                let truncated =
+                    tool_output::truncate_output(&raw_text, truncation_config, Some(&call.name));
+                let msg = Message::tool_text(call.id.clone(), call.name.clone(), truncated.text);
                 ToolExecutionOutcome {
                     call: call.clone(),
                     output: Ok(output),
