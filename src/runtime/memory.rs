@@ -9,12 +9,14 @@ use uuid::Uuid;
 
 use super::error::{RuntimeError, RuntimeResult};
 use super::run::{RunId, RunRecord, RunStatus};
+use super::state::RunState;
 use super::store::{RunEventRecord, RunStore};
 
 /// In-memory implementation of [`RunStore`].
 pub struct MemoryRunStore {
     runs: RwLock<HashMap<Uuid, RunRecord>>,
     events: RwLock<HashMap<Uuid, Vec<RunEventRecord>>>,
+    projections: RwLock<HashMap<Uuid, RunState>>,
     sequence: AtomicU64,
 }
 
@@ -25,6 +27,7 @@ impl MemoryRunStore {
         Self {
             runs: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),
+            projections: RwLock::new(HashMap::new()),
             sequence: AtomicU64::new(0),
         }
     }
@@ -40,12 +43,18 @@ impl Default for MemoryRunStore {
 impl RunStore for MemoryRunStore {
     async fn create_run(&self, record: RunRecord) -> RuntimeResult<()> {
         let id = *record.id.as_uuid();
+        let initial_state = RunState::create(&record, &[]);
         self.runs.write().await.insert(id, record);
+        self.projections.write().await.insert(id, initial_state);
         Ok(())
     }
 
     async fn get_run(&self, run_id: RunId) -> RuntimeResult<Option<RunRecord>> {
         Ok(self.runs.read().await.get(run_id.as_uuid()).cloned())
+    }
+
+    async fn get_run_state(&self, run_id: RunId) -> RuntimeResult<Option<RunState>> {
+        Ok(self.projections.read().await.get(run_id.as_uuid()).cloned())
     }
 
     async fn update_run_status(&self, run_id: RunId, status: RunStatus) -> RuntimeResult<()> {
@@ -54,18 +63,38 @@ impl RunStore for MemoryRunStore {
             .get_mut(run_id.as_uuid())
             .ok_or(RuntimeError::RunNotFound(run_id))?;
         record.update_status(status);
+
+        let mut projections = self.projections.write().await;
+        if let Some(state) = projections.get_mut(run_id.as_uuid()) {
+            state.status = status;
+            state.updated_at = chrono::Utc::now();
+        }
         Ok(())
     }
 
     async fn append_event(&self, mut record: RunEventRecord) -> RuntimeResult<()> {
         record.sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
-        let run_id = *record.run_id.as_uuid();
-        self.events
-            .write()
-            .await
-            .entry(run_id)
-            .or_default()
-            .push(record);
+        let run_id_uuid = *record.run_id.as_uuid();
+
+        let mut events = self.events.write().await;
+        let mut projections = self.projections.write().await;
+
+        events.entry(run_id_uuid).or_default().push(record.clone());
+
+        if let Some(state) = projections.get_mut(&run_id_uuid) {
+            state.apply(&record.event);
+            state.event_count += 1;
+            state.updated_at = record.timestamp;
+        } else {
+            let runs = self.runs.read().await;
+            if let Some(record_val) = runs.get(&run_id_uuid) {
+                let mut state = RunState::create(record_val, &[]);
+                state.apply(&record.event);
+                state.event_count = 1;
+                state.updated_at = record.timestamp;
+                projections.insert(run_id_uuid, state);
+            }
+        }
         Ok(())
     }
 
@@ -126,6 +155,7 @@ impl RunStore for MemoryRunStore {
     async fn delete_run(&self, run_id: RunId) -> RuntimeResult<()> {
         self.runs.write().await.remove(run_id.as_uuid());
         self.events.write().await.remove(run_id.as_uuid());
+        self.projections.write().await.remove(run_id.as_uuid());
         Ok(())
     }
 
@@ -135,6 +165,7 @@ impl RunStore for MemoryRunStore {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::provider::{ModelName, ProviderId};
@@ -194,6 +225,8 @@ mod tests {
             AgentEvent::RunStarted(RunStartedEvent {
                 run_id,
                 session_id,
+                provider: ProviderId::new("test"),
+                model: ModelName::new("gpt-4"),
                 timestamp: chrono::Utc::now(),
             }),
         );
@@ -232,5 +265,54 @@ mod tests {
 
         let fetched = store.get_run(run_id).await.unwrap();
         assert!(fetched.is_none());
+    }
+
+    #[tokio::test]
+    async fn memory_run_store_should_maintain_transactional_projection() {
+        let store = MemoryRunStore::new();
+        let session_id = Uuid::new_v4();
+        let record = make_run(session_id, "test", "gpt-4");
+        let run_id = record.id;
+        store.create_run(record).await.unwrap();
+
+        // 1. Check initial projection is Pending
+        let state = store.get_run_state(run_id).await.unwrap().unwrap();
+        assert_eq!(state.status, RunStatus::Pending);
+        assert_eq!(state.event_count, 0);
+
+        // 2. Append RunStarted event and check projection
+        let event1 = RunEventRecord::new(
+            0,
+            run_id,
+            AgentEvent::RunStarted(RunStartedEvent {
+                run_id,
+                session_id,
+                provider: ProviderId::new("test"),
+                model: ModelName::new("gpt-4"),
+                timestamp: chrono::Utc::now(),
+            }),
+        );
+        store.append_event(event1).await.unwrap();
+
+        let state = store.get_run_state(run_id).await.unwrap().unwrap();
+        assert_eq!(state.status, RunStatus::SessionLoaded);
+        assert_eq!(state.event_count, 1);
+
+        // 3. Append UsageRecorded event and check projection accumulates usage
+        let event2 = RunEventRecord::new(
+            0,
+            run_id,
+            AgentEvent::UsageRecorded(crate::runtime::event::UsageRecorded {
+                run_id,
+                usage: crate::provider::TokenUsage::new(100, 200),
+                timestamp: chrono::Utc::now(),
+            }),
+        );
+        store.append_event(event2).await.unwrap();
+
+        let state = store.get_run_state(run_id).await.unwrap().unwrap();
+        assert_eq!(state.total_usage.input_tokens, 100);
+        assert_eq!(state.total_usage.output_tokens, 200);
+        assert_eq!(state.event_count, 2);
     }
 }
