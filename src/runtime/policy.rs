@@ -15,6 +15,7 @@ use crate::tool_output::ToolOutputConfig;
 
 /// Compaction configuration for automatic context compression.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct CompactionConfig {
     /// Enable automatic compaction before provider turns. Default: `true`.
     #[serde(default = "default_true")]
@@ -37,6 +38,10 @@ pub struct CompactionConfig {
     /// Provider to use for compaction. Falls back to the run's provider when `None`.
     #[serde(default)]
     pub provider: Option<ProviderId>,
+    /// Number of consecutive compaction failures before the circuit breaker opens.
+    /// When open, proactive compaction is skipped. Default: `3`.
+    #[serde(default = "default_circuit_breaker_threshold")]
+    pub circuit_breaker_threshold: u32,
 }
 
 const fn default_true() -> bool {
@@ -55,6 +60,14 @@ const fn default_tail_turns() -> usize {
     2
 }
 
+const fn default_circuit_breaker_threshold() -> u32 {
+    3
+}
+
+const fn default_max_output_recovery() -> usize {
+    3
+}
+
 impl Default for CompactionConfig {
     fn default() -> Self {
         Self {
@@ -65,6 +78,7 @@ impl Default for CompactionConfig {
             tail_turns: 2,
             model: None,
             provider: None,
+            circuit_breaker_threshold: 3,
         }
     }
 }
@@ -124,10 +138,18 @@ impl CompactionConfig {
         self.provider = Some(provider);
         self
     }
+
+    /// Sets the circuit breaker failure threshold.
+    #[must_use]
+    pub fn with_circuit_breaker_threshold(mut self, threshold: u32) -> Self {
+        self.circuit_breaker_threshold = threshold;
+        self
+    }
 }
 
 /// Runtime policy for agent execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct RuntimePolicy {
     /// Maximum number of model call iterations per run.
     pub max_iterations: usize,
@@ -157,6 +179,11 @@ pub struct RuntimePolicy {
     /// Input admission pipeline configuration.
     #[serde(default)]
     pub input_admission: InputAdmissionConfig,
+    /// Maximum attempts to recover from model output truncation
+    /// (`FinishReason::Length`). When exceeded, the run completes with
+    /// truncated output. Default: `3`.
+    #[serde(default = "default_max_output_recovery")]
+    pub max_output_recovery_attempts: usize,
 }
 
 impl Default for RuntimePolicy {
@@ -174,6 +201,7 @@ impl Default for RuntimePolicy {
             tool_output: ToolOutputConfig::default(),
             doom_loop: DoomLoopConfig::default(),
             input_admission: InputAdmissionConfig::default(),
+            max_output_recovery_attempts: 3,
         }
     }
 }
@@ -266,6 +294,13 @@ impl RuntimePolicy {
     #[must_use]
     pub fn with_input_admission(mut self, config: InputAdmissionConfig) -> Self {
         self.input_admission = config;
+        self
+    }
+
+    /// Sets the maximum output recovery attempts for truncated responses.
+    #[must_use]
+    pub fn with_max_output_recovery_attempts(mut self, attempts: usize) -> Self {
+        self.max_output_recovery_attempts = attempts;
         self
     }
 }
