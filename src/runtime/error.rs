@@ -50,6 +50,10 @@ pub enum RuntimeError {
         estimated: usize,
     },
 
+    /// Session is already being processed by another run.
+    #[error("session busy: {0}")]
+    SessionBusy(uuid::Uuid),
+
     /// Tool execution timeout.
     #[error("tool execution timeout: {tool}")]
     ToolTimeout {
@@ -72,6 +76,10 @@ pub enum RuntimeError {
     /// Tool error.
     #[error(transparent)]
     Tool(#[from] crate::error::ToolError),
+
+    /// Snapshot or recovery failed.
+    #[error("recovery error: {0}")]
+    RecoveryFailed(String),
 }
 
 /// Result type for runtime operations.
