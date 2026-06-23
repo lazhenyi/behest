@@ -31,6 +31,11 @@ include = [
 name = "agents"
 path = "src/lib.rs"
 
+[[bin]]
+name = "agent-server"
+path = "src/bin/agent-server.rs"
+required-features = ["server"]
+
 [features]
 default = ["tls-rustls"]
 
@@ -160,6 +165,8 @@ tantivy = [
 ]
 object_store = ["dep:object_store", "object_store/aws"]
 
+server = ["dep:tonic", "dep:prost", "dep:tokio-stream", "tonic-build"]
+
 [dependencies]
 object_store = {
     version = "0.13.2",
@@ -231,6 +238,12 @@ tracing-opentelemetry = { version = "0.33", optional = true }
 qdrant-client = { version = "1.18", optional = true }
 tantivy = { version = "0.26", optional = true }
 
+actix-web = { version = "4", optional = true, features = ["macros"] }
+
+tonic = { version = "0.13", optional = true, features = ["transport"] }
+prost = { version = "0.13", optional = true }
+tokio-stream = { version = "0.1", optional = true, features = ["sync"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3"
@@ -239,6 +252,9 @@ insta = { version = "1", features = ["json"] }
 proptest = "1"
 wiremock = "0.6"
 tracing-test = "0.2"
+
+[build-dependencies]
+tonic-build = { version = "0.13", optional = true }
 
 [package.metadata.docs.rs]
 all-features = true
