@@ -14,6 +14,7 @@ use crate::store::{ExecutionStore, MessageRecord, MessageRole, SessionStore};
 use super::error::{RuntimeError, RuntimeResult};
 use super::event::AgentEvent;
 use super::run::{RunId, RunRecord, RunStatus};
+use super::state::RunState;
 
 /// Persistent record of a run event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +50,19 @@ pub trait RunStore: Send + Sync {
 
     /// Gets a run by ID.
     async fn get_run(&self, run_id: RunId) -> RuntimeResult<Option<RunRecord>>;
+
+    /// Gets the event-sourced state of a run by replaying its event log.
+    ///
+    /// Default implementation calls [`get_run`] + [`list_events`] and
+    /// folds them into a [`RunState`]. Backends may override with a
+    /// native projection for better performance.
+    async fn get_run_state(&self, run_id: RunId) -> RuntimeResult<Option<RunState>> {
+        let Some(record) = self.get_run(run_id).await? else {
+            return Ok(None);
+        };
+        let events = self.list_events(run_id).await?;
+        Ok(Some(RunState::create(&record, &events)))
+    }
 
     /// Updates run status.
     async fn update_run_status(&self, run_id: RunId, status: RunStatus) -> RuntimeResult<()>;
