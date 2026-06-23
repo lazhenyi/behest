@@ -80,6 +80,13 @@ pub enum RuntimeError {
     /// Snapshot or recovery failed.
     #[error("recovery error: {0}")]
     RecoveryFailed(String),
+
+    /// Doom loop detected — agent is stuck in repetitive tool call pattern.
+    #[error("doom loop detected: {description}")]
+    DoomLoopDetected {
+        /// Human-readable description of the detected pattern.
+        description: String,
+    },
 }
 
 /// Result type for runtime operations.

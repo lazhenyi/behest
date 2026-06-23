@@ -9,6 +9,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::provider::{ModelName, ProviderId};
+use crate::runtime::doom_loop::DoomLoopConfig;
 use crate::tool_output::ToolOutputConfig;
 
 /// Compaction configuration for automatic context compression.
@@ -149,6 +150,9 @@ pub struct RuntimePolicy {
     /// Tool output truncation configuration.
     #[serde(default)]
     pub tool_output: ToolOutputConfig,
+    /// Doom loop detection configuration.
+    #[serde(default)]
+    pub doom_loop: DoomLoopConfig,
 }
 
 impl Default for RuntimePolicy {
@@ -164,6 +168,7 @@ impl Default for RuntimePolicy {
             max_retries: 2,
             compaction: CompactionConfig::default(),
             tool_output: ToolOutputConfig::default(),
+            doom_loop: DoomLoopConfig::default(),
         }
     }
 }
@@ -242,6 +247,13 @@ impl RuntimePolicy {
     #[must_use]
     pub fn with_tool_output(mut self, config: ToolOutputConfig) -> Self {
         self.tool_output = config;
+        self
+    }
+
+    /// Sets the doom loop detection configuration.
+    #[must_use]
+    pub fn with_doom_loop(mut self, config: DoomLoopConfig) -> Self {
+        self.doom_loop = config;
         self
     }
 }
