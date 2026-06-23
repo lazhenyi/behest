@@ -9,7 +9,9 @@ use uuid::Uuid;
 
 use crate::error::StorageError;
 use crate::provider::{ContentPart, ModelName, TokenUsage, ToolCall};
-use crate::store::{MessageRecord, MessageRole, Session, SessionStore, StoreResult};
+use crate::store::{
+    CompactionMeta, MessageRecord, MessageRole, Session, SessionStore, StoreResult,
+};
 
 /// SurrealDB-backed session store using its document model.
 pub struct SurrealdbSessionStore {
@@ -40,6 +42,12 @@ struct MessageStoreRecord {
     content: Vec<ContentPart>,
     tool_calls: Vec<ToolCall>,
     usage: Option<TokenUsage>,
+    #[serde(default)]
+    is_compaction: bool,
+    #[serde(default)]
+    is_summary: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    compaction_meta: Option<CompactionMeta>,
     created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -195,6 +203,66 @@ impl SessionStore for SurrealdbSessionStore {
         Ok(())
     }
 
+    async fn update_session(
+        &self,
+        id: &Uuid,
+        title: &str,
+        model: Option<&ModelName>,
+    ) -> StoreResult<Session> {
+        let id_str = id.to_string();
+        let now = chrono::Utc::now();
+
+        if let Some(m) = model {
+            let _: Option<serde_json::Value> = self
+                .db
+                .query("UPDATE sessions SET title = $title, model = $model, updated_at = $now WHERE id = $sid")
+                .bind(("title", title.to_owned()))
+                .bind(("model", m.as_str().to_owned()))
+                .bind(("now", now))
+                .bind(("sid", &id_str))
+                .await
+                .map_err(|e| StorageError::BackendError {
+                    backend: "surrealdb".to_owned(),
+                    message: e.to_string(),
+                    source: Some(Box::new(e)),
+                })?;
+        } else {
+            let _: Option<serde_json::Value> = self
+                .db
+                .query("UPDATE sessions SET title = $title, updated_at = $now WHERE id = $sid")
+                .bind(("title", title.to_owned()))
+                .bind(("now", now))
+                .bind(("sid", &id_str))
+                .await
+                .map_err(|e| StorageError::BackendError {
+                    backend: "surrealdb".to_owned(),
+                    message: e.to_string(),
+                    source: Some(Box::new(e)),
+                })?;
+        }
+
+        let result: Option<serde_json::Value> =
+            self.db.select(("sessions", &id_str)).await.map_err(|e| {
+                StorageError::BackendError {
+                    backend: "surrealdb".to_owned(),
+                    message: e.to_string(),
+                    source: Some(Box::new(e)),
+                }
+            })?;
+
+        let value = result.ok_or_else(|| StorageError::NotFound { id: id.to_string() })?;
+
+        let record: SessionRecord = from_value(value, "session")?;
+        Ok(Session {
+            id: *id,
+            title: record.title,
+            model: ModelName::new(&record.model),
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+            metadata: record.metadata,
+        })
+    }
+
     async fn append_message(&self, message: MessageRecord) -> StoreResult<MessageRecord> {
         // Verify session exists
         let session_exists: Option<serde_json::Value> = self
@@ -219,6 +287,9 @@ impl SessionStore for SurrealdbSessionStore {
             content: message.content.clone(),
             tool_calls: message.tool_calls.clone(),
             usage: message.usage,
+            is_compaction: message.is_compaction,
+            is_summary: message.is_summary,
+            compaction_meta: message.compaction_meta.clone(),
             created_at: message.created_at,
         };
 
@@ -298,6 +369,9 @@ impl SessionStore for SurrealdbSessionStore {
                     tool_name: None,
                     usage: record.usage,
                     created_at: record.created_at,
+                    is_compaction: record.is_compaction,
+                    is_summary: record.is_summary,
+                    compaction_meta: record.compaction_meta,
                 })
             })
             .collect::<StoreResult<Vec<_>>>()
