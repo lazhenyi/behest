@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use super::error::{RuntimeError, RuntimeResult};
 use super::policy::RuntimePolicy;
+use crate::error::ToolError;
 use crate::provider::{Message, ToolCall};
 use crate::store::{ExecutionStore, ToolExecution};
 use crate::tool::{ToolOutput, ToolRegistry};
@@ -28,8 +29,8 @@ use crate::tool_scope::ScopedToolRegistry;
 pub struct ToolExecutionOutcome {
     /// The original tool call.
     pub call: ToolCall,
-    /// Output if successful, or error message string if failed.
-    pub output: Result<ToolOutput, String>,
+    /// Output if successful, or the tool error if failed.
+    pub output: Result<ToolOutput, ToolError>,
     /// The resulting message for the conversation.
     pub message: Message,
 }
@@ -73,6 +74,11 @@ impl ToolRuntime {
     /// Executes a batch of tool calls with bounded parallelism, timeout,
     /// validation, and optional execution recording.
     ///
+    /// Tool calls are partitioned by [`Tool::is_concurrency_safe`]:
+    /// concurrent-safe tools execute in parallel (bounded by semaphore),
+    /// while exclusive tools execute sequentially, one at a time.
+    /// Results are merged in the original call order.
+    ///
     /// Each tool call is executed independently. If `execution_store` is
     /// provided, each execution is recorded.
     ///
@@ -95,40 +101,91 @@ impl ToolRuntime {
             return Ok(Vec::new());
         }
 
-        let futures: Vec<_> = calls
-            .into_iter()
-            .map(|call| {
-                let sem = Arc::clone(&self.semaphore);
-                let registry = self.registry.clone();
-                let tool_timeout = self.policy.tool_timeout;
-                let continue_on_failure = self.policy.continue_on_tool_failure;
+        let call_count = calls.len();
+        let indexed_calls: Vec<(usize, ToolCall)> = calls.into_iter().enumerate().collect();
 
-                async move {
-                    let _permit = sem.acquire().await.map_err(|_| RuntimeError::ToolTimeout {
+        let (concurrent_group, exclusive_group): (Vec<_>, Vec<_>) =
+            indexed_calls.into_iter().partition(|(_, call)| {
+                self.registry
+                    .get(&call.name)
+                    .is_some_and(|tool| tool.is_concurrency_safe())
+            });
+
+        let mut results: Vec<Option<ToolExecutionOutcome>> =
+            (0..call_count).map(|_| None).collect();
+
+        if !concurrent_group.is_empty() {
+            let concurrent_results = {
+                let futures: Vec<_> = concurrent_group
+                    .into_iter()
+                    .map(|(idx, call)| {
+                        let sem = Arc::clone(&self.semaphore);
+                        let registry = self.registry.clone();
+                        let tool_timeout = self.policy.tool_timeout;
+                        let continue_on_failure = self.policy.continue_on_tool_failure;
+                        let truncation_config = self.policy.tool_output.clone();
+
+                        async move {
+                            let _permit =
+                                sem.acquire().await.map_err(|_| RuntimeError::ToolTimeout {
+                                    tool: call.name.clone(),
+                                })?;
+
+                            let outcome = Self::execute_single(
+                                &registry,
+                                &call,
+                                tool_timeout,
+                                continue_on_failure,
+                                &truncation_config,
+                            )
+                            .await;
+                            Ok::<(usize, ToolExecutionOutcome), RuntimeError>((idx, outcome))
+                        }
+                    })
+                    .collect();
+
+                join_all(futures).await
+            };
+
+            for res in concurrent_results {
+                let (idx, outcome) = res?;
+                if let Some(store) = execution_store {
+                    Self::record_execution(store, session_id, message_id, &outcome.call, &outcome)
+                        .await;
+                }
+                results[idx] = Some(outcome);
+            }
+        }
+
+        for (idx, call) in exclusive_group {
+            let _permit =
+                self.semaphore
+                    .acquire()
+                    .await
+                    .map_err(|_| RuntimeError::ToolTimeout {
                         tool: call.name.clone(),
                     })?;
 
-                    let outcome = Self::execute_single(
-                        &registry,
-                        &call,
-                        tool_timeout,
-                        continue_on_failure,
-                        &self.policy.tool_output,
-                    )
-                    .await;
+            let outcome = Self::execute_single(
+                &self.registry,
+                &call,
+                self.policy.tool_timeout,
+                self.policy.continue_on_tool_failure,
+                &self.policy.tool_output,
+            )
+            .await;
 
-                    if let Some(store) = execution_store {
-                        Self::record_execution(store, session_id, message_id, &call, &outcome)
-                            .await;
-                    }
+            if let Some(store) = execution_store {
+                Self::record_execution(store, session_id, message_id, &call, &outcome).await;
+            }
 
-                    Ok::<ToolExecutionOutcome, RuntimeError>(outcome)
-                }
-            })
-            .collect();
+            results[idx] = Some(outcome);
+        }
 
-        let results = join_all(futures).await;
-        results.into_iter().collect()
+        Ok(results
+            .into_iter()
+            .map(|r| r.unwrap_or_else(|| unreachable!("all indices populated")))
+            .collect())
     }
 
     async fn execute_single(
@@ -143,7 +200,9 @@ impl ToolRuntime {
             warn!(tool = %call.name, "tool not found");
             return ToolExecutionOutcome {
                 call: call.clone(),
-                output: Err(error_msg.clone()),
+                output: Err(ToolError::NotFound {
+                    name: call.name.clone(),
+                }),
                 message: Message::tool_text(
                     call.id.clone(),
                     call.name.clone(),
@@ -157,9 +216,13 @@ impl ToolRuntime {
         {
             debug!(tool = %call.name, error = %validation_error, "schema validation failed");
             if !continue_on_failure {
+                let err = ToolError::InvalidArguments {
+                    name: call.name.clone(),
+                    message: validation_error.clone(),
+                };
                 return ToolExecutionOutcome {
                     call: call.clone(),
-                    output: Err(validation_error.clone()),
+                    output: Err(err),
                     message: Message::tool_text(
                         call.id.clone(),
                         call.name.clone(),
@@ -167,9 +230,13 @@ impl ToolRuntime {
                     ),
                 };
             }
+            let err = ToolError::InvalidArguments {
+                name: call.name.clone(),
+                message: validation_error.clone(),
+            };
             return ToolExecutionOutcome {
                 call: call.clone(),
-                output: Err(validation_error.clone()),
+                output: Err(err),
                 message: Message::tool_text(
                     call.id.clone(),
                     call.name.clone(),
@@ -199,7 +266,7 @@ impl ToolRuntime {
                 warn!(tool = %call.name, ?duration, error = %error_msg, "tool execution failed");
                 ToolExecutionOutcome {
                     call: call.clone(),
-                    output: Err(error_msg.clone()),
+                    output: Err(tool_error),
                     message: Message::tool_text(
                         call.id.clone(),
                         call.name.clone(),
@@ -212,7 +279,10 @@ impl ToolRuntime {
                 warn!(tool = %call.name, "tool execution timed out");
                 ToolExecutionOutcome {
                     call: call.clone(),
-                    output: Err(error_msg.clone()),
+                    output: Err(ToolError::Execution {
+                        name: call.name.clone(),
+                        message: error_msg.clone(),
+                    }),
                     message: Message::tool_text(
                         call.id.clone(),
                         call.name.clone(),
@@ -262,7 +332,7 @@ impl ToolRuntime {
                 execution = execution.with_success(output.value.clone(), std::time::Duration::ZERO);
             }
             Err(error) => {
-                execution = execution.with_failure(error, std::time::Duration::ZERO);
+                execution = execution.with_failure(error.to_string(), std::time::Duration::ZERO);
             }
         }
 
@@ -393,7 +463,7 @@ mod tests {
         assert_eq!(outcomes.len(), 1);
         assert!(outcomes[0].output.is_err());
         let err = outcomes[0].output.as_ref().unwrap_err();
-        assert!(err.contains("validation"));
+        assert!(err.to_string().contains("validation"));
     }
 
     #[tokio::test]
@@ -451,5 +521,120 @@ mod tests {
             .unwrap();
 
         assert!(outcomes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn execute_batch_partitions_concurrent_and_exclusive() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let concurrent_flag = Arc::new(AtomicBool::new(false));
+        let exclusive_flag = Arc::new(AtomicBool::new(false));
+
+        let con_flag = Arc::clone(&concurrent_flag);
+        let concurrent_tool = FunctionTool::new(
+            "concurrent",
+            "Safe for concurrency",
+            json!({"type": "object"}),
+            move |_args: Value| -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = crate::tool::ToolResult<Value>> + Send>,
+            > {
+                let flag = Arc::clone(&con_flag);
+                Box::pin(async move {
+                    flag.store(true, Ordering::SeqCst);
+                    Ok(Value::Null)
+                })
+            },
+        )
+        .concurrency_safe();
+
+        let exc_flag = Arc::clone(&exclusive_flag);
+        let exclusive_tool = FunctionTool::new(
+            "exclusive",
+            "Not safe for concurrency",
+            json!({"type": "object"}),
+            move |_args: Value| -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = crate::tool::ToolResult<Value>> + Send>,
+            > {
+                let flag = Arc::clone(&exc_flag);
+                Box::pin(async move {
+                    flag.store(true, Ordering::SeqCst);
+                    Ok(Value::Null)
+                })
+            },
+        );
+        // exclusive_tool is NOT .concurrency_safe() — defaults to false
+
+        let mut registry = ToolRegistry::new();
+        registry.register(concurrent_tool);
+        registry.register(exclusive_tool);
+
+        let policy = RuntimePolicy::new().with_max_tool_concurrency(4);
+        let runtime = ToolRuntime::new(registry, policy);
+
+        let calls = vec![
+            ToolCall::new("call_1", "concurrent", json!({})),
+            ToolCall::new("call_2", "exclusive", json!({})),
+        ];
+
+        let session_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+        let outcomes = runtime
+            .execute_batch(calls, session_id, message_id, None)
+            .await
+            .unwrap();
+
+        assert_eq!(outcomes.len(), 2);
+        assert!(outcomes[0].output.is_ok());
+        assert!(outcomes[1].output.is_ok());
+        assert!(concurrent_flag.load(Ordering::SeqCst));
+        assert!(exclusive_flag.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn execute_batch_preserves_result_order() {
+        let tool_a = FunctionTool::new(
+            "a",
+            "Tool A",
+            json!({"type": "object"}),
+            |_args: Value| -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = crate::tool::ToolResult<Value>> + Send>,
+            > { Box::pin(async move { Ok(Value::String("A".into())) }) },
+        )
+        .concurrency_safe();
+
+        let tool_b = FunctionTool::new(
+            "b",
+            "Tool B",
+            json!({"type": "object"}),
+            |_args: Value| -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = crate::tool::ToolResult<Value>> + Send>,
+            > { Box::pin(async move { Ok(Value::String("B".into())) }) },
+        );
+        // tool_b is NOT concurrency_safe
+
+        let mut registry = ToolRegistry::new();
+        registry.register(tool_a);
+        registry.register(tool_b);
+
+        let policy = RuntimePolicy::new().with_max_tool_concurrency(4);
+        let runtime = ToolRuntime::new(registry, policy);
+
+        let calls = vec![
+            ToolCall::new("call_1", "a", json!({})),
+            ToolCall::new("call_2", "b", json!({})),
+        ];
+
+        let session_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+        let outcomes = runtime
+            .execute_batch(calls, session_id, message_id, None)
+            .await
+            .unwrap();
+
+        assert_eq!(outcomes.len(), 2);
+        // Results must be in original call order: a first, then b
+        assert_eq!(outcomes[0].call.name, "a");
+        assert_eq!(outcomes[1].call.name, "b");
     }
 }
