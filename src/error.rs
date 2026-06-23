@@ -129,6 +129,30 @@ impl ProviderError {
                 | Self::Transport { .. }
         )
     }
+
+    /// Returns `true` when the error indicates the request exceeded the
+    /// model's context window and should be retried after compaction.
+    ///
+    /// Detects provider-specific error messages for:
+    /// - OpenAI: `context_length_exceeded`
+    /// - Anthropic: `prompt is too long`
+    /// - Generic: `maximum context length`, `too many tokens`, `token limit`
+    #[must_use]
+    pub fn is_context_overflow(&self) -> bool {
+        let message = match self {
+            Self::BadRequest { message, .. } | Self::Provider { message, .. } => message.as_str(),
+            _ => return false,
+        };
+
+        message.contains("context_length_exceeded")
+            || message.contains("maximum context length")
+            || message.contains("too many tokens")
+            || message.contains("reduce the length")
+            || message.contains("token limit")
+            || message.contains("prompt is too long")
+            || message.contains("input length exceeds")
+            || message.contains("context window")
+    }
 }
 
 /// Errors produced during tool execution.
