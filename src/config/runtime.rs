@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::runtime::RuntimePolicy;
+use crate::runtime::{CompactionConfig, RuntimePolicy};
 
 /// Runtime configuration covering policy, context limits, and event channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,6 +94,8 @@ impl From<RuntimePolicyConfig> for RuntimePolicy {
             continue_on_tool_failure: config.continue_on_tool_failure,
             retry_on_provider_error: config.retry_on_provider_error,
             max_retries: config.max_retries,
+            compaction: CompactionConfig::default(),
+            tool_output: crate::tool_output::ToolOutputConfig::default(),
         }
     }
 }

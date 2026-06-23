@@ -37,6 +37,14 @@ pub struct ProviderConfig {
     #[serde(default)]
     pub model: Option<ModelName>,
 
+    /// Known model names for this provider (model catalog).
+    #[serde(default)]
+    pub models: Vec<ModelName>,
+
+    /// Model to use for compaction. Falls back to `model` when `None`.
+    #[serde(default)]
+    pub compaction_model: Option<ModelName>,
+
     /// API key or bearer token.
     ///
     /// Use `"env:MY_VAR"` to read from the environment variable `MY_VAR`.
@@ -68,6 +76,8 @@ impl ProviderConfig {
             provider_type: None,
             base_url: base_url.into(),
             model: None,
+            models: Vec::new(),
+            compaction_model: None,
             api_key: None,
             organization: None,
             timeout_secs: default_timeout_secs(),

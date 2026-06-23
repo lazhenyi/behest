@@ -377,7 +377,7 @@ impl AgentConfigBuilder {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::unused_async)]
 async fn build_session_store(config: &StoreConfig) -> Result<Box<dyn crate::store::SessionStore>> {
     match config.session_backend {
         StoreBackend::Memory => Ok(Box::new(crate::store::memory::MemorySessionStore::new())),
@@ -485,6 +485,7 @@ async fn build_session_store(config: &StoreConfig) -> Result<Box<dyn crate::stor
     }
 }
 
+#[allow(clippy::unused_async)]
 async fn build_execution_store(
     config: &StoreConfig,
 ) -> Result<Box<dyn crate::store::ExecutionStore>> {
