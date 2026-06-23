@@ -44,6 +44,8 @@ pub enum AgentEvent {
     RunCancelled(RunCancelled),
     /// Doom loop has been detected.
     DoomLoopDetected(DoomLoopDetected),
+    /// Compaction circuit breaker has opened due to repeated failures.
+    CompactionCircuitOpened(CompactionCircuitOpened),
 }
 
 impl AgentEvent {
@@ -68,6 +70,7 @@ impl AgentEvent {
             AgentEvent::RunFailed(e) => e.run_id,
             AgentEvent::RunCancelled(e) => e.run_id,
             AgentEvent::DoomLoopDetected(e) => e.run_id,
+            AgentEvent::CompactionCircuitOpened(e) => e.run_id,
         }
     }
 
@@ -278,5 +281,16 @@ pub struct DoomLoopDetected {
     /// Description of the doom loop pattern detected.
     pub description: String,
     /// When the doom loop was detected.
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Compaction circuit breaker opened event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactionCircuitOpened {
+    /// Run identifier.
+    pub run_id: RunId,
+    /// Number of consecutive failures that triggered the breaker.
+    pub consecutive_failures: u32,
+    /// When the breaker opened.
     pub timestamp: DateTime<Utc>,
 }
