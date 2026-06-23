@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package agent.v1;
+
+import "agent/v1/common.proto";
+
+// Agent event emitted during a run.
+message AgentEvent {
+  uint64 sequence = 1;
+  string run_id = 2;
+  string event_type = 3; // e.g. "run.started", "text.delta", ...
+  string data = 4;       // JSON event payload
+  Timestamp timestamp = 5;
+}
+
+// Run record.
+message RunRecord {
+  string id = 1;
+  string session_id = 2;
+  RunStatus status = 3;
+  ProviderId provider = 4;
+  ModelName model = 5;
+  string metadata = 6; // JSON
+  Timestamp created_at = 7;
+  Timestamp updated_at = 8;
+}
+
+// Run output.
+message RunOutput {
+  string run_id = 1;
+  string session_id = 2;
+  uint32 iterations = 3;
+  FinishReason finish_reason = 4;
+  TokenUsage total_usage = 5;
+  repeated Message messages = 6; // assistant messages produced
+}
+
+// Create run request.
+message CreateRunRequest {
+  string session_id = 1; // optional, creates new session if empty
+  ProviderId provider = 2;
+  ModelName model = 3;
+  string input = 4;
+  string metadata = 5;   // JSON, optional
+  string tool_choice = 6; // "auto", "none", "required"
+}
+
+// Create run response (async).
+message CreateRunResponse {
+  string run_id = 1;
+  string session_id = 2;
+}
+
+// List runs request.
+message ListRunsRequest {
+  string session_id = 1; // optional filter
+  RunStatus status = 2;  // optional filter
+  Pagination pagination = 3;
+}
+
+// List runs response.
+message ListRunsResponse {
+  repeated RunRecord runs = 1;
+}
+
+// Get run request.
+message GetRunRequest {
+  string run_id = 1;
+}
+
+// Get run response.
+message GetRunResponse {
+  RunRecord run = 1;
+}
+
+// Get run output request.
+message GetRunOutputRequest {
+  string run_id = 1;
+}
+
+// Get run output response.
+message GetRunOutputResponse {
+  RunOutput output = 1;
+}
+
+// Cancel run request.
+message CancelRunRequest {
+  string run_id = 1;
+}
+
+// Cancel run response.
+message CancelRunResponse {}
+
+// Watch events request (SSE equivalent).
+message WatchRunEventsRequest {
+  string run_id = 1;
+  uint64 last_event_id = 2; // for reconnection
+}
+
+// Run service.
+service RunService {
+  // Create a run (async, returns immediately).
+  rpc CreateRun(CreateRunRequest) returns (CreateRunResponse);
+  // Create a run and stream events (server-streaming).
+  rpc CreateRunStream(CreateRunRequest) returns (stream AgentEvent);
+  // List runs (optionally filtered by session/status).
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse);
+  // Get a run record.
+  rpc GetRun(GetRunRequest) returns (GetRunResponse);
+  // Get final run output.
+  rpc GetRunOutput(GetRunOutputRequest) returns (GetRunOutputResponse);
+  // Cancel an active run.
+  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse);
+  // Watch events for a run (server-streaming, replay + live).
+  rpc WatchRunEvents(WatchRunEventsRequest) returns (stream AgentEvent);
+}

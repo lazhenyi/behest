@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package agent.v1;
+
+import "agent/v1/common.proto";
+
+// Session metadata.
+message Session {
+  string id = 1;
+  string title = 2;
+  ModelName model = 3;
+  Timestamp created_at = 4;
+  Timestamp updated_at = 5;
+  string metadata = 6; // JSON
+}
+
+// Create session request.
+message CreateSessionRequest {
+  string title = 1;
+  ModelName model = 2;
+  string metadata = 3; // JSON, optional
+}
+
+// Create session response.
+message CreateSessionResponse {
+  Session session = 1;
+}
+
+// List sessions request.
+message ListSessionsRequest {
+  Pagination pagination = 1;
+}
+
+// List sessions response.
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+}
+
+// Get session request.
+message GetSessionRequest {
+  string id = 1;
+}
+
+// Get session response.
+message GetSessionResponse {
+  Session session = 1;
+}
+
+// Update session request.
+message UpdateSessionRequest {
+  string id = 1;
+  optional string title = 2;
+  optional ModelName model = 3;
+  optional string metadata = 4; // JSON
+}
+
+// Update session response.
+message UpdateSessionResponse {
+  Session session = 1;
+}
+
+// Delete session request.
+message DeleteSessionRequest {
+  string id = 1;
+}
+
+// Delete session response.
+message DeleteSessionResponse {}
+
+// List messages request.
+message ListMessagesRequest {
+  string session_id = 1;
+  Pagination pagination = 2;
+}
+
+// List messages response.
+message ListMessagesResponse {
+  repeated Message messages = 1;
+}
+
+// Session service.
+service SessionService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+  rpc UpdateSession(UpdateSessionRequest) returns (UpdateSessionResponse);
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse);
+}

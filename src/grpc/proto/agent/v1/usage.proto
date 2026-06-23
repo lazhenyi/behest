@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package agent.v1;
+
+import "agent/v1/common.proto";
+
+// Usage record.
+message UsageRecord {
+  string session_id = 1;
+  TokenUsage total_tokens = 2;
+  Timestamp recorded_at = 3;
+}
+
+// Get usage request.
+message GetUsageRequest {
+  string session_id = 1; // optional filter
+}
+
+// Get usage response.
+message GetUsageResponse {
+  repeated UsageRecord records = 1;
+  TokenUsage aggregate = 2;
+}
+
+// Get metrics request.
+message GetMetricsRequest {}
+
+// Get metrics response (JSON format).
+message GetMetricsResponse {
+  string metrics = 1; // JSON
+}
+
+// Get Prometheus metrics request.
+message GetPrometheusMetricsRequest {}
+
+// Get Prometheus metrics response.
+message GetPrometheusMetricsResponse {
+  string text = 1; // Prometheus text format
+}
+
+// Usage service.
+service UsageService {
+  rpc GetUsage(GetUsageRequest) returns (GetUsageResponse);
+}
+
+// Metrics service.
+service MetricsService {
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+  rpc GetPrometheusMetrics(GetPrometheusMetricsRequest) returns (GetPrometheusMetricsResponse);
+}

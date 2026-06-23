@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package agent.v1;
+
+import "agent/v1/common.proto";
+
+// Provider metadata.
+message ProviderInfo {
+  ProviderId id = 1;
+  string provider_type = 2;
+  ModelName default_model = 3;
+  repeated ModelName models = 4;
+}
+
+// List providers request.
+message ListProvidersRequest {}
+
+// List providers response.
+message ListProvidersResponse {
+  repeated ProviderInfo providers = 1;
+}
+
+// Get provider request.
+message GetProviderRequest {
+  ProviderId id = 1;
+}
+
+// Get provider response.
+message GetProviderResponse {
+  ProviderInfo provider = 1;
+}
+
+// List models request.
+message ListModelsRequest {}
+
+// List models response.
+message ListModelsResponse {
+  repeated ModelEntry models = 1;
+}
+
+// Model catalog entry.
+message ModelEntry {
+  ProviderId provider = 1;
+  ModelName model = 2;
+  bool streaming = 3;
+  bool tool_calling = 4;
+}
+
+// Provider service.
+service ProviderService {
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
+  rpc GetProvider(GetProviderRequest) returns (GetProviderResponse);
+}
+
+// Model service.
+service ModelService {
+  rpc ListModels(ListModelsRequest) returns (ListModelsResponse);
+}
