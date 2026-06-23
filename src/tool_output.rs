@@ -19,6 +19,7 @@ pub const DEFAULT_MAX_BYTES: usize = 50 * 1024; // 50 KB
 
 /// Configuration for tool output truncation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ToolOutputConfig {
     /// Maximum lines before truncation. `None` disables line-based truncation.
     pub max_lines: Option<usize>,
