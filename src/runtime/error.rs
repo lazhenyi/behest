@@ -87,6 +87,19 @@ pub enum RuntimeError {
         /// Human-readable description of the detected pattern.
         description: String,
     },
+
+    /// Input was rejected by the admission pipeline.
+    #[error("input rejected: {input_id} — {reason}")]
+    InputRejected {
+        /// Input identifier.
+        input_id: crate::runtime::input::InputId,
+        /// Rejection reason.
+        reason: String,
+    },
+
+    /// Input admission internal error.
+    #[error("input admission error: {0}")]
+    InputAdmissionFailed(String),
 }
 
 /// Result type for runtime operations.

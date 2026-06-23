@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::provider::{ModelName, ProviderId};
 use crate::runtime::doom_loop::DoomLoopConfig;
+use crate::runtime::input::InputAdmissionConfig;
 use crate::tool_output::ToolOutputConfig;
 
 /// Compaction configuration for automatic context compression.
@@ -153,6 +154,9 @@ pub struct RuntimePolicy {
     /// Doom loop detection configuration.
     #[serde(default)]
     pub doom_loop: DoomLoopConfig,
+    /// Input admission pipeline configuration.
+    #[serde(default)]
+    pub input_admission: InputAdmissionConfig,
 }
 
 impl Default for RuntimePolicy {
@@ -169,6 +173,7 @@ impl Default for RuntimePolicy {
             compaction: CompactionConfig::default(),
             tool_output: ToolOutputConfig::default(),
             doom_loop: DoomLoopConfig::default(),
+            input_admission: InputAdmissionConfig::default(),
         }
     }
 }
@@ -254,6 +259,13 @@ impl RuntimePolicy {
     #[must_use]
     pub fn with_doom_loop(mut self, config: DoomLoopConfig) -> Self {
         self.doom_loop = config;
+        self
+    }
+
+    /// Sets the input admission pipeline configuration.
+    #[must_use]
+    pub fn with_input_admission(mut self, config: InputAdmissionConfig) -> Self {
+        self.input_admission = config;
         self
     }
 }

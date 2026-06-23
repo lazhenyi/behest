@@ -102,6 +102,7 @@ impl From<RuntimePolicyConfig> for RuntimePolicy {
             compaction: CompactionConfig::default(),
             tool_output: crate::tool_output::ToolOutputConfig::default(),
             doom_loop: crate::runtime::doom_loop::DoomLoopConfig::default(),
+            input_admission: crate::runtime::input::InputAdmissionConfig::default(),
         }
     }
 }

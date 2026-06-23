@@ -11,6 +11,7 @@ pub mod context;
 pub mod doom_loop;
 pub mod error;
 pub mod event;
+pub mod input;
 pub mod job;
 pub mod memory;
 pub mod policy;
@@ -29,6 +30,9 @@ pub use context::ContextPipeline;
 pub use doom_loop::{DoomLoopConfig, DoomLoopDetector, DoomLoopType, ToolCallFingerprint};
 pub use error::RuntimeError;
 pub use event::AgentEvent;
+pub use input::{
+    InputAdmission, InputAdmissionConfig, InputEvent, InputId, InputRecord, InputState,
+};
 pub use job::{BackgroundJob, BackgroundJobPool, JobConditions, JobPriority, JobType};
 pub use policy::{CompactionConfig, RuntimePolicy};
 pub use router::ModelRouter;

@@ -139,9 +139,7 @@ impl ToolCallFingerprint {
                     .collect();
                 Value::Object(canonical_map)
             }
-            Value::Array(arr) => {
-                Value::Array(arr.iter().map(Self::canonicalize).collect())
-            }
+            Value::Array(arr) => Value::Array(arr.iter().map(Self::canonicalize).collect()),
             other => other.clone(),
         }
     }
@@ -259,8 +257,8 @@ impl DoomLoopDetector {
             let mut matches = true;
             for rep in 1..=repetitions {
                 let rep_start = pattern_start + rep * cycle_len;
-                for i in 0..cycle_len {
-                    if self.history[rep_start + i].0 != candidate[i] {
+                for (i, cand_fp) in candidate.iter().enumerate() {
+                    if self.history[rep_start + i].0 != *cand_fp {
                         matches = false;
                         break;
                     }
@@ -271,7 +269,8 @@ impl DoomLoopDetector {
             }
 
             if matches {
-                let pattern_names: Vec<String> = self.history[pattern_start..pattern_start + cycle_len]
+                let pattern_names: Vec<String> = self.history
+                    [pattern_start..pattern_start + cycle_len]
                     .iter()
                     .map(|(_, name)| name.clone())
                     .collect();
@@ -337,8 +336,16 @@ mod tests {
         let config = DoomLoopConfig::new().with_consecutive_threshold(3);
         let mut detector = DoomLoopDetector::new(config);
 
-        assert!(detector.record_and_check("read", &json!({"path": "/foo"})).is_none());
-        assert!(detector.record_and_check("read", &json!({"path": "/foo"})).is_none());
+        assert!(
+            detector
+                .record_and_check("read", &json!({"path": "/foo"}))
+                .is_none()
+        );
+        assert!(
+            detector
+                .record_and_check("read", &json!({"path": "/foo"}))
+                .is_none()
+        );
 
         let result = detector.record_and_check("read", &json!({"path": "/foo"}));
         assert!(matches!(
@@ -353,9 +360,21 @@ mod tests {
         let config = DoomLoopConfig::new().with_consecutive_threshold(3);
         let mut detector = DoomLoopDetector::new(config);
 
-        assert!(detector.record_and_check("read", &json!({"path": "/foo"})).is_none());
-        assert!(detector.record_and_check("read", &json!({"path": "/bar"})).is_none());
-        assert!(detector.record_and_check("read", &json!({"path": "/foo"})).is_none());
+        assert!(
+            detector
+                .record_and_check("read", &json!({"path": "/foo"}))
+                .is_none()
+        );
+        assert!(
+            detector
+                .record_and_check("read", &json!({"path": "/bar"}))
+                .is_none()
+        );
+        assert!(
+            detector
+                .record_and_check("read", &json!({"path": "/foo"}))
+                .is_none()
+        );
     }
 
     #[test]

@@ -28,6 +28,7 @@ use super::event::{
     RunFailed, RunStarted, TextDelta, ToolCallCompleted, ToolCallDelta,
     ToolCallStarted as ToolCallStartedEvent, UsageRecorded,
 };
+use super::input::{InputAdmission, InputRecord};
 use super::job::{BackgroundJobPool, JobConditions, JobPriority, JobType};
 use super::policy::RuntimePolicy;
 use super::run::{RunId, RunRecord, RunRequest, RunStatus};
@@ -51,6 +52,7 @@ pub struct AgentRuntime {
     policy: RuntimePolicy,
     compaction: CompactionService,
     session_gate: SessionGate,
+    input_admission: InputAdmission,
     event_tx: broadcast::Sender<AgentEvent>,
     #[cfg(feature = "queue")]
     event_publisher: Option<Arc<dyn EventPublisher>>,
@@ -70,6 +72,7 @@ impl AgentRuntime {
     ) -> Self {
         let (event_tx, _) = broadcast::channel(256);
         let compaction = CompactionService::new(providers.clone(), policy.compaction.clone());
+        let input_admission = InputAdmission::new(policy.input_admission.clone());
         let background_jobs = BackgroundJobPool::new(
             store.clone(),
             #[cfg(feature = "queue")]
@@ -85,6 +88,7 @@ impl AgentRuntime {
             policy,
             compaction,
             session_gate: SessionGate::new(),
+            input_admission,
             event_tx,
             #[cfg(feature = "queue")]
             event_publisher: None,
@@ -184,6 +188,25 @@ impl AgentRuntime {
             .acquire(session_id)
             .await
             .map_err(|busy| RuntimeError::SessionBusy(busy.session_id))?;
+
+        // Admit the input before allocating any run resources.
+        let mut input_record = InputRecord::new(session_id, request.input.clone());
+        let admission_events = self
+            .input_admission
+            .admit(&mut input_record)
+            .map_err(|e| RuntimeError::InputAdmissionFailed(e.to_string()))?;
+        if input_record.state == super::input::InputState::Rejected {
+            let reason = input_record.rejection_reason.clone().unwrap_or_default();
+            return Err(RuntimeError::InputRejected {
+                input_id: input_record.id,
+                reason,
+            });
+        }
+        debug!(
+            input_id = %input_record.id,
+            events = admission_events.len(),
+            "input admitted"
+        );
 
         // Push a Run-level tool scope. The RAII guard ensures cleanup
         // on every exit path, including early returns and panics.
@@ -745,6 +768,36 @@ impl AgentRuntime {
                         "assistant message ID missing in ExecutingTools".to_string(),
                     )
                 })?;
+
+                // Check for doom loop patterns before executing tools.
+                for call in &tool_calls {
+                    if let Some(loop_type) =
+                        doom_detector.record_and_check(&call.name, &call.arguments)
+                    {
+                        let description = match &loop_type {
+                            DoomLoopType::ConsecutiveDuplicate { tool_name, count } => {
+                                format!("consecutive duplicate: {tool_name} called {count} times")
+                            }
+                            DoomLoopType::Cycle {
+                                pattern,
+                                repetitions,
+                            } => {
+                                format!(
+                                    "cycle detected: [{}] repeated {repetitions} times",
+                                    pattern.join(", ")
+                                )
+                            }
+                        };
+                        self.emit(&AgentEvent::DoomLoopDetected(DoomLoopDetected {
+                            run_id,
+                            description: description.clone(),
+                            timestamp: Utc::now(),
+                        }));
+                        let err = RuntimeError::DoomLoopDetected { description };
+                        self.fail_run(run_id, &err).await;
+                        return Err(err);
+                    }
+                }
 
                 let outcomes = self
                     .tools
