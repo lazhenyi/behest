@@ -117,10 +117,82 @@ impl ConfigLoader {
             .build()
             .map_err(|e| crate::error::Error::Config(format!("failed to build config: {e}")))?;
 
-        settings
-            .try_deserialize()
-            .map_err(|e| crate::error::Error::Config(format!("failed to deserialize config: {e}")))
+        let mut value: serde_json::Value = settings.try_deserialize().map_err(|e| {
+            crate::error::Error::Config(format!("failed to deserialize config: {e}"))
+        })?;
+
+        substitute_json(&mut value);
+
+        serde_json::from_value(value)
+            .map_err(|e| crate::error::Error::Config(format!("failed to parse final config: {e}")))
     }
+}
+
+/// Recursively traverses a JSON value and substitutes placeholders in all strings.
+pub fn substitute_json(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(s) => {
+            *s = substitute_string(s);
+        }
+        serde_json::Value::Object(map) => {
+            for val in map.values_mut() {
+                substitute_json(val);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for val in arr {
+                substitute_json(val);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Replaces placeholders like `${VAR_NAME}` or `${VAR_NAME:-default}` with environment variables.
+#[must_use]
+pub fn substitute_string(input: &str) -> String {
+    let mut result = String::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '$' && chars.peek() == Some(&'{') {
+            chars.next(); // consume '{'
+            let mut placeholder = String::new();
+            let mut closed = false;
+            for pc in chars.by_ref() {
+                if pc == '}' {
+                    closed = true;
+                    break;
+                }
+                placeholder.push(pc);
+            }
+
+            if closed {
+                if let Some(pos) = placeholder.find(":-") {
+                    let var_name = &placeholder[..pos];
+                    let default_val = &placeholder[pos + 2..];
+                    match std::env::var(var_name) {
+                        Ok(val) => result.push_str(&val),
+                        Err(_) => result.push_str(default_val),
+                    }
+                } else {
+                    let var_name = &placeholder;
+                    match std::env::var(var_name) {
+                        Ok(val) => result.push_str(&val),
+                        Err(_) => {
+                            // If not set and no default, replace with empty string
+                        }
+                    }
+                }
+            } else {
+                result.push_str("${");
+                result.push_str(&placeholder);
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 /// Loads configuration using a layered strategy.
@@ -159,5 +231,24 @@ impl AgentConfig {
     ) -> CrateResult<super::AgentConfigBuilder> {
         let base: Self = load_layered(file, env_prefix)?;
         Ok(super::AgentConfigBuilder::from_config(base))
+    }
+}
+
+/// Recursively merges overlay JSON into base JSON.
+pub fn merge_json(base: &mut serde_json::Value, overlay: serde_json::Value) {
+    match (base, overlay) {
+        (serde_json::Value::Object(base_map), serde_json::Value::Object(overlay_map)) => {
+            for (key, val) in overlay_map {
+                match base_map.get_mut(&key) {
+                    Some(base_val) => merge_json(base_val, val),
+                    None => {
+                        base_map.insert(key, val);
+                    }
+                }
+            }
+        }
+        (base, overlay) => {
+            *base = overlay;
+        }
     }
 }
