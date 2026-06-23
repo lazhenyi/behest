@@ -9,7 +9,9 @@ use uuid::Uuid;
 
 use crate::error::StorageError;
 use crate::provider::{ContentPart, ModelName, TokenUsage, ToolCall};
-use crate::store::{MessageRecord, MessageRole, Session, SessionStore, StoreResult};
+use crate::store::{
+    CompactionMeta, MessageRecord, MessageRole, Session, SessionStore, StoreResult,
+};
 
 /// MongoDB-backed session store using a document-per-session model.
 ///
@@ -134,6 +136,15 @@ pub struct MessageDoc {
     pub tool_calls: Vec<ToolCall>,
     /// Token usage.
     pub usage: Option<TokenUsage>,
+    /// Whether this message is a compaction task.
+    #[serde(default)]
+    pub is_compaction: bool,
+    /// Whether this message contains a compaction summary.
+    #[serde(default)]
+    pub is_summary: bool,
+    /// Compaction metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compaction_meta: Option<CompactionMeta>,
     /// Creation timestamp.
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
@@ -153,6 +164,9 @@ impl MessageDoc {
             content: m.content.clone(),
             tool_calls: m.tool_calls.clone(),
             usage: m.usage,
+            is_compaction: m.is_compaction,
+            is_summary: m.is_summary,
+            compaction_meta: m.compaction_meta.clone(),
             created_at: m.created_at,
         }
     }
@@ -179,6 +193,9 @@ impl MessageDoc {
             tool_name: None,
             usage: self.usage,
             created_at: self.created_at,
+            is_compaction: self.is_compaction,
+            is_summary: self.is_summary,
+            compaction_meta: self.compaction_meta,
         })
     }
 }
@@ -258,6 +275,48 @@ impl SessionStore for MongodbSessionStore {
                 source: Some(Box::new(e)),
             })?;
         Ok(())
+    }
+
+    async fn update_session(
+        &self,
+        id: &Uuid,
+        title: &str,
+        model: Option<&ModelName>,
+    ) -> StoreResult<Session> {
+        let id_str = id.to_string();
+        let now = bson::DateTime::now();
+
+        let mut set_doc = doc! { "title": title, "updated_at": now };
+        if let Some(m) = model {
+            set_doc.insert("model", m.as_str());
+        }
+
+        let result = self
+            .sessions
+            .update_one(doc! { "_id": &id_str }, doc! { "$set": set_doc })
+            .await
+            .map_err(|e| StorageError::BackendError {
+                backend: "mongodb".to_owned(),
+                message: e.to_string(),
+                source: Some(Box::new(e)),
+            })?;
+
+        if result.matched_count == 0 {
+            return Err(StorageError::NotFound { id: id.to_string() });
+        }
+
+        let doc = self
+            .sessions
+            .find_one(doc! { "_id": &id_str })
+            .await
+            .map_err(|e| StorageError::BackendError {
+                backend: "mongodb".to_owned(),
+                message: e.to_string(),
+                source: Some(Box::new(e)),
+            })?;
+
+        doc.ok_or_else(|| StorageError::NotFound { id: id.to_string() })?
+            .try_into_session()
     }
 
     async fn append_message(&self, message: MessageRecord) -> StoreResult<MessageRecord> {
