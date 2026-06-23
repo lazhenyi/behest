@@ -85,6 +85,10 @@ pub struct RunStarted {
     pub run_id: RunId,
     /// Session identifier.
     pub session_id: Uuid,
+    /// Provider used for model calls.
+    pub provider: ProviderId,
+    /// Model used for generation.
+    pub model: ModelName,
     /// When the run started.
     pub timestamp: DateTime<Utc>,
 }
