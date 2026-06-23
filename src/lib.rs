@@ -34,6 +34,7 @@ pub mod store;
 pub mod token;
 pub mod tool;
 pub mod tool_output;
+pub mod tool_scope;
 
 #[cfg(feature = "rag")]
 pub mod rag;
@@ -46,7 +47,7 @@ pub mod grpc;
 
 pub use crate::error::{ContextError, Error, ProviderError, Result, StorageError, ToolError};
 pub use crate::runtime::{
-    AgentEvent, AgentRuntime, CompactionResult, CompactionService, ModelRouter, RunId, RunOutput,
-    RunRequest, RunStatus, RuntimeError, RuntimePolicy,
+    AgentEvent, AgentRuntime, CompactionResult, CompactionService, FileSnapshotStore, ModelRouter,
+    RunId, RunOutput, RunRequest, RunStatus, RuntimeError, RuntimePolicy, Snapshot, SnapshotStore,
 };
 pub use crate::tool_output::{ToolOutputConfig, TruncationResult};
