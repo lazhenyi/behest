@@ -25,6 +25,12 @@
 - **Tokio**：默认 multi-thread runtime，使用 `sync`, `time`, `signal` features
 - **timeout 强制**：所有 provider 调用通过 `tokio::time::timeout` 包裹，由 `RuntimePolicy::provider_timeout` 控制
 
+## 模块组织
+
+- `context.rs` / `tool.rs` / `tool_output.rs` / `tool_scope.rs` / `token.rs` / `error.rs` — 单文件模块，位于 `src/` 根
+- `config/` / `agent/` / `provider/` / `runtime/` / `store/` / `adapt/` / `rag/` / `queue/` / `grpc/` — 目录模块，含 `mod.rs` 子模块 gate
+- 运行时内部子模块（`runtime/accumulator.rs` 等）通过 `runtime/mod.rs` 声明并 re-export 公共符号
+
 ## 代码规模
 
 - 文件不超过 1000 行
@@ -45,6 +51,9 @@ use_try_shorthand = true
 ## 禁止项
 
 - `unsafe` — crate-level `#![forbid(unsafe_code)]`
+- `missing_docs` — `#![deny(missing_docs)]`，所有 public API 必须有文档
+- `unreachable_pub` — `#![deny(unreachable_pub)]`，禁止未用 `pub` 实际不可达的声明
+- `rust_2018_idioms` — `#![warn(rust_2018_idioms)]`
 - `unwrap()` / `expect()` — clippy `unwrap_used = "deny"`, `expect_used = "deny"`。测试中通过 `#[allow(clippy::unwrap_used)]` 豁免
 - `todo!()` / `unimplemented!()` — clippy `todo = "deny"`, `unimplemented = "deny"`
 - `dbg!()` — clippy `dbg_macro = "deny"`
@@ -109,3 +118,5 @@ unnecessary_wraps = { level = "allow", priority = 1 }
 - `serde` — 用 `derive` feature
 - `secrecy` — 敏感配置值包装，不得 log 或序列化
 - `serde_json` — 使用 `preserve_order` + `raw_value`
+- `schemars` + `jsonschema` — tool parameters schema 生成与运行时校验
+- `uuid` — 使用 `v4` + `v7` + `serde` features，统一用 `Uuid::now_v7()` 作为 ID 生成策略

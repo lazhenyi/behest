@@ -5,9 +5,15 @@
 - 核心业务逻辑：`AgentRuntime` 状态机、turn transition、compaction
 - 错误路径：provider 异常、token 超限、session busy、doom loop 触发
 - 序列化 / 反序列化：message、tool spec、event、config
-- tool 注册与执行：`FunctionTool` 注册、参数校验、执行结果
-- session / run 持久化读写语义
+- tool 注册与执行：`FunctionTool` 注册、参数校验、执行结果、`ToolRuntime` schema 校验 + timeout
+- session / run 持久化读写语义：`SessionStore`、`ExecutionStore`、`RunStore`（含 `MemoryRunStore`）
 - context pipeline 组合：system prompt + history + compaction filter + token trim
+- 输入准入：`InputAdmission` 验证、去重、拒空、长度限制
+- 事件溯源：`RunState` 投影重建（started → completed/failed/cancelled）
+- 后台作业：`BackgroundJobPool` 优先级排序、持久化/恢复、graceful shutdown
+- 模型路由：`ModelRouter` capability check + retry + fallback
+- 流式累积：`StreamAccumulator` text delta + tool call arguments 累积
+- 工具输出截断：`truncate_output()` head+tail 采样 + 文件保存
 
 ## 测试放置
 
@@ -34,7 +40,7 @@
 
 ```rust
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     // ...
 }

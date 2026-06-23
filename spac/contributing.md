@@ -12,12 +12,21 @@ trivial 任务定义：
 3. 不新增依赖
 4. 不改变数据结构
 5. 不改变数据库 schema
+6. 不新增 `AgentEvent` / `TurnState` / `Tool` trait / `Store` trait variant
+7. 不引入新的 trait 实现（`RunStore` / `ArtifactStore` 等）
 
 拿任务后：
 1. 先看 `git status --short`
 2. 搜索相关符号
-3. 充分理解后再改
-4. 最后验证并输出变更摘要
+3. 阅读相关 SPAC 文档（`spac/architecture.md` 等）
+4. 充分理解后再改
+5. 通过质量门禁验证：
+   ```bash
+   cargo fmt --all --check
+   cargo clippy --all-targets --all-features --locked -- -D warnings
+   cargo test --all-features --locked
+   ```
+6. 输出变更摘要
 
 ## Commit Message
 

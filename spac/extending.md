@@ -8,9 +8,10 @@
 
 ```
 src/adapt/<provider>/
-├── mod.rs      # pub mod chat; pub mod convert; pub mod types;
+├── mod.rs      # pub mod chat; pub mod convert; pub mod types; (pub mod embed;)
 ├── chat.rs     # ChatProvider 实现
 ├── convert.rs  # 请求构建 + 响应解析 + 错误映射
+├── embed.rs    # EmbeddingProvider 实现（可选，仅支持 embedding 的 provider）
 ├── types.rs    # provider 原生 API 类型
 ```
 
@@ -76,3 +77,90 @@ pub mod myprovider;
 ### 新增 Context adapter
 
 实现 `ContextAdapter` trait，在 `ContextPipeline` 中通过 `register()` 注册。adapter 在 context build 时按注册顺序执行。
+
+### 新增 RunStore backend
+
+实现 `RunStore` trait（在 `src/runtime/store.rs` 中定义）：
+
+```rust
+#[async_trait]
+impl RunStore for MyRunStore {
+    async fn create_run(&self, record: RunRecord) -> RuntimeResult<()>;
+    async fn get_run(&self, run_id: RunId) -> RuntimeResult<Option<RunRecord>>;
+    async fn update_run_status(&self, run_id: RunId, status: RunStatus) -> RuntimeResult<()>;
+    async fn append_event(&self, record: RunEventRecord) -> RuntimeResult<()>;
+    async fn list_events(&self, run_id: RunId) -> RuntimeResult<Vec<RunEventRecord>>;
+    async fn list_runs(&self, session_id: Uuid) -> RuntimeResult<Vec<RunRecord>>;
+    async fn delete_run(&self, run_id: RunId) -> RuntimeResult<()>;
+    async fn health_check(&self) -> RuntimeResult<()>;
+}
+```
+
+关键设计：
+- `get_run_state()` 有默认实现（折叠 `get_run()` + `list_events()` 为 `RunState`），backend 可 override 为原生投影
+- `list_runs_filtered()` 有默认实现但 backend 应 override 为原生查询
+- `append_event()` 必须原子更新 run 投影（status + total_usage + iteration + last_finish）
+- 可参考 `src/runtime/memory.rs` 的 `MemoryRunStore` 实现
+
+### 新增 ArtifactStore backend
+
+实现 `ArtifactStore` trait（在 `src/store/mod.rs` 中定义）：
+
+```rust
+#[async_trait]
+impl ArtifactStore for MyArtifactStore {
+    async fn put(&self, artifact: Artifact) -> StoreResult<Artifact>;
+    async fn get(&self, id: &Uuid) -> StoreResult<Option<Artifact>>;
+    async fn delete(&self, id: &Uuid) -> StoreResult<()>;
+    async fn list_by_session(&self, session_id: &Uuid) -> StoreResult<Vec<Artifact>>;
+}
+```
+
+已有实现：`MemoryArtifactStore`（内存）、`DiskArtifactStore` / `S3ArtifactStore`（object_store feature）。
+
+### 新增 InputAdmission 规则
+
+在 `src/runtime/input.rs` 的 `InputAdmission::admit()` 中添加验证逻辑：
+
+1. 在 `admit()` 方法中添加新的 `if` 分支（在现有 validate/dedup 之后）
+2. 失败时调用 `record.reject(reason)` 并返回 `InputEvent::Rejected`
+3. 对应的 `InputAdmissionConfig` 添加开关字段
+4. 更新 `InputAdmissionConfig` 的 `Default` 实现
+
+### 新增 BackgroundJobPool 作业类型
+
+在 `src/runtime/job.rs` 的 `JobType` enum 中新增 variant：
+
+1. 在 `JobType` enum 中添加新 variant（含必要 payload）
+2. 在 `BackgroundJobPool::execute_job()` 中添加对应执行分支
+3. 如果 variant 依赖外部 service（如 queue），使用 `#[cfg(feature = "...")]` gated
+
+### 新增 EventPublisher backend
+
+在 `src/queue/` 下新增文件，实现 `EventPublisher` trait：
+
+```rust
+#[async_trait]
+pub trait EventPublisher: Send + Sync {
+    async fn publish(&self, event: AgentEvent) -> QueueResult<()>;
+}
+```
+
+1. 新增 Cargo feature（backend 名）
+2. 在 `src/queue/mod.rs` 中 conditional compile
+3. 在 `src/prelude.rs` 中 feature-gated re-export
+4. 已有实现：`NatsEventPublisher`（nats feature）、`RedisStreamsPublisher`（redis feature）
+
+### 新增 Compaction 阶段
+
+Compaction pipeline 在 `src/runtime/compaction/` 下分为：
+
+- `overflow.rs` — 检测是否需要 compaction（token overflow / message count overflow）
+- `prompt.rs` — 构建 compaction LLM prompt（含 incremental summary 支持）
+- `select.rs` — 选择 compact 的 head 消息和保留的 tail 消息
+- `prune.rs` — 处理 post-compaction 的消息裁剪
+
+新增阶段时：
+1. 在 `compaction/mod.rs` 的 `CompactionService` 主流程中接入
+2. 阶段必须 idempotent，避免在失败时产生半截 compaction
+3. 关键状态变更记录到 `AgentEvent::CompactionCircuitOpened`

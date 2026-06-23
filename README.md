@@ -1,7 +1,19 @@
-# agents
+# behest
 
 Rust-native contracts for building production AI agent runtimes: provider-neutral chat,
 streaming, tool-calling, embeddings, typed errors, and an in-memory provider registry.
+
+## Why `behest`
+
+**behest** /bɪˈhest/ — *n.* a person's orders or command.
+
+> At the **behest** of the user, the agent acts.
+
+Agent 的本质是在人的指令下自主执行。不是自主意识，不是黑箱推理——而是奉人之命，代人之劳。
+
+这个名字冷峻、克制、精确。没有「智能」「认知」「大脑」这类膨胀隐喻，只陈述一个事实：tool-calling、streaming、memory、queue——所有机制的存在原因，都是因为有人下了命令。
+
+> 他敲下 `/deploy`。三秒后，behest 已替他调度好七个 agent。
 
 > Status: early foundation crate. Public APIs are intentionally small and documented.
 
@@ -18,11 +30,11 @@ streaming, tool-calling, embeddings, typed errors, and an in-memory provider reg
 
 ```toml
 [dependencies]
-agents = "0.1"
+behest = "0.1"
 ```
 
 ```rust
-use agents::prelude::*;
+use behest::prelude::*;
 
 let request = ChatRequest::new(ModelName::new("example-model"))
     .with_user_text("Summarize this project in one sentence.");
