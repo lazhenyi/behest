@@ -12,6 +12,7 @@ use serde_json::Value;
 
 /// Configuration for doom loop detection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct DoomLoopConfig {
     /// Enable doom loop detection. Default: `true`.
     #[serde(default = "default_true")]

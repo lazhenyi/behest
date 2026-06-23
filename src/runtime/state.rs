@@ -145,6 +145,9 @@ impl RunState {
             AgentEvent::DoomLoopDetected(e) => {
                 self.updated_at = e.timestamp;
             }
+            AgentEvent::CompactionCircuitOpened(e) => {
+                self.updated_at = e.timestamp;
+            }
         }
     }
 }

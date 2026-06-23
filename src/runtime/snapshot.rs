@@ -35,6 +35,9 @@ pub struct Snapshot {
     pub assistant_msg_id: Option<Uuid>,
     /// The original run request.
     pub request: RunRequest,
+    /// Number of output recovery attempts made so far for truncated responses.
+    #[serde(default)]
+    pub output_recovery_count: u32,
     /// Timestamp when this snapshot was captured.
     pub timestamp: DateTime<Utc>,
 }

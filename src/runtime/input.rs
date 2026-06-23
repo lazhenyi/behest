@@ -196,6 +196,7 @@ impl InputEvent {
 
 /// Configuration for input admission.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct InputAdmissionConfig {
     /// Whether admission is enabled.
     pub enabled: bool,
