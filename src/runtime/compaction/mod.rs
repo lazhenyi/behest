@@ -40,6 +40,80 @@ use crate::token::estimate_records_tokens;
 
 use super::error::{RuntimeError, RuntimeResult};
 
+// ── Compaction Circuit Breaker ───────────────────────────────────────
+
+/// Circuit breaker that gates compaction calls after repeated failures.
+///
+/// When consecutive compaction failures reach the configured threshold,
+/// the breaker opens and all proactive compaction is skipped for the
+/// remainder of the run. Reactive compaction (triggered by a provider
+/// context overflow error) is still attempted.
+#[derive(Debug, Clone)]
+pub struct CompactionCircuitBreaker {
+    consecutive_failures: u32,
+    threshold: u32,
+    state: BreakerState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BreakerState {
+    Closed,
+    Open {
+        opened_at: chrono::DateTime<chrono::Utc>,
+    },
+}
+
+impl CompactionCircuitBreaker {
+    /// Creates a new breaker with the given failure threshold.
+    #[must_use]
+    pub fn new(threshold: u32) -> Self {
+        Self {
+            consecutive_failures: 0,
+            threshold,
+            state: BreakerState::Closed,
+        }
+    }
+
+    /// Records a successful compaction, resetting the failure count and
+    /// closing the breaker.
+    pub fn record_success(&mut self) {
+        self.consecutive_failures = 0;
+        self.state = BreakerState::Closed;
+    }
+
+    /// Records a failed compaction. If the failure count reaches the
+    /// threshold, the breaker opens. Returns `true` when the breaker
+    /// transitions from closed to open (so the caller can emit an event).
+    pub fn record_failure(&mut self) -> bool {
+        if self.is_open() {
+            return false;
+        }
+        self.consecutive_failures += 1;
+        if self.consecutive_failures >= self.threshold {
+            self.state = BreakerState::Open {
+                opened_at: chrono::Utc::now(),
+            };
+            return true;
+        }
+        false
+    }
+
+    /// Returns `true` when the breaker is open and proactive compaction
+    /// should be skipped.
+    #[must_use]
+    pub fn is_open(&self) -> bool {
+        matches!(self.state, BreakerState::Open { .. })
+    }
+
+    /// Returns the number of consecutive failures recorded so far.
+    #[must_use]
+    pub fn consecutive_failures(&self) -> u32 {
+        self.consecutive_failures
+    }
+}
+
+// ── Compaction Service ───────────────────────────────────────────────
+
 /// Service for conversational context compaction.
 pub struct CompactionService {
     /// Provider registry for model access.
@@ -377,5 +451,65 @@ mod tests {
     fn extract_text_from_assistant() {
         let msg = Message::assistant_text("summary text");
         assert_eq!(extract_text_content(&msg), "summary text");
+    }
+
+    // ── Circuit Breaker Tests ──────────────────────────────────────
+
+    #[test]
+    fn breaker_starts_closed() {
+        let breaker = CompactionCircuitBreaker::new(3);
+        assert!(!breaker.is_open());
+        assert_eq!(breaker.consecutive_failures(), 0);
+    }
+
+    #[test]
+    fn breaker_opens_after_threshold_failures() {
+        let mut breaker = CompactionCircuitBreaker::new(3);
+        assert!(!breaker.record_failure());
+        assert!(!breaker.is_open());
+        assert!(!breaker.record_failure());
+        assert!(!breaker.is_open());
+        assert!(breaker.record_failure());
+        assert!(breaker.is_open());
+        assert_eq!(breaker.consecutive_failures(), 3);
+    }
+
+    #[test]
+    fn breaker_resets_on_success() {
+        let mut breaker = CompactionCircuitBreaker::new(3);
+        breaker.record_failure();
+        breaker.record_failure();
+        assert!(!breaker.is_open());
+
+        breaker.record_success();
+        assert!(!breaker.is_open());
+        assert_eq!(breaker.consecutive_failures(), 0);
+
+        // Should need 3 fresh failures to open again
+        breaker.record_failure();
+        breaker.record_failure();
+        assert!(!breaker.is_open());
+        breaker.record_failure();
+        assert!(breaker.is_open());
+    }
+
+    #[test]
+    fn breaker_after_open_does_not_count_further() {
+        let mut breaker = CompactionCircuitBreaker::new(2);
+        breaker.record_failure();
+        assert!(breaker.record_failure());
+        assert!(breaker.is_open());
+
+        // Further failures don't re-trigger
+        assert!(!breaker.record_failure());
+        assert!(breaker.is_open());
+        assert_eq!(breaker.consecutive_failures(), 2);
+    }
+
+    #[test]
+    fn breaker_threshold_zero_opens_immediately() {
+        let mut breaker = CompactionCircuitBreaker::new(0);
+        assert!(breaker.record_failure());
+        assert!(breaker.is_open());
     }
 }
