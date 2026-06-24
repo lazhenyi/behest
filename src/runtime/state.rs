@@ -168,6 +168,7 @@ mod tests {
             ProviderId::new("test-provider"),
             ModelName::new("test-model"),
             Value::Null,
+            None,
         )
     }
 

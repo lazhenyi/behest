@@ -79,7 +79,7 @@ impl ToolService for GrpcToolService {
         let output = tool
             .execute(arguments)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| super::error_to_status(e.into()))?;
 
         Ok(Response::new(InvokeToolResponse {
             name: tool.name().to_owned(),

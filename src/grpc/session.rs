@@ -4,9 +4,10 @@ use tonic::{Request, Response, Status};
 
 use crate::grpc::pb::{
     ContentPart, CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest,
-    DeleteSessionResponse, GetSessionRequest, GetSessionResponse, ListMessagesRequest,
-    ListMessagesResponse, ListSessionsRequest, ListSessionsResponse, Message, Session, Timestamp,
-    UpdateSessionRequest, UpdateSessionResponse, session_service_server::SessionService,
+    DeleteSessionResponse, GetSessionRequest, GetSessionResponse, ImageContent, JsonContent,
+    ListMessagesRequest, ListMessagesResponse, ListSessionsRequest, ListSessionsResponse, Message,
+    Session, TextContent, UpdateSessionRequest, UpdateSessionResponse,
+    content_part::Content as ContentKind, session_service_server::SessionService,
 };
 
 use super::pb::ModelName;
@@ -48,7 +49,7 @@ impl SessionService for GrpcSessionService {
             .sessions()
             .create_session(sess)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| super::error_to_status(e.into()))?;
 
         Ok(Response::new(CreateSessionResponse {
             session: Some(session_to_proto(&created)),
@@ -65,6 +66,12 @@ impl SessionService for GrpcSessionService {
             offset: req.pagination.as_ref().map_or(0, |p| p.offset),
         };
 
+        if pagination.limit > 100 {
+            return Err(Status::invalid_argument(
+                "pagination limit exceeds maximum of 100",
+            ));
+        }
+
         let sessions = self
             .state
             .runtime
@@ -72,7 +79,7 @@ impl SessionService for GrpcSessionService {
             .sessions()
             .list_sessions_paginated(pagination, crate::store::SessionFilter::default())
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| super::error_to_status(e.into()))?;
 
         Ok(Response::new(ListSessionsResponse {
             sessions: sessions.iter().map(session_to_proto).collect(),
@@ -94,7 +101,7 @@ impl SessionService for GrpcSessionService {
             .sessions()
             .get_session(&id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?
+            .map_err(|e| super::error_to_status(e.into()))?
         else {
             return Err(Status::not_found("session not found"));
         };
@@ -122,7 +129,7 @@ impl SessionService for GrpcSessionService {
             .sessions()
             .update_session(&id, title, model.as_ref())
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| super::error_to_status(e.into()))?;
 
         Ok(Response::new(UpdateSessionResponse {
             session: Some(session_to_proto(&session)),
@@ -143,7 +150,7 @@ impl SessionService for GrpcSessionService {
             .sessions()
             .delete_session(&id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| super::error_to_status(e.into()))?;
 
         Ok(Response::new(DeleteSessionResponse {}))
     }
@@ -162,7 +169,7 @@ impl SessionService for GrpcSessionService {
             .store()
             .list_messages(session_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| super::runtime_error_to_status(&e))?;
 
         let proto_messages: Vec<Message> = messages.iter().map(message_to_proto).collect();
 
@@ -179,12 +186,8 @@ fn session_to_proto(s: &crate::store::Session) -> Session {
         model: Some(ModelName {
             value: s.model.as_str().to_owned(),
         }),
-        created_at: Some(Timestamp {
-            value: s.created_at.to_rfc3339(),
-        }),
-        updated_at: Some(Timestamp {
-            value: s.updated_at.to_rfc3339(),
-        }),
+        created_at: Some(crate::grpc::to_prost_timestamp(s.created_at)),
+        updated_at: Some(crate::grpc::to_prost_timestamp(s.updated_at)),
         metadata: s.metadata.to_string(),
     }
 }
@@ -227,20 +230,18 @@ fn message_to_proto(m: &provider::Message) -> Message {
 fn content_to_proto(p: &provider::ContentPart) -> ContentPart {
     match p {
         provider::ContentPart::Text { text } => ContentPart {
-            content_type: "text".to_owned(),
-            text: text.clone(),
-            ..Default::default()
+            content: Some(ContentKind::Text(TextContent { text: text.clone() })),
         },
         provider::ContentPart::Json { value } => ContentPart {
-            content_type: "json".to_owned(),
-            json_value: value.to_string(),
-            ..Default::default()
+            content: Some(ContentKind::Json(JsonContent {
+                json: value.to_string(),
+            })),
         },
         provider::ContentPart::ImageUrl { url, mime_type } => ContentPart {
-            content_type: "image_url".to_owned(),
-            image_url: url.clone(),
-            mime_type: mime_type.clone().unwrap_or_default(),
-            ..Default::default()
+            content: Some(ContentKind::Image(ImageContent {
+                url: url.clone(),
+                mime_type: mime_type.clone().unwrap_or_default(),
+            })),
         },
     }
 }

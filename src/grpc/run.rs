@@ -12,7 +12,7 @@ use crate::grpc::pb::{
 };
 
 use crate::grpc::event::to_proto;
-use crate::provider::{FinishReason, ModelName, ProviderId};
+use crate::provider::{ModelName, ProviderId};
 use crate::runtime::RunId;
 use crate::runtime::RunRequest;
 use crate::runtime::run::{RunRecord, RunStatus};
@@ -95,12 +95,13 @@ impl RunService for GrpcRunService {
         };
 
         let run_id = RunId::new();
-        let run_request = RunRequest::new(provider_id, model, &req.input).with_run_id(run_id);
-        let run_request = if let Some(sid) = session_id {
-            run_request.with_session_id(sid)
-        } else {
-            run_request
-        };
+        let mut run_request = RunRequest::new(provider_id, model, &req.input).with_run_id(run_id);
+        if let Some(sid) = session_id {
+            run_request = run_request.with_session_id(sid);
+        }
+        if !req.client_request_id.is_empty() {
+            run_request = run_request.with_client_request_id(req.client_request_id.clone());
+        }
 
         let runtime = Arc::clone(&self.state.runtime);
         let tasks = Arc::clone(&self.state.run_tasks);
@@ -228,6 +229,12 @@ impl RunService for GrpcRunService {
         let limit = req.pagination.as_ref().map_or(100, |p| p.limit);
         let offset = req.pagination.as_ref().map_or(0, |p| p.offset);
 
+        if limit > 100 {
+            return Err(Status::invalid_argument(
+                "pagination limit exceeds maximum of 100",
+            ));
+        }
+
         let runs = self
             .state
             .runtime
@@ -235,7 +242,7 @@ impl RunService for GrpcRunService {
             .runs()
             .list_runs_filtered(session_id, status, limit as usize, offset as usize)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| super::runtime_error_to_status(&e))?;
 
         let pb_runs: Vec<PbRunRecord> = runs.iter().map(run_record_to_proto).collect();
 
@@ -257,7 +264,7 @@ impl RunService for GrpcRunService {
             .runs()
             .get_run(run_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?
+            .map_err(|e| super::runtime_error_to_status(&e))?
         else {
             return Err(Status::not_found("run not found"));
         };
@@ -282,7 +289,7 @@ impl RunService for GrpcRunService {
             .runs()
             .get_run_state(run_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?
+            .map_err(|e| super::runtime_error_to_status(&e))?
         else {
             return Err(Status::not_found("run not found"));
         };
@@ -293,7 +300,7 @@ impl RunService for GrpcRunService {
 
         let finish_reason = state.last_finish.as_ref().map_or(
             crate::grpc::pb::FinishReason::Unspecified as i32,
-            finish_reason_to_proto,
+            super::event::finish_reason_to_proto,
         );
 
         Ok(Response::new(GetRunOutputResponse {
@@ -327,7 +334,7 @@ impl RunService for GrpcRunService {
             .runs()
             .get_run(run_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?
+            .map_err(|e| super::runtime_error_to_status(&e))?
         else {
             return Err(Status::not_found("run not found"));
         };
@@ -346,7 +353,7 @@ impl RunService for GrpcRunService {
             .runs()
             .update_run_status(run_id, RunStatus::Cancelled)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| super::runtime_error_to_status(&e))?;
 
         Ok(Response::new(CancelRunResponse {}))
     }
@@ -378,7 +385,7 @@ impl RunService for GrpcRunService {
             .runs()
             .list_events(run_id)
             .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+            .map_err(|e| super::runtime_error_to_status(&e))?;
 
         let mut max_seq = last_event_id;
         for record in &events {
@@ -463,12 +470,8 @@ fn run_record_to_proto(r: &RunRecord) -> PbRunRecord {
             value: r.model.as_str().to_owned(),
         }),
         metadata: r.metadata.to_string(),
-        created_at: Some(crate::grpc::pb::Timestamp {
-            value: r.created_at.to_rfc3339(),
-        }),
-        updated_at: Some(crate::grpc::pb::Timestamp {
-            value: r.updated_at.to_rfc3339(),
-        }),
+        created_at: Some(crate::grpc::to_prost_timestamp(r.created_at)),
+        updated_at: Some(crate::grpc::to_prost_timestamp(r.updated_at)),
     }
 }
 
@@ -483,17 +486,5 @@ fn run_status_to_pb(s: RunStatus) -> PbRunStatus {
         RunStatus::Completed => PbRunStatus::Completed,
         RunStatus::Failed => PbRunStatus::Failed,
         RunStatus::Cancelled => PbRunStatus::Cancelled,
-    }
-}
-
-fn finish_reason_to_proto(reason: &FinishReason) -> i32 {
-    use crate::grpc::pb::FinishReason as F;
-    match reason {
-        FinishReason::Stop => F::Stop as i32,
-        FinishReason::ToolCalls => F::ToolCalls as i32,
-        FinishReason::Length => F::Length as i32,
-        FinishReason::ContentFilter => F::ContentFilter as i32,
-        FinishReason::Error => F::Error as i32,
-        FinishReason::Unknown(_) => F::Unknown as i32,
     }
 }

@@ -3,12 +3,13 @@ syntax = "proto3";
 package agent.v1;
 
 import "agent/v1/common.proto";
+import "google/protobuf/timestamp.proto";
 
 // Usage record.
 message UsageRecord {
   string session_id = 1;
   TokenUsage total_tokens = 2;
-  Timestamp recorded_at = 3;
+  google.protobuf.Timestamp recorded_at = 3;
 }
 
 // Get usage request.

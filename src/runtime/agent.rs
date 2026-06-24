@@ -222,6 +222,7 @@ impl AgentRuntime {
             request.provider.clone(),
             request.model.clone(),
             request.metadata.clone(),
+            request.client_request_id.clone(),
         );
         self.store.runs().create_run(run_record).await?;
 
@@ -1512,6 +1513,7 @@ mod tests {
             ProviderId::new("mock"),
             ModelName::new("test"),
             serde_json::Value::Null,
+            None,
         );
         runtime.store().runs().create_run(run_record).await.unwrap();
 

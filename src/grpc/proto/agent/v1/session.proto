@@ -3,14 +3,15 @@ syntax = "proto3";
 package agent.v1;
 
 import "agent/v1/common.proto";
+import "google/protobuf/timestamp.proto";
 
 // Session metadata.
 message Session {
   string id = 1;
   string title = 2;
   ModelName model = 3;
-  Timestamp created_at = 4;
-  Timestamp updated_at = 5;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
   string metadata = 6; // JSON
 }
 

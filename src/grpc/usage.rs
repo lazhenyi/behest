@@ -8,7 +8,7 @@ use crate::grpc::pb::{
     metrics_service_server::MetricsService, usage_service_server::UsageService,
 };
 
-use super::pb::{Timestamp, TokenUsage};
+use super::pb::TokenUsage;
 use std::sync::Arc;
 
 /// gRPC usage service.
@@ -47,7 +47,7 @@ impl UsageService for GrpcUsageService {
                 .executions()
                 .list_usage(&sid)
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?
+                .map_err(|e| super::error_to_status(e.into()))?
         } else {
             let sessions = self
                 .state
@@ -56,7 +56,7 @@ impl UsageService for GrpcUsageService {
                 .sessions()
                 .list_sessions()
                 .await
-                .map_err(|e| Status::internal(e.to_string()))?;
+                .map_err(|e| super::error_to_status(e.into()))?;
             let mut all = Vec::new();
             for s in &sessions {
                 let mut usage = self
@@ -66,7 +66,7 @@ impl UsageService for GrpcUsageService {
                     .executions()
                     .list_usage(&s.id)
                     .await
-                    .map_err(|e| Status::internal(e.to_string()))?;
+                    .map_err(|e| super::error_to_status(e.into()))?;
                 all.append(&mut usage);
             }
             all
@@ -81,9 +81,7 @@ impl UsageService for GrpcUsageService {
                     output_tokens: r.output_tokens,
                     total_tokens: r.total_tokens,
                 }),
-                recorded_at: Some(Timestamp {
-                    value: r.created_at.to_rfc3339(),
-                }),
+                recorded_at: Some(crate::grpc::to_prost_timestamp(r.created_at)),
             })
             .collect();
 

@@ -3,14 +3,110 @@ syntax = "proto3";
 package agent.v1;
 
 import "agent/v1/common.proto";
+import "google/protobuf/timestamp.proto";
 
 // Agent event emitted during a run.
 message AgentEvent {
   uint64 sequence = 1;
   string run_id = 2;
-  string event_type = 3; // e.g. "run.started", "text.delta", ...
-  string data = 4;       // JSON event payload
-  Timestamp timestamp = 5;
+  oneof event {
+    RunStartedEvent run_started = 3;
+    ContextBuiltEvent context_built = 4;
+    ModelStartedEvent model_started = 5;
+    TextDeltaEvent text_delta = 6;
+    ToolCallStartedEvent tool_call_started = 7;
+    ToolCallDeltaEvent tool_call_delta = 8;
+    ToolCallCompletedEvent tool_call_completed = 9;
+    ToolExecutionStartedEvent tool_execution_started = 10;
+    ToolExecutionFinishedEvent tool_execution_finished = 11;
+    AssistantMessageCommittedEvent assistant_message_committed = 12;
+    ToolMessageCommittedEvent tool_message_committed = 13;
+    UsageRecordedEvent usage_recorded = 14;
+    RunCompletedEvent run_completed = 15;
+    RunFailedEvent run_failed = 16;
+    RunCancelledEvent run_cancelled = 17;
+    DoomLoopDetectedEvent doom_loop_detected = 18;
+    CompactionCircuitOpenedEvent compaction_circuit_opened = 19;
+  }
+  google.protobuf.Timestamp timestamp = 20;
+}
+
+// Event payloads (run_id and timestamp are on the enclosing AgentEvent).
+
+message RunStartedEvent {
+  string session_id = 1;
+  string provider = 2;
+  string model = 3;
+}
+
+message ContextBuiltEvent {
+  uint32 message_count = 1;
+}
+
+message ModelStartedEvent {
+  string provider = 1;
+  string model = 2;
+  uint32 iteration = 3;
+}
+
+message TextDeltaEvent {
+  string delta = 1;
+}
+
+message ToolCallStartedEvent {
+  string call_id = 1;
+  string tool_name = 2;
+}
+
+message ToolCallDeltaEvent {
+  string call_id = 1;
+  string delta = 2;
+}
+
+message ToolCallCompletedEvent {
+  ToolCall call = 1;
+}
+
+message ToolExecutionStartedEvent {
+  string call_id = 1;
+  string tool_name = 2;
+}
+
+message ToolExecutionFinishedEvent {
+  string call_id = 1;
+  string tool_name = 2;
+  uint64 duration_ms = 3;
+}
+
+message AssistantMessageCommittedEvent {
+  string message_id = 1;
+}
+
+message ToolMessageCommittedEvent {
+  string message_id = 1;
+}
+
+message UsageRecordedEvent {
+  TokenUsage usage = 1;
+}
+
+message RunCompletedEvent {
+  FinishReason finish_reason = 1;
+  uint32 iterations = 2;
+}
+
+message RunFailedEvent {
+  string error = 1;
+}
+
+message RunCancelledEvent {}
+
+message DoomLoopDetectedEvent {
+  string description = 1;
+}
+
+message CompactionCircuitOpenedEvent {
+  uint32 consecutive_failures = 1;
 }
 
 // Run record.
@@ -21,8 +117,8 @@ message RunRecord {
   ProviderId provider = 4;
   ModelName model = 5;
   string metadata = 6; // JSON
-  Timestamp created_at = 7;
-  Timestamp updated_at = 8;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
 }
 
 // Run output.
@@ -43,6 +139,7 @@ message CreateRunRequest {
   string input = 4;
   string metadata = 5;   // JSON, optional
   string tool_choice = 6; // "auto", "none", "required"
+  string client_request_id = 7; // optional idempotency key
 }
 
 // Create run response (async).

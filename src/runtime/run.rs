@@ -96,6 +96,8 @@ pub struct RunRequest {
     pub metadata: Value,
     /// Tool choice strategy.
     pub tool_choice: ToolChoice,
+    /// Optional client-provided idempotency key.
+    pub client_request_id: Option<String>,
 }
 
 impl RunRequest {
@@ -110,6 +112,7 @@ impl RunRequest {
             input: input.into(),
             metadata: Value::Null,
             tool_choice: ToolChoice::Auto,
+            client_request_id: None,
         }
     }
 
@@ -140,6 +143,13 @@ impl RunRequest {
         self.run_id = Some(run_id);
         self
     }
+
+    /// Sets the client-provided idempotency key.
+    #[must_use]
+    pub fn with_client_request_id(mut self, id: String) -> Self {
+        self.client_request_id = Some(id);
+        self
+    }
 }
 
 /// Persistent record of an agent run.
@@ -157,6 +167,8 @@ pub struct RunRecord {
     pub model: ModelName,
     /// Run metadata.
     pub metadata: Value,
+    /// Optional client-provided idempotency key.
+    pub client_request_id: Option<String>,
     /// When the run was created.
     pub created_at: DateTime<Utc>,
     /// When the run was last updated.
@@ -172,6 +184,7 @@ impl RunRecord {
         provider: ProviderId,
         model: ModelName,
         metadata: Value,
+        client_request_id: Option<String>,
     ) -> Self {
         let now = Utc::now();
         Self {
@@ -181,6 +194,7 @@ impl RunRecord {
             provider,
             model,
             metadata,
+            client_request_id,
             created_at: now,
             updated_at: now,
         }

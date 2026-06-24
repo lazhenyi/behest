@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package agent.v1;
 
+import "google/protobuf/timestamp.proto";
+
 // Unique provider identifier.
 message ProviderId {
   string value = 1;
@@ -50,18 +52,29 @@ message Pagination {
   uint32 offset = 2;
 }
 
-// Timestamp (RFC 3339 string).
-message Timestamp {
-  string value = 1;
+// Text content part.
+message TextContent {
+  string text = 1;
+}
+
+// JSON content part.
+message JsonContent {
+  string json = 1;
+}
+
+// Image content part.
+message ImageContent {
+  string url = 1;
+  string mime_type = 2;
 }
 
 // Content part within a message.
 message ContentPart {
-  string content_type = 1; // "text", "json", "image_url"
-  string text = 2;
-  string json_value = 3;   // JSON
-  string image_url = 4;
-  string mime_type = 5;
+  oneof content {
+    TextContent text = 1;
+    JsonContent json = 2;
+    ImageContent image = 3;
+  }
 }
 
 // Message record.
@@ -73,7 +86,7 @@ message Message {
   repeated ToolCall tool_calls = 5;
   string tool_call_id = 6;
   string tool_name = 7;
-  Timestamp created_at = 8;
+  google.protobuf.Timestamp created_at = 8;
 }
 
 // Run status enum.

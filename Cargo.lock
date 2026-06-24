@@ -670,6 +670,7 @@ dependencies = [
  "pretty_assertions",
  "proptest",
  "prost 0.13.5",
+ "prost-types 0.13.5",
  "qdrant-client",
  "redis",
  "reqwest 0.13.4",
