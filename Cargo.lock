@@ -201,56 +201,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "agents"
-version = "0.1.0"
-dependencies = [
- "actix-web",
- "async-nats",
- "async-trait",
- "base64",
- "bytes",
- "chrono",
- "config",
- "dotenvy",
- "futures-util",
- "indexmap 2.14.0",
- "insta",
- "jsonschema",
- "mongodb",
- "object_store",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "pretty_assertions",
- "proptest",
- "prost 0.13.5",
- "qdrant-client",
- "redis",
- "reqwest 0.13.4",
- "schemars",
- "secrecy",
- "serde",
- "serde_json",
- "sqlx",
- "surrealdb",
- "surrealdb-types",
- "tantivy",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-test",
- "tonic 0.13.1",
- "tonic-build",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "tracing-test",
- "uuid",
- "wiremock",
-]
-
-[[package]]
 name = "ahash"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -694,6 +644,56 @@ dependencies = [
  "getrandom 0.3.4",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "behest"
+version = "0.2.0"
+dependencies = [
+ "actix-web",
+ "async-nats",
+ "async-trait",
+ "base64",
+ "bytes",
+ "chrono",
+ "config",
+ "dotenvy",
+ "futures-util",
+ "indexmap 2.14.0",
+ "insta",
+ "jsonschema",
+ "mongodb",
+ "object_store",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "pretty_assertions",
+ "proptest",
+ "prost 0.13.5",
+ "qdrant-client",
+ "redis",
+ "reqwest 0.13.4",
+ "schemars",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "surrealdb",
+ "surrealdb-types",
+ "tantivy",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-test",
+ "tonic 0.13.1",
+ "tonic-build",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "tracing-test",
+ "uuid",
+ "wiremock",
 ]
 
 [[package]]

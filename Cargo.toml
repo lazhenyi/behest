@@ -1,6 +1,6 @@
 [package]
-name = "agents"
-version = "0.1.0"
+name = "behest"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 resolver = "3"
@@ -8,14 +8,14 @@ resolver = "3"
 description = "A Rust-native cloud agent runtime with typed tools, pluggable memory, queues, and observability."
 readme = "README.md"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/your-org/agents"
-homepage = "https://github.com/your-org/agents"
-documentation = "https://docs.rs/agents"
+repository = "https://github.com/lazhenyi/behest"
+homepage = "https://github.com/lazhenyi/behest"
+documentation = "https://docs.rs/behest"
 
 keywords = ["agent", "llm", "tool-calling", "runtime", "ai"]
 categories = ["asynchronous", "api-bindings", "development-tools"]
 
-authors = ["Your Name <you@example.com>"]
+authors = ["zhenyi <434836402@qq.com>"]
 
 include = [
     "src/**",
@@ -28,7 +28,7 @@ include = [
 ]
 
 [lib]
-name = "agents"
+name = "behest"
 path = "src/lib.rs"
 
 [[bin]]

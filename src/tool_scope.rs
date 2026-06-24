@@ -27,8 +27,8 @@
 //! # Example
 //!
 //! ```rust
-//! use agents::tool::{FunctionTool, ToolRegistry};
-//! use agents::tool_scope::ScopedToolRegistry;
+//! use behest::tool::{FunctionTool, ToolRegistry};
+//! use behest::tool_scope::ScopedToolRegistry;
 //! use serde_json::json;
 //!
 //! let base = ToolRegistry::new();

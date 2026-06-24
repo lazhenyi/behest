@@ -115,10 +115,7 @@ impl TurnTransition {
             },
 
             // ── BuildingContext / Compacting ────────────────────────
-            (
-                TurnState::BuildingContext | TurnState::Compacting,
-                TurnOutcome::Success,
-            )
+            (TurnState::BuildingContext | TurnState::Compacting, TurnOutcome::Success)
             | (TurnState::ProcessingResponse, TurnOutcome::OutputTruncated) => {
                 TurnAction::Continue {
                     next: TurnState::CallingModel,

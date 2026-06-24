@@ -213,13 +213,12 @@ impl SessionStore for SurrealdbSessionStore {
         let now = chrono::Utc::now();
 
         if let Some(m) = model {
-            let _: Option<serde_json::Value> = self
-                .db
+            self.db
                 .query("UPDATE sessions SET title = $title, model = $model, updated_at = $now WHERE id = $sid")
                 .bind(("title", title.to_owned()))
                 .bind(("model", m.as_str().to_owned()))
                 .bind(("now", now))
-                .bind(("sid", &id_str))
+                .bind(("sid", id_str.clone()))
                 .await
                 .map_err(|e| StorageError::BackendError {
                     backend: "surrealdb".to_owned(),
@@ -227,12 +226,11 @@ impl SessionStore for SurrealdbSessionStore {
                     source: Some(Box::new(e)),
                 })?;
         } else {
-            let _: Option<serde_json::Value> = self
-                .db
+            self.db
                 .query("UPDATE sessions SET title = $title, updated_at = $now WHERE id = $sid")
                 .bind(("title", title.to_owned()))
                 .bind(("now", now))
-                .bind(("sid", &id_str))
+                .bind(("sid", id_str.clone()))
                 .await
                 .map_err(|e| StorageError::BackendError {
                     backend: "surrealdb".to_owned(),
@@ -241,13 +239,14 @@ impl SessionStore for SurrealdbSessionStore {
                 })?;
         }
 
-        let result: Option<serde_json::Value> =
-            self.db.select(("sessions", &id_str)).await.map_err(|e| {
-                StorageError::BackendError {
-                    backend: "surrealdb".to_owned(),
-                    message: e.to_string(),
-                    source: Some(Box::new(e)),
-                }
+        let result: Option<serde_json::Value> = self
+            .db
+            .select(("sessions", id_str))
+            .await
+            .map_err(|e| StorageError::BackendError {
+                backend: "surrealdb".to_owned(),
+                message: e.to_string(),
+                source: Some(Box::new(e)),
             })?;
 
         let value = result.ok_or_else(|| StorageError::NotFound { id: id.to_string() })?;

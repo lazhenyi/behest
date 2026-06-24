@@ -7,9 +7,9 @@
 //! # Examples
 //!
 //! ```no_run
-//! use agents::adapt::openai::{OpenAiChatAdapter, OpenAiEmbeddingAdapter};
-//! use agents::provider::ProviderHttpConfig;
-//! use agents::provider::ProviderId;
+//! use behest::adapt::openai::{OpenAiChatAdapter, OpenAiEmbeddingAdapter};
+//! use behest::provider::ProviderHttpConfig;
+//! use behest::provider::ProviderId;
 //! use secrecy::SecretString;
 //!
 //! let config = ProviderHttpConfig::new(

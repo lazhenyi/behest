@@ -14,9 +14,9 @@ use crate::store::{ArtifactStore, EmbeddingStore, ExecutionStore, SessionStore, 
 /// # Example
 ///
 /// ```rust
-/// use agents::store::memory::MemoryStore;
+/// use behest::store::memory::MemoryStore;
 ///
-/// # async fn example() -> Result<(), agents::StorageError> {
+/// # async fn example() -> Result<(), behest::StorageError> {
 /// let store = MemoryStore::new();
 /// // Use store.sessions, store.executions, store.embeddings, store.artifacts
 /// // individually, or use store.delete_session_cascading() for full cleanup.

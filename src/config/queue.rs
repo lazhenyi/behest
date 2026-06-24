@@ -37,9 +37,9 @@ pub struct QueueConfig {
 }
 
 fn default_nats_subject() -> String {
-    String::from("agents.events")
+    String::from("behest.events")
 }
 
 fn default_redis_stream_key() -> String {
-    String::from("agents:events")
+    String::from("behest:events")
 }

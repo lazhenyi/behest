@@ -79,7 +79,7 @@ fn event_payload(event: &AgentEvent) -> (&'static str, serde_json::Value) {
         ),
         AgentEvent::DoomLoopDetected(e) => (
             "doom_loop.detected",
-            serde_json::json!({"run_id": e.run_id.to_string(), "iterations": e.iterations}),
+            serde_json::json!({"run_id": e.run_id.to_string(), "description": e.description}),
         ),
         AgentEvent::CompactionCircuitOpened(e) => (
             "compaction.circuit_opened",

@@ -6,9 +6,9 @@
 //! # Examples
 //!
 //! ```no_run
-//! use agents::adapt::anthropic::AnthropicChatAdapter;
-//! use agents::provider::ProviderHttpConfig;
-//! use agents::provider::ProviderId;
+//! use behest::adapt::anthropic::AnthropicChatAdapter;
+//! use behest::provider::ProviderHttpConfig;
+//! use behest::provider::ProviderId;
 //! use secrecy::SecretString;
 //!
 //! let config = ProviderHttpConfig::new(

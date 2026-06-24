@@ -10,7 +10,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use agents::config::{AgentConfig, AgentConfigBuilder};
+//! use behest::config::{AgentConfig, AgentConfigBuilder};
 //!
 //! let config = AgentConfig::builder()
 //!     .with_file("config.toml")?
@@ -477,7 +477,7 @@ async fn build_session_store(config: &StoreConfig) -> Result<Box<dyn crate::stor
                 let url = config.mongo_url.as_deref().ok_or_else(|| {
                     Error::Config("mongo_url is required for MongoDB session store".to_owned())
                 })?;
-                let store = crate::store::mongodb::MongodbSessionStore::new(url, "agents")
+                let store = crate::store::mongodb::MongodbSessionStore::new(url, "behest")
                     .await
                     .map_err(|e| {
                         Error::Config(format!("failed to create MongoDB session store: {e}"))
@@ -498,7 +498,7 @@ async fn build_session_store(config: &StoreConfig) -> Result<Box<dyn crate::stor
                 let db = surrealdb::engine::any::connect(url)
                     .await
                     .map_err(|e| Error::Config(format!("failed to connect to SurrealDB: {e}")))?;
-                db.use_ns("agents").use_db("agents").await.map_err(|e| {
+                db.use_ns("behest").use_db("behest").await.map_err(|e| {
                     Error::Config(format!(
                         "failed to select SurrealDB namespace/database: {e}"
                     ))

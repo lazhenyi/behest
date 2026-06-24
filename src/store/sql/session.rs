@@ -1,11 +1,12 @@
 //! SQL session store implementation for PostgreSQL, MySQL, and SQLite.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sqlx::Pool;
 use uuid::Uuid;
 
 use crate::error::StorageError;
-use crate::provider::{ContentPart, TokenUsage, ToolCall};
+use crate::provider::{ContentPart, ModelName, TokenUsage, ToolCall};
 use crate::store::{
     CompactionMeta, MessageRecord, MessageRole, Session, SessionStore, StoreResult,
 };
@@ -282,8 +283,6 @@ impl SessionStore for SqlSessionStore {
         title: &str,
         model: Option<&ModelName>,
     ) -> StoreResult<Session> {
-        use crate::provider::ModelName;
-
         let now = chrono::Utc::now();
         let row = if let Some(m) = model {
             sqlx::query_as::<_, (Uuid, String, String, String, DateTime<Utc>, DateTime<Utc>)>(
@@ -592,8 +591,6 @@ impl SessionStore for SqlSessionStore {
         title: &str,
         model: Option<&ModelName>,
     ) -> StoreResult<Session> {
-        use crate::provider::ModelName;
-
         let now = chrono::Utc::now();
         let id_str = id.to_string();
 
@@ -830,8 +827,6 @@ impl SessionStore for SqlSessionStore {
     }
 
     async fn list_sessions(&self) -> StoreResult<Vec<Session>> {
-        use crate::provider::ModelName;
-
         let rows = sqlx::query_as::<_, (String, String, String, String, String, String)>(
             "SELECT id, title, model, metadata, created_at, updated_at FROM sessions ORDER BY updated_at DESC",
         )
@@ -864,8 +859,6 @@ impl SessionStore for SqlSessionStore {
     }
 
     async fn get_session(&self, id: &Uuid) -> StoreResult<Option<Session>> {
-        use crate::provider::ModelName;
-
         let row = sqlx::query_as::<_, (String, String, String, String, String, String)>(
             "SELECT id, title, model, metadata, created_at, updated_at FROM sessions WHERE id = ?1",
         )
@@ -910,8 +903,6 @@ impl SessionStore for SqlSessionStore {
         title: &str,
         model: Option<&ModelName>,
     ) -> StoreResult<Session> {
-        use crate::provider::ModelName;
-
         let now = chrono::Utc::now();
         let now_str = now.to_rfc3339();
         let id_str = id.to_string();

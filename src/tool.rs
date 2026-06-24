@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```rust
-//! use agents::tool::{FunctionTool, ToolRegistry};
+//! use behest::tool::{FunctionTool, ToolRegistry};
 //! use serde_json::{Value, json};
 //!
 //! let registry = ToolRegistry::new();

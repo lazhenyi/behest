@@ -8,8 +8,8 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use agents::context::{ContextAdapter, ContextFactory, ContextInput, StaticAdapter};
-//! use agents::provider::Message;
+//! use behest::context::{ContextAdapter, ContextFactory, ContextInput, StaticAdapter};
+//! use behest::provider::Message;
 //!
 //! #[tokio::main]
 //! async fn main() {

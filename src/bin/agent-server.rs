@@ -6,9 +6,9 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use agents::config::{AgentConfigBuilder, ProviderConfig, ProviderType};
-use agents::grpc::state::{GrpcState, ModelCatalogEntry, ProviderConfigMap};
-use agents::grpc::{
+use behest::config::{AgentConfigBuilder, ProviderConfig, ProviderType};
+use behest::grpc::state::{GrpcState, ModelCatalogEntry, ProviderConfigMap};
+use behest::grpc::{
     pb::{
         metrics_service_server::MetricsServiceServer, model_service_server::ModelServiceServer,
         provider_service_server::ProviderServiceServer, run_service_server::RunServiceServer,
@@ -22,7 +22,7 @@ use agents::grpc::{
     tool::GrpcToolService,
     usage::{GrpcMetricsService, GrpcUsageService},
 };
-use agents::provider::ProviderId;
+use behest::provider::ProviderId;
 
 use tonic::transport::Server;
 
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::clone(&runtime),
         model_catalog,
         provider_configs,
-        agents::tool::ToolRegistry::new(),
+        behest::tool::ToolRegistry::new(),
     ));
 
     let task_registry = Arc::new(RunTaskRegistry::new());

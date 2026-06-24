@@ -14,12 +14,12 @@
 //! # Example
 //!
 //! ```rust
-//! use agents::store::{SessionStore, Session, MessageRecord, MessageRole};
-//! use agents::store::memory::MemorySessionStore;
-//! use agents::provider::{ModelName, ContentPart};
+//! use behest::store::{SessionStore, Session, MessageRecord, MessageRole};
+//! use behest::store::memory::MemorySessionStore;
+//! use behest::provider::{ModelName, ContentPart};
 //! use uuid::Uuid;
 //!
-//! # async fn example() -> Result<(), agents::StorageError> {
+//! # async fn example() -> Result<(), behest::StorageError> {
 //! let store = MemorySessionStore::new();
 //!
 //! let session = Session::new("My Chat", ModelName::new("gpt-4"));
