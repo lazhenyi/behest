@@ -2,16 +2,17 @@
 
 ## Supported versions
 
-Security updates are provided for the latest unreleased `main` branch until the first stable release.
+Security updates are provided for the latest released version. The `main` branch
+may receive patches ahead of a formal release.
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for suspected vulnerabilities. Report privately to the project
-maintainers with:
+Do not open a public issue. Report privately to **434836402@qq.com** with:
 
 - affected version or commit
 - reproduction steps
 - expected impact
 - any suggested mitigation
 
-The maintainers should acknowledge receipt, triage severity, and coordinate a fix before disclosure.
+The maintainer will acknowledge receipt within 72 hours, triage severity,
+and coordinate a fix before disclosure.
