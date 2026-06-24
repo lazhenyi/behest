@@ -33,6 +33,8 @@ pub struct GrpcState {
     pub started_at: Instant,
     /// Active run task registry for cancellation and metrics.
     pub run_tasks: Arc<RunTaskRegistry>,
+    /// Maximum number of concurrent runs (None = unlimited).
+    pub max_concurrent_runs: Option<usize>,
 }
 
 impl GrpcState {
@@ -42,12 +44,14 @@ impl GrpcState {
         runtime: Arc<AgentRuntime>,
         config: Arc<AgentConfig>,
         run_tasks: Arc<RunTaskRegistry>,
+        max_concurrent_runs: Option<usize>,
     ) -> Self {
         Self {
             runtime,
             config,
             started_at: Instant::now(),
             run_tasks,
+            max_concurrent_runs,
         }
     }
 

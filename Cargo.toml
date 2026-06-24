@@ -165,7 +165,7 @@ tantivy = [
 ]
 object_store = ["dep:object_store", "object_store/aws"]
 
-server = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tokio-stream", "tonic-build"]
+server = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tokio-stream", "tonic-build", "tonic/tls-ring"]
 
 [dependencies]
 object_store = {

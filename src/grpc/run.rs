@@ -24,6 +24,8 @@ use tokio::sync::{RwLock, mpsc};
 #[derive(Default)]
 pub struct RunTaskRegistry {
     handles: RwLock<HashMap<String, tokio::task::JoinHandle<()>>>,
+    /// Maps client_request_id to run_id for idempotency.
+    idempotency_cache: RwLock<HashMap<String, String>>,
 }
 
 impl RunTaskRegistry {
@@ -52,6 +54,23 @@ impl RunTaskRegistry {
     /// Returns the number of active run tasks.
     pub async fn active_count(&self) -> usize {
         self.handles.read().await.len()
+    }
+
+    /// Checks if a client_request_id has already been used and returns the associated run_id.
+    pub async fn get_idempotent_run_id(&self, client_request_id: &str) -> Option<String> {
+        self.idempotency_cache
+            .read()
+            .await
+            .get(client_request_id)
+            .cloned()
+    }
+
+    /// Records a client_request_id → run_id mapping for idempotency.
+    pub async fn record_idempotent_run(&self, client_request_id: String, run_id: String) {
+        self.idempotency_cache
+            .write()
+            .await
+            .insert(client_request_id, run_id);
     }
 }
 
@@ -85,6 +104,20 @@ impl RunService for GrpcRunService {
             .as_ref()
             .map(|m| ModelName::new(&m.value))
             .ok_or_else(|| Status::invalid_argument("model is required"))?;
+
+        if req.input.is_empty() {
+            return Err(Status::invalid_argument("input must not be empty"));
+        }
+
+        if let Some(max) = self.state.max_concurrent_runs {
+            let active = self.state.run_tasks.active_count().await;
+            if active >= max {
+                return Err(Status::resource_exhausted(format!(
+                    "concurrent run limit reached ({max})"
+                )));
+            }
+        }
+
         let session_id = if req.session_id.is_empty() {
             None
         } else {
@@ -100,6 +133,17 @@ impl RunService for GrpcRunService {
             run_request = run_request.with_session_id(sid);
         }
         if !req.client_request_id.is_empty() {
+            if let Some(existing_run_id) = self
+                .state
+                .run_tasks
+                .get_idempotent_run_id(&req.client_request_id)
+                .await
+            {
+                return Ok(Response::new(CreateRunResponse {
+                    run_id: existing_run_id,
+                    session_id: session_id.map_or_else(String::new, |s| s.to_string()),
+                }));
+            }
             run_request = run_request.with_client_request_id(req.client_request_id.clone());
         }
 
@@ -114,6 +158,12 @@ impl RunService for GrpcRunService {
 
         let run_id = run_id.to_string();
         tasks.register(run_id.clone(), handle).await;
+
+        if !req.client_request_id.is_empty() {
+            tasks
+                .record_idempotent_run(req.client_request_id.clone(), run_id.clone())
+                .await;
+        }
 
         Ok(Response::new(CreateRunResponse {
             run_id,
@@ -139,6 +189,10 @@ impl RunService for GrpcRunService {
             .as_ref()
             .map(|m| ModelName::new(&m.value))
             .ok_or_else(|| Status::invalid_argument("model is required"))?;
+
+        if req.input.is_empty() {
+            return Err(Status::invalid_argument("input must not be empty"));
+        }
         let session_id = if req.session_id.is_empty() {
             None
         } else {

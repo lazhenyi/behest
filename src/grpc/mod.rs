@@ -12,6 +12,7 @@ pub mod pb {
     tonic::include_proto!("agent.v1");
 }
 
+pub mod auth;
 pub mod event;
 pub mod provider;
 pub mod run;
