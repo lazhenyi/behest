@@ -49,14 +49,33 @@ impl UsageService for GrpcUsageService {
                 .await
                 .map_err(|e| Status::internal(e.to_string()))?
         } else {
-            // no global list_usage — return empty
-            Vec::new()
+            let sessions = self
+                .state
+                .runtime
+                .store()
+                .sessions()
+                .list_sessions()
+                .await
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let mut all = Vec::new();
+            for s in &sessions {
+                let mut usage = self
+                    .state
+                    .runtime
+                    .store()
+                    .executions()
+                    .list_usage(&s.id)
+                    .await
+                    .map_err(|e| Status::internal(e.to_string()))?;
+                all.append(&mut usage);
+            }
+            all
         };
 
         let pb_records: Vec<PbUsageRecord> = records
             .iter()
             .map(|r| PbUsageRecord {
-                session_id: session_id.map_or_else(String::new, |s| s.to_string()),
+                session_id: r.session_id.to_string(),
                 total_tokens: Some(TokenUsage {
                     input_tokens: r.input_tokens,
                     output_tokens: r.output_tokens,
@@ -83,7 +102,6 @@ impl UsageService for GrpcUsageService {
 
 /// gRPC metrics service.
 pub struct GrpcMetricsService {
-    #[allow(dead_code)]
     state: Arc<super::state::GrpcState>,
 }
 
@@ -101,11 +119,22 @@ impl MetricsService for GrpcMetricsService {
         &self,
         _request: Request<GetMetricsRequest>,
     ) -> Result<Response<GetMetricsResponse>, Status> {
+        let uptime = self.state.started_at.elapsed().as_secs();
+        let active_runs = self.state.run_tasks.active_count().await;
+        let total_sessions = self
+            .state
+            .runtime
+            .store()
+            .sessions()
+            .list_sessions()
+            .await
+            .map_or(0, |s| s.len());
+
         let metrics = serde_json::json!({
             "status": "ok",
-            "uptime_seconds": 0u64,
-            "active_runs": 0u64,
-            "total_sessions": 0u64,
+            "uptime_seconds": uptime,
+            "active_runs": active_runs,
+            "total_sessions": total_sessions,
         });
 
         Ok(Response::new(GetMetricsResponse {
@@ -117,8 +146,29 @@ impl MetricsService for GrpcMetricsService {
         &self,
         _request: Request<GetPrometheusMetricsRequest>,
     ) -> Result<Response<GetPrometheusMetricsResponse>, Status> {
-        Ok(Response::new(GetPrometheusMetricsResponse {
-            text: String::new(),
-        }))
+        let uptime = self.state.started_at.elapsed().as_secs();
+        let active_runs = self.state.run_tasks.active_count().await;
+        let total_sessions = self
+            .state
+            .runtime
+            .store()
+            .sessions()
+            .list_sessions()
+            .await
+            .map_or(0, |s| s.len());
+
+        let text = format!(
+            "# HELP agent_uptime_seconds Server uptime in seconds.\n\
+             # TYPE agent_uptime_seconds counter\n\
+             agent_uptime_seconds {uptime}\n\
+             # HELP agent_active_runs Number of active run tasks.\n\
+             # TYPE agent_active_runs gauge\n\
+             agent_active_runs {active_runs}\n\
+             # HELP agent_total_sessions Total number of sessions.\n\
+             # TYPE agent_total_sessions gauge\n\
+             agent_total_sessions {total_sessions}\n"
+        );
+
+        Ok(Response::new(GetPrometheusMetricsResponse { text }))
     }
 }

@@ -31,7 +31,8 @@ impl ProviderService for GrpcProviderService {
     ) -> Result<Response<ListProvidersResponse>, Status> {
         let providers: Vec<ProviderInfo> = self
             .state
-            .provider_configs
+            .config
+            .providers
             .iter()
             .map(|(id, cfg)| {
                 let models = cfg
@@ -69,7 +70,7 @@ impl ProviderService for GrpcProviderService {
             return Err(Status::invalid_argument("id is required"));
         };
 
-        let Some(cfg) = self.state.provider_configs.get_by_string(&req_id.value) else {
+        let Some(cfg) = self.state.provider_config(&req_id.value) else {
             return Err(Status::not_found(format!(
                 "provider '{req_id_value}' not found",
                 req_id_value = req_id.value
@@ -124,7 +125,7 @@ impl ModelService for GrpcModelService {
     ) -> Result<Response<ListModelsResponse>, Status> {
         let models: Vec<ModelEntry> = self
             .state
-            .model_catalog
+            .model_catalog()
             .iter()
             .map(|m| ModelEntry {
                 provider: Some(ProviderId {

@@ -194,6 +194,12 @@ impl ScopedToolRegistry {
     /// Registers an already-`Arc`'d tool in the specified scope.
     ///
     /// Returns `Ok(old)` if the scope exists, or `Err((name, tool))` if not.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err((name, tool))` when the requested `scope` does not exist
+    /// in the layer stack. The returned tuple lets the caller recover the
+    /// name and `Arc`'d tool without an extra allocation.
     pub fn register_arc_in_scope(
         &self,
         scope: ScopeId,
@@ -365,7 +371,9 @@ impl Drop for ScopeGuard {
 
 impl std::fmt::Debug for ScopeGuard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ScopeGuard").field("id", &self.id).finish()
+        f.debug_struct("ScopeGuard")
+            .field("id", &self.id)
+            .finish_non_exhaustive()
     }
 }
 

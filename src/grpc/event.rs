@@ -12,7 +12,10 @@ pub fn to_proto(event: &AgentEvent, sequence: u64, run_id: &str) -> PbAgentEvent
         sequence,
         run_id: run_id.to_owned(),
         event_type: event_type.to_owned(),
-        data: serde_json::to_string(&data).unwrap_or_default(),
+        data: serde_json::to_string(&data).unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "failed to serialize event data");
+            String::new()
+        }),
         timestamp: Some(Timestamp {
             value: chrono::Utc::now().to_rfc3339(),
         }),
@@ -45,10 +48,16 @@ fn event_payload(event: &AgentEvent) -> (&'static str, serde_json::Value) {
             "tool_call.delta",
             serde_json::json!({"run_id": e.run_id.to_string(), "call_id": e.call_id, "delta": e.delta}),
         ),
-        AgentEvent::ToolCallCompleted(e) => (
-            "tool_call.completed",
-            serde_json::json!({"run_id": e.run_id.to_string(), "call": serde_json::to_value(&e.call).unwrap_or_default()}),
-        ),
+        AgentEvent::ToolCallCompleted(e) => {
+            let call = serde_json::to_value(&e.call).unwrap_or_else(|err| {
+                tracing::warn!(error = %err, "failed to serialize tool call");
+                serde_json::Value::Null
+            });
+            (
+                "tool_call.completed",
+                serde_json::json!({"run_id": e.run_id.to_string(), "call": call}),
+            )
+        }
         AgentEvent::ToolExecutionStarted(e) => (
             "tool_execution.started",
             serde_json::json!({"run_id": e.run_id.to_string(), "call_id": e.call_id, "tool_name": e.tool_name}),

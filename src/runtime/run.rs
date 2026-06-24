@@ -84,6 +84,8 @@ impl RunStatus {
 pub struct RunRequest {
     /// Optional session ID. If None, a new session will be created.
     pub session_id: Option<Uuid>,
+    /// Optional pre-allocated run ID. If None, a new RunId will be generated.
+    pub run_id: Option<RunId>,
     /// Provider to use for model calls.
     pub provider: ProviderId,
     /// Model to use for generation.
@@ -102,6 +104,7 @@ impl RunRequest {
     pub fn new(provider: ProviderId, model: ModelName, input: impl Into<String>) -> Self {
         Self {
             session_id: None,
+            run_id: None,
             provider,
             model,
             input: input.into(),
@@ -128,6 +131,13 @@ impl RunRequest {
     #[must_use]
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = tool_choice;
+        self
+    }
+
+    /// Sets a pre-allocated run ID.
+    #[must_use]
+    pub fn with_run_id(mut self, run_id: RunId) -> Self {
+        self.run_id = Some(run_id);
         self
     }
 }

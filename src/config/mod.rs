@@ -33,6 +33,9 @@ pub mod provider;
 pub mod runtime;
 pub mod store;
 
+#[cfg(feature = "server")]
+pub mod grpc;
+
 #[cfg(feature = "rag")]
 pub mod rag;
 
@@ -43,6 +46,9 @@ pub use loader::ConfigLoader;
 pub use provider::{ProviderConfig, ProviderType};
 pub use runtime::{RuntimeConfig, RuntimePolicyConfig};
 pub use store::{StoreBackend, StoreConfig};
+
+#[cfg(feature = "server")]
+pub use grpc::GrpcConfig;
 
 #[cfg(feature = "rag")]
 pub use rag::RagConfig;
@@ -77,6 +83,11 @@ pub struct AgentConfig {
     #[cfg(feature = "queue")]
     #[serde(default)]
     pub queue: Option<QueueConfig>,
+
+    /// gRPC server configuration.
+    #[cfg(feature = "server")]
+    #[serde(default)]
+    pub grpc: GrpcConfig,
 }
 
 impl AgentConfig {
@@ -662,22 +673,18 @@ async fn build_event_publisher(
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::too_many_lines)]
 fn merge_configs(base: AgentConfig, overlay: AgentConfig) -> AgentConfig {
     let mut merged = base;
 
     // For runtime:
-    merged.runtime.max_history_messages = if overlay.runtime.max_history_messages != 50 {
-        overlay.runtime.max_history_messages
-    } else {
-        merged.runtime.max_history_messages
-    };
+    if overlay.runtime.max_history_messages != 50 {
+        merged.runtime.max_history_messages = overlay.runtime.max_history_messages;
+    }
 
-    merged.runtime.event_channel_capacity = if overlay.runtime.event_channel_capacity != 256 {
-        overlay.runtime.event_channel_capacity
-    } else {
-        merged.runtime.event_channel_capacity
-    };
+    if overlay.runtime.event_channel_capacity != 256 {
+        merged.runtime.event_channel_capacity = overlay.runtime.event_channel_capacity;
+    }
 
     // policy:
     if overlay.runtime.policy.max_iterations != 10 {

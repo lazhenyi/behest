@@ -363,6 +363,11 @@ impl InputAdmission {
     }
 
     /// Clears the deduplication cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InputAdmissionError::LockPoisoned`] if the internal
+    /// fingerprint mutex has been poisoned by a panicking thread.
     pub fn clear_cache(&self) -> Result<(), InputAdmissionError> {
         let mut seen = self
             .seen_fingerprints
@@ -487,7 +492,7 @@ mod tests {
         let config = InputAdmissionConfig::default().with_enabled(false);
         let admission = InputAdmission::new(config);
         let session_id = Uuid::new_v4();
-        let mut record = InputRecord::new(session_id, "".to_string());
+        let mut record = InputRecord::new(session_id, String::new());
 
         let events = admission.admit(&mut record).unwrap();
         assert_eq!(record.state, InputState::Admitted);

@@ -177,12 +177,10 @@ pub fn substitute_string(input: &str) -> String {
                     }
                 } else {
                     let var_name = &placeholder;
-                    match std::env::var(var_name) {
-                        Ok(val) => result.push_str(&val),
-                        Err(_) => {
-                            // If not set and no default, replace with empty string
-                        }
+                    if let Ok(val) = std::env::var(var_name) {
+                        result.push_str(&val);
                     }
+                    // If not set and no default, replace with empty string
                 }
             } else {
                 result.push_str("${");

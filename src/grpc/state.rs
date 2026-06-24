@@ -1,12 +1,14 @@
 //! Shared gRPC server state.
 
-use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 
-use crate::config::ProviderConfig;
+use super::run::RunTaskRegistry;
+#[cfg(any(feature = "openai", feature = "anthropic"))]
+use crate::config::ProviderType;
+use crate::config::{AgentConfig, ProviderConfig};
 use crate::provider::{ModelName, ProviderId};
 use crate::runtime::AgentRuntime;
-use crate::tool::ToolRegistry;
 
 /// JSON encodable model catalog entry.
 #[derive(Debug, Clone)]
@@ -21,55 +23,16 @@ pub struct ModelCatalogEntry {
     pub tool_calling: bool,
 }
 
-/// Provider config lookup helpers.
-#[derive(Debug, Clone)]
-pub struct ProviderConfigMap {
-    inner: HashMap<ProviderId, ProviderConfig>,
-}
-
-impl ProviderConfigMap {
-    /// Creates a new provider config map.
-    #[must_use]
-    pub fn new(inner: HashMap<ProviderId, ProviderConfig>) -> Self {
-        Self { inner }
-    }
-
-    /// Returns a provider config by identifier.
-    #[must_use]
-    pub fn get(&self, id: &ProviderId) -> Option<&ProviderConfig> {
-        self.inner.get(id)
-    }
-
-    /// Returns a provider config by string id.
-    #[must_use]
-    pub fn get_by_string(&self, id: &str) -> Option<&ProviderConfig> {
-        self.inner
-            .iter()
-            .find_map(|(k, v)| if k.as_str() == id { Some(v) } else { None })
-    }
-
-    /// Iterator over provider configs.
-    pub fn iter(&self) -> impl Iterator<Item = (&ProviderId, &ProviderConfig)> {
-        self.inner.iter()
-    }
-
-    /// Returns true when no providers are configured.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-}
-
 /// Shared state for all gRPC services.
 pub struct GrpcState {
     /// Agent runtime kernel.
     pub runtime: Arc<AgentRuntime>,
-    /// Model catalog derived from provider configs.
-    pub model_catalog: Vec<ModelCatalogEntry>,
-    /// Provider configuration map.
-    pub provider_configs: ProviderConfigMap,
-    /// Tool registry clone for read-only tool queries.
-    pub tool_registry: ToolRegistry,
+    /// Agent configuration (provider configs, store config, etc.).
+    pub config: Arc<AgentConfig>,
+    /// Server start time for uptime metrics.
+    pub started_at: Instant,
+    /// Active run task registry for cancellation and metrics.
+    pub run_tasks: Arc<RunTaskRegistry>,
 }
 
 impl GrpcState {
@@ -77,15 +40,68 @@ impl GrpcState {
     #[must_use]
     pub fn new(
         runtime: Arc<AgentRuntime>,
-        model_catalog: Vec<ModelCatalogEntry>,
-        provider_configs: ProviderConfigMap,
-        tool_registry: ToolRegistry,
+        config: Arc<AgentConfig>,
+        run_tasks: Arc<RunTaskRegistry>,
     ) -> Self {
         Self {
             runtime,
-            model_catalog,
-            provider_configs,
-            tool_registry,
+            config,
+            started_at: Instant::now(),
+            run_tasks,
         }
     }
+
+    /// Returns a provider config by string identifier.
+    #[must_use]
+    pub fn provider_config(&self, id: &str) -> Option<&ProviderConfig> {
+        self.config
+            .providers
+            .iter()
+            .find_map(|(k, v)| if k.as_str() == id { Some(v) } else { None })
+    }
+
+    /// Builds the model catalog from provider configs.
+    #[must_use]
+    pub fn model_catalog(&self) -> Vec<ModelCatalogEntry> {
+        build_model_catalog(&self.config.providers)
+    }
+}
+
+/// Builds a model catalog from provider configurations.
+pub(crate) fn build_model_catalog(
+    providers: &std::collections::HashMap<ProviderId, ProviderConfig>,
+) -> Vec<ModelCatalogEntry> {
+    let mut catalog = Vec::new();
+
+    for (provider_id, cfg) in providers {
+        let has_chat = match cfg.provider_type {
+            #[cfg(feature = "openai")]
+            Some(ProviderType::OpenAi) => true,
+            #[cfg(feature = "anthropic")]
+            Some(ProviderType::Anthropic) => true,
+            None => false,
+            #[allow(unreachable_patterns)]
+            _ => false,
+        };
+
+        if let Some(ref default_model) = cfg.model {
+            catalog.push(ModelCatalogEntry {
+                provider: provider_id.clone(),
+                model: default_model.clone(),
+                streaming: has_chat,
+                tool_calling: has_chat,
+            });
+        }
+
+        for model in &cfg.models {
+            catalog.push(ModelCatalogEntry {
+                provider: provider_id.clone(),
+                model: model.clone(),
+                streaming: has_chat,
+                tool_calling: has_chat,
+            });
+        }
+    }
+
+    catalog
 }

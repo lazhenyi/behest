@@ -7,11 +7,12 @@ use crate::grpc::pb::{
     AgentEvent as PbAgentEvent, CancelRunRequest, CancelRunResponse, CreateRunRequest,
     CreateRunResponse, GetRunOutputRequest, GetRunOutputResponse, GetRunRequest, GetRunResponse,
     ListRunsRequest, ListRunsResponse, RunOutput as PbRunOutput, RunRecord as PbRunRecord,
-    RunStatus as PbRunStatus, WatchRunEventsRequest, run_service_server::RunService,
+    RunStatus as PbRunStatus, TokenUsage as PbTokenUsage, WatchRunEventsRequest,
+    run_service_server::RunService,
 };
 
 use crate::grpc::event::to_proto;
-use crate::provider::{ModelName, ProviderId};
+use crate::provider::{FinishReason, ModelName, ProviderId};
 use crate::runtime::RunId;
 use crate::runtime::RunRequest;
 use crate::runtime::run::{RunRecord, RunStatus};
@@ -47,19 +48,23 @@ impl RunTaskRegistry {
             false
         }
     }
+
+    /// Returns the number of active run tasks.
+    pub async fn active_count(&self) -> usize {
+        self.handles.read().await.len()
+    }
 }
 
 /// gRPC run service.
 pub struct GrpcRunService {
     state: Arc<super::state::GrpcState>,
-    tasks: Arc<RunTaskRegistry>,
 }
 
 impl GrpcRunService {
     /// Creates a new run service.
     #[must_use]
-    pub fn new(state: Arc<super::state::GrpcState>, tasks: Arc<RunTaskRegistry>) -> Self {
-        Self { state, tasks }
+    pub fn new(state: Arc<super::state::GrpcState>) -> Self {
+        Self { state }
     }
 }
 
@@ -89,7 +94,8 @@ impl RunService for GrpcRunService {
             )
         };
 
-        let run_request = RunRequest::new(provider_id, model, &req.input);
+        let run_id = RunId::new();
+        let run_request = RunRequest::new(provider_id, model, &req.input).with_run_id(run_id);
         let run_request = if let Some(sid) = session_id {
             run_request.with_session_id(sid)
         } else {
@@ -97,7 +103,7 @@ impl RunService for GrpcRunService {
         };
 
         let runtime = Arc::clone(&self.state.runtime);
-        let tasks = Arc::clone(&self.tasks);
+        let tasks = Arc::clone(&self.state.run_tasks);
 
         let handle = tokio::spawn(async move {
             if let Err(e) = runtime.run(run_request).await {
@@ -105,7 +111,7 @@ impl RunService for GrpcRunService {
             }
         });
 
-        let run_id = Uuid::new_v4().to_string();
+        let run_id = run_id.to_string();
         tasks.register(run_id.clone(), handle).await;
 
         Ok(Response::new(CreateRunResponse {
@@ -269,31 +275,38 @@ impl RunService for GrpcRunService {
         let run_id =
             parse_run_id(&req.run_id).map_err(|_| Status::invalid_argument("invalid run id"))?;
 
-        let Some(run) = self
+        let Some(state) = self
             .state
             .runtime
             .store()
             .runs()
-            .get_run(run_id)
+            .get_run_state(run_id)
             .await
             .map_err(|e| Status::internal(e.to_string()))?
         else {
             return Err(Status::not_found("run not found"));
         };
 
-        if !run.status.is_terminal() {
+        if !state.status.is_terminal() {
             return Err(Status::failed_precondition("run has not completed yet"));
         }
 
-        let finish_reason = crate::grpc::pb::FinishReason::Unspecified as i32;
+        let finish_reason = state.last_finish.as_ref().map_or(
+            crate::grpc::pb::FinishReason::Unspecified as i32,
+            finish_reason_to_proto,
+        );
 
         Ok(Response::new(GetRunOutputResponse {
             output: Some(PbRunOutput {
                 run_id: run_id.to_string(),
-                session_id: run.session_id.to_string(),
-                iterations: 0,
+                session_id: state.session_id.to_string(),
+                iterations: u32::try_from(state.iteration).unwrap_or(u32::MAX),
                 finish_reason,
-                total_usage: None,
+                total_usage: Some(PbTokenUsage {
+                    input_tokens: state.total_usage.input_tokens,
+                    output_tokens: state.total_usage.output_tokens,
+                    total_tokens: state.total_usage.total_tokens,
+                }),
                 messages: Vec::new(),
             }),
         }))
@@ -325,7 +338,7 @@ impl RunService for GrpcRunService {
             ));
         }
 
-        self.tasks.cancel(&run_id.to_string()).await;
+        self.state.run_tasks.cancel(&run_id.to_string()).await;
 
         self.state
             .runtime
@@ -352,6 +365,11 @@ impl RunService for GrpcRunService {
 
         let (tx, rx) = mpsc::channel(256);
 
+        // Subscribe to live events BEFORE replay to avoid losing events
+        // that arrive between replay completion and subscription.
+        let mut broadcast_rx = self.state.runtime.subscribe();
+        let rid = run_id;
+
         // Replay persisted events after last_event_id.
         let events = self
             .state
@@ -365,7 +383,7 @@ impl RunService for GrpcRunService {
         let mut max_seq = last_event_id;
         for record in &events {
             if record.sequence > last_event_id {
-                let pb = to_proto(&record.event, record.sequence, &run_id.to_string());
+                let pb = to_proto(&record.event, record.sequence, &rid.to_string());
                 max_seq = record.sequence;
                 if tx.send(Ok(pb)).await.is_err() {
                     return Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
@@ -385,9 +403,6 @@ impl RunService for GrpcRunService {
             }
         }
 
-        // Subscribe to live events.
-        let mut broadcast_rx = self.state.runtime.subscribe();
-        let rid = run_id;
         tokio::spawn(async move {
             loop {
                 match broadcast_rx.recv().await {
@@ -468,5 +483,17 @@ fn run_status_to_pb(s: RunStatus) -> PbRunStatus {
         RunStatus::Completed => PbRunStatus::Completed,
         RunStatus::Failed => PbRunStatus::Failed,
         RunStatus::Cancelled => PbRunStatus::Cancelled,
+    }
+}
+
+fn finish_reason_to_proto(reason: &FinishReason) -> i32 {
+    use crate::grpc::pb::FinishReason as F;
+    match reason {
+        FinishReason::Stop => F::Stop as i32,
+        FinishReason::ToolCalls => F::ToolCalls as i32,
+        FinishReason::Length => F::Length as i32,
+        FinishReason::ContentFilter => F::ContentFilter as i32,
+        FinishReason::Error => F::Error as i32,
+        FinishReason::Unknown(_) => F::Unknown as i32,
     }
 }

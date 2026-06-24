@@ -555,7 +555,12 @@ mod tests {
     #[tokio::test]
     async fn test_job_pool_schedule_and_execution() {
         let store = make_test_store();
-        let pool = BackgroundJobPool::new(store, None, None);
+        let pool = BackgroundJobPool::new(
+            store,
+            #[cfg(feature = "queue")]
+            None,
+            None,
+        );
 
         let mut rx = pool.subscribe_completed();
 
@@ -601,7 +606,12 @@ mod tests {
         let persist_path_str = persist_path.to_string_lossy().into_owned();
 
         // Create pool with persistence path and schedule a job
-        let pool = BackgroundJobPool::new(store.clone(), None, Some(persist_path_str.clone()));
+        let pool = BackgroundJobPool::new(
+            store.clone(),
+            #[cfg(feature = "queue")]
+            None,
+            Some(persist_path_str.clone()),
+        );
 
         // Push a job with high priority that won't run yet because we don't start the worker
         pool.schedule(
@@ -622,7 +632,12 @@ mod tests {
         assert!(persist_path.exists());
 
         // Create a new pool pointing to the same file
-        let new_pool = BackgroundJobPool::new(store, None, Some(persist_path_str.clone()));
+        let new_pool = BackgroundJobPool::new(
+            store,
+            #[cfg(feature = "queue")]
+            None,
+            Some(persist_path_str.clone()),
+        );
 
         // Recover/load persisted jobs
         new_pool.load_persisted_jobs().await;

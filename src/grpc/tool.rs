@@ -30,7 +30,9 @@ impl ToolService for GrpcToolService {
     ) -> Result<Response<ListToolsResponse>, Status> {
         let tools: Vec<ToolInfo> = self
             .state
-            .tool_registry
+            .runtime
+            .tools()
+            .registry()
             .specs()
             .into_iter()
             .map(|spec| ToolInfo {
@@ -48,7 +50,7 @@ impl ToolService for GrpcToolService {
         request: Request<GetToolRequest>,
     ) -> Result<Response<GetToolResponse>, Status> {
         let req = request.into_inner();
-        let Some(tool) = self.state.tool_registry.get(&req.name) else {
+        let Some(tool) = self.state.runtime.tools().registry().get(&req.name) else {
             return Err(Status::not_found(format!("tool '{}' not found", req.name)));
         };
 
@@ -67,7 +69,7 @@ impl ToolService for GrpcToolService {
         request: Request<InvokeToolRequest>,
     ) -> Result<Response<InvokeToolResponse>, Status> {
         let req = request.into_inner();
-        let Some(tool) = self.state.tool_registry.get(&req.name) else {
+        let Some(tool) = self.state.runtime.tools().registry().get(&req.name) else {
             return Err(Status::not_found(format!("tool '{}' not found", req.name)));
         };
 
