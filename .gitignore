@@ -17,3 +17,4 @@ Cargo.lock.orig
 # Generated reports
 coverage/
 tarpaulin-report.html
+agent_descriptor_set.bin
