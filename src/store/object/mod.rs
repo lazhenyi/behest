@@ -1,4 +1,6 @@
-//! Object store artifact implementations (local disk and S3).
+//! Artifact store implementations using the `object_store` crate.
+//!
+//! Provides local filesystem and Amazon S3-compatible backends.
 
 pub mod artifact;
 

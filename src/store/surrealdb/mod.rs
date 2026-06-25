@@ -1,4 +1,4 @@
-//! SurrealDB session store implementation.
+//! SurrealDB session store implementation using its document model.
 
 pub mod session;
 

@@ -1,4 +1,8 @@
 //! RunService gRPC implementation.
+//!
+//! Provides RPCs for creating runs (with optional streaming events),
+//! listing/filtering runs, retrieving run output, cancelling runs,
+//! and watching live run events via server-sent streaming.
 
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
@@ -37,7 +41,11 @@ fn parse_grpc_timeout<T>(request: &Request<T>) -> Option<Duration> {
     }
 }
 
-/// In-memory registry of active run tasks for cancellation.
+/// In-memory registry of active run tasks for cancellation and idempotency.
+///
+/// Tracks spawned tokio tasks by run ID for coordinated cancellation
+/// and maintains a client-request-ID to run-ID mapping for at-most-once
+/// run creation semantics.
 #[derive(Default)]
 pub struct RunTaskRegistry {
     handles: RwLock<HashMap<String, tokio::task::JoinHandle<()>>>,
@@ -46,18 +54,22 @@ pub struct RunTaskRegistry {
 }
 
 impl RunTaskRegistry {
-    /// Creates a new empty registry.
+    /// Creates a new empty run task registry.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Registers a run task.
+    /// Registers a run task under the given run ID.
+    ///
+    /// The associated `JoinHandle` is stored for later cancellation.
     pub async fn register(&self, run_id: String, handle: tokio::task::JoinHandle<()>) {
         self.handles.write().await.insert(run_id, handle);
     }
 
-    /// Aborts and removes a run task.
+    /// Aborts and removes a run task by run ID.
+    ///
+    /// Returns `true` if the task was found and aborted.
     pub async fn cancel(&self, run_id: &str) -> bool {
         let mut handles = self.handles.write().await;
         if let Some(handle) = handles.remove(run_id) {
@@ -68,12 +80,16 @@ impl RunTaskRegistry {
         }
     }
 
-    /// Returns the number of active run tasks.
+    /// Returns the number of currently registered (active) run tasks.
     pub async fn active_count(&self) -> usize {
         self.handles.read().await.len()
     }
 
-    /// Checks if a client_request_id has already been used and returns the associated run_id.
+    /// Returns the previously-assigned run ID for a client request ID, if any.
+    ///
+    /// Used for idempotent run creation: duplicate requests with the same
+    /// client-generated identifier return the existing run instead of
+    /// creating a new one.
     pub async fn get_idempotent_run_id(&self, client_request_id: &str) -> Option<String> {
         self.idempotency_cache
             .read()
@@ -82,7 +98,7 @@ impl RunTaskRegistry {
             .cloned()
     }
 
-    /// Records a client_request_id → run_id mapping for idempotency.
+    /// Records a mapping from client request ID to run ID for idempotency.
     pub async fn record_idempotent_run(&self, client_request_id: String, run_id: String) {
         self.idempotency_cache
             .write()
@@ -91,13 +107,17 @@ impl RunTaskRegistry {
     }
 }
 
-/// gRPC run service.
+/// gRPC run service for agent execution lifecycle management.
+///
+/// Supports creating runs (sync and streaming), listing/filtering
+/// runs by session and status, retrieving completed output, cancelling
+/// active runs, and watching run events in real time.
 pub struct GrpcRunService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcRunService {
-    /// Creates a new run service.
+    /// Creates a new run service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }

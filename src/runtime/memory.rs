@@ -1,4 +1,16 @@
 //! In-memory implementations of runtime stores.
+//!
+//! Provides [`MemoryRunStore`], an ephemeral [`RunStore`] backed by
+//! `tokio::sync::RwLock`-guarded [`HashMap`]s. Useful for testing and
+//! single-process deployments where persistence is not required.
+//!
+//! # Architecture
+//!
+//! Each run is stored as three in-memory maps:
+//! - `runs` — [`RunRecord`] keyed by [`Uuid`].
+//! - `events` — [`RunEventRecord`] vectors keyed by run UUID.
+//! - `projections` — Materialised [`RunState`] projections updated
+//!   transactionally on every event append.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,7 +24,10 @@ use super::run::{RunId, RunRecord, RunStatus};
 use super::state::RunState;
 use super::store::{RunEventRecord, RunStore};
 
-/// In-memory implementation of [`RunStore`].
+/// In-memory [`RunStore`] implementation backed by `RwLock`-protected hash maps.
+///
+/// Stores run records, event streams, and materialised [`RunState`] projections
+/// in process memory. All data is lost when the store is dropped.
 pub struct MemoryRunStore {
     runs: RwLock<HashMap<Uuid, RunRecord>>,
     events: RwLock<HashMap<Uuid, Vec<RunEventRecord>>>,

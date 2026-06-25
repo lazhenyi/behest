@@ -14,7 +14,16 @@ use super::types::{
 
 const DEFAULT_MAX_TOKENS: u32 = 4096;
 
-/// Converts a neutral chat request into an Anthropic request.
+/// Converts a neutral [`ChatRequest`] into an [`AnthropicRequest`].
+///
+/// Extracts system messages into the top-level `system` field, converts
+/// remaining messages to Anthropic wire format, and maps tool definitions.
+/// When `stream` is `true` the resulting request uses SSE streaming.
+///
+/// # Parameters
+///
+/// * `request` — The neutral chat request to convert.
+/// * `stream` — Whether to enable SSE streaming for the Anthropic API.
 pub fn to_anthropic_request(request: &ChatRequest, stream: bool) -> AnthropicRequest {
     let system = extract_system_text(&request.messages);
     let messages = convert_messages(&request.messages);
@@ -33,6 +42,10 @@ pub fn to_anthropic_request(request: &ChatRequest, stream: bool) -> AnthropicReq
     }
 }
 
+/// Extracts and joins all system message text content.
+///
+/// Concatenates system text parts with double-newline separators.
+/// Returns `None` when there are no system messages.
 fn extract_system_text(messages: &[Message]) -> Option<String> {
     let system_parts: Vec<&str> = messages
         .iter()
@@ -55,6 +68,7 @@ fn extract_system_text(messages: &[Message]) -> Option<String> {
     }
 }
 
+/// Filters out system messages and converts the rest to Anthropic wire format.
 fn convert_messages(messages: &[Message]) -> Vec<AnthropicMessage> {
     messages
         .iter()
@@ -63,6 +77,12 @@ fn convert_messages(messages: &[Message]) -> Vec<AnthropicMessage> {
         .collect()
 }
 
+/// Converts one neutral [`Message`] to an [`AnthropicMessage`].
+///
+/// * `User` → role `"user"` with content blocks.
+/// * `Assistant` → role `"assistant"` with content blocks and optional tool calls.
+/// * `Tool` → role `"user"` with a `tool_result` content block.
+/// * `System` → panics (callers must filter via [`convert_messages`]).
 fn convert_single_message(message: &Message) -> AnthropicMessage {
     match message {
         Message::User { content } => AnthropicMessage {
@@ -102,6 +122,7 @@ fn convert_single_message(message: &Message) -> AnthropicMessage {
     }
 }
 
+/// Converts user content parts (text, JSON, images) to Anthropic content blocks.
 fn convert_user_content(parts: &[ContentPart]) -> Vec<AnthropicContentBlock> {
     parts
         .iter()
@@ -121,6 +142,10 @@ fn convert_user_content(parts: &[ContentPart]) -> Vec<AnthropicContentBlock> {
         .collect()
 }
 
+/// Converts tool result content parts to Anthropic tool result content blocks.
+///
+/// Only text and image parts are valid in tool results; JSON parts are
+/// serialized as text.
 fn convert_tool_result_content(parts: &[ContentPart]) -> Vec<AnthropicToolResultContent> {
     parts
         .iter()
@@ -140,6 +165,10 @@ fn convert_tool_result_content(parts: &[ContentPart]) -> Vec<AnthropicToolResult
         .collect()
 }
 
+/// Converts assistant content parts to Anthropic content blocks.
+///
+/// Image parts are replaced with a `[image]` placeholder text since the
+/// Anthropic API does not accept images in assistant messages.
 fn convert_assistant_content(parts: &[ContentPart]) -> Vec<AnthropicContentBlock> {
     parts
         .iter()
@@ -155,6 +184,7 @@ fn convert_assistant_content(parts: &[ContentPart]) -> Vec<AnthropicContentBlock
         .collect()
 }
 
+/// Converts a neutral [`ToolSpec`] to an [`AnthropicToolDef`].
 fn convert_tool_spec(spec: &ToolSpec) -> AnthropicToolDef {
     AnthropicToolDef {
         name: spec.name.clone(),
@@ -163,6 +193,9 @@ fn convert_tool_spec(spec: &ToolSpec) -> AnthropicToolDef {
     }
 }
 
+/// Converts a neutral [`ToolChoice`] to an Anthropic tool_choice JSON value.
+///
+/// Returns `None` when no tools are available or the choice is `ToolChoice::None`.
 fn convert_tool_choice(choice: &ToolChoice, has_tools: bool) -> Option<Value> {
     if !has_tools {
         return None;
@@ -175,7 +208,15 @@ fn convert_tool_choice(choice: &ToolChoice, has_tools: bool) -> Option<Value> {
     }
 }
 
-/// Converts an Anthropic response into a neutral chat response.
+/// Converts an [`AnthropicResponse`] into a neutral [`ChatResponse`].
+///
+/// Extracts text content and tool calls from the response content blocks and
+/// maps the stop reason and usage tokens.
+///
+/// # Parameters
+///
+/// * `provider` — The provider identifier to attach to the response.
+/// * `response` — The raw Anthropic API response.
 pub fn from_anthropic_response(
     provider: &ProviderId,
     response: &AnthropicResponse,
@@ -195,6 +236,10 @@ pub fn from_anthropic_response(
     }
 }
 
+/// Splits Anthropic content blocks into text parts and tool calls.
+///
+/// Image and tool result blocks are silently skipped as they do not appear
+/// in assistant responses from the non-streaming endpoint.
 fn parse_content_blocks(blocks: &[AnthropicContentBlock]) -> (Vec<ContentPart>, Vec<ToolCall>) {
     let mut content_parts = Vec::new();
     let mut tool_calls = Vec::new();
@@ -214,6 +259,7 @@ fn parse_content_blocks(blocks: &[AnthropicContentBlock]) -> (Vec<ContentPart>, 
     (content_parts, tool_calls)
 }
 
+/// Converts an Anthropic stop reason string to the neutral [`FinishReason`].
 fn convert_stop_reason(reason: Option<&str>) -> FinishReason {
     match reason {
         Some("end_turn" | "stop_sequence") => FinishReason::Stop,
@@ -224,6 +270,7 @@ fn convert_stop_reason(reason: Option<&str>) -> FinishReason {
     }
 }
 
+/// Converts [`AnthropicUsage`] to neutral [`TokenUsage`].
 fn convert_usage(usage: &super::types::AnthropicUsage) -> TokenUsage {
     TokenUsage::new(usage.input_tokens, usage.output_tokens)
 }

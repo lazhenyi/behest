@@ -9,11 +9,15 @@ use crate::error::StorageError;
 use crate::provider::{ModelName, TokenUsage};
 use crate::store::{MessageRecord, Session, SessionStore, StoreResult};
 
-/// Redis-backed session store.
+/// Redis-backed session store using hashes and sorted sets.
 ///
-/// Sessions are stored as hashes with key pattern `session:{id}`.
+/// Sessions are stored as Redis hashes with key pattern `session:{id}`.
 /// Messages are stored as a sorted set per session with key `messages:{session_id}`,
-/// scored by creation timestamp for chronological ordering.
+/// scored by creation timestamp (milliseconds) for chronological ordering.
+///
+/// A secondary index `message_index:{message_id}` maps each message to its
+/// session and score for efficient `update_usage` lookups.
+/// Implements [`SessionStore`].
 pub struct RedisSessionStore {
     client: redis::Client,
 }
@@ -21,9 +25,11 @@ pub struct RedisSessionStore {
 impl RedisSessionStore {
     /// Creates a Redis session store from a connection URL.
     ///
+    /// The connection is not established until the first operation.
+    ///
     /// # Errors
     ///
-    /// Returns [`StorageError::ConnectionFailed`] when the URL is invalid.
+    /// Returns [`StorageError::ConnectionFailed`] when the URL is malformed.
     pub fn new(url: &str) -> StoreResult<Self> {
         let client = redis::Client::open(url).map_err(|e| StorageError::ConnectionFailed {
             backend: "redis".to_owned(),
@@ -33,7 +39,7 @@ impl RedisSessionStore {
         Ok(Self { client })
     }
 
-    /// Creates a Redis session store from an existing client.
+    /// Creates a Redis session store from an existing `redis::Client`.
     #[must_use]
     pub fn from_client(client: redis::Client) -> Self {
         Self { client }

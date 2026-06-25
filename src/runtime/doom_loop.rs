@@ -182,7 +182,16 @@ impl DoomLoopDetector {
         }
     }
 
-    /// Records a tool call and checks for doom loops.
+    /// Records a tool call into the detection history and checks for doom
+    /// loops against the current and past tool calls.
+    ///
+    /// Two detection strategies are applied in order:
+    /// 1. **Consecutive duplicates** — the same tool with the same canonical
+    ///    arguments called N times in a row (configured by
+    ///    [`DoomLoopConfig::consecutive_threshold`]).
+    /// 2. **Cyclic patterns** — a repeating sequence of tool calls of length
+    ///    between `min_cycle_length` and `max_cycle_length` that repeats at
+    ///    least `cycle_repetitions` times.
     ///
     /// Returns `Some(DoomLoopType)` if a doom loop is detected, `None` otherwise.
     pub fn record_and_check(&mut self, name: &str, arguments: &Value) -> Option<DoomLoopType> {

@@ -56,7 +56,8 @@ pub use rag::RagConfig;
 #[cfg(feature = "queue")]
 pub use queue::{QueueBackend, QueueConfig};
 
-/// Top-level agent configuration.
+/// Top-level agent configuration combining runtime, providers, stores,
+/// and optional RAG, queue, and gRPC sub-configurations.
 ///
 /// Serialisable and deserialisable via `serde`, enabling file-based
 /// and environment-variable-based loading.
@@ -106,6 +107,12 @@ impl AgentConfig {
     /// # Errors
     ///
     /// Returns an error when any component cannot be constructed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let runtime = AgentConfig::default().into_runtime().await?;
+    /// ```
     pub async fn into_runtime(self) -> Result<AgentRuntime> {
         self.into_builder().build_runtime().await
     }
@@ -278,11 +285,20 @@ impl AgentConfigBuilder {
         self
     }
 
-    /// Builds the final `AgentConfig` after validation.
+    /// Builds the final `AgentConfig` after validation and placeholder substitution.
     ///
     /// # Errors
     ///
-    /// Returns an error when the configuration fails validation.
+    /// Returns an error when serialization, placeholder substitution,
+    /// or validation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let config = AgentConfig::builder()
+    ///     .with_runtime(runtime_config)
+    ///     .build()?;
+    /// ```
     pub fn build(mut self) -> Result<AgentConfig> {
         let mut value = serde_json::to_value(&self.config).map_err(|e| {
             Error::Config(format!(
@@ -302,9 +318,20 @@ impl AgentConfigBuilder {
 
     /// Builds a fully assembled `AgentRuntime` from the configuration.
     ///
+    /// This registers providers, constructs stores, sets up the context
+    /// pipeline (with optional RAG adapter), and creates the tool runtime.
+    ///
     /// # Errors
     ///
     /// Returns an error when validation fails or any component cannot be constructed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let runtime = AgentConfig::builder()
+    ///     .with_runtime(runtime_config)
+    ///     .build_runtime().await?;
+    /// ```
     pub async fn build_runtime(self) -> Result<AgentRuntime> {
         let config = self.build()?;
 

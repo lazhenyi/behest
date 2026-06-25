@@ -13,8 +13,8 @@ use uuid::Uuid;
 
 /// RAII guard that holds a per-session lock for the duration of a run.
 ///
-/// Dropping this guard releases the session lock, allowing the next
-/// queued run to proceed.
+/// Returned by [`SessionGate::acquire`]. Dropping this guard releases the
+/// session lock, allowing the next queued run to proceed.
 pub struct SessionGuard {
     _inner: tokio::sync::OwnedMutexGuard<()>,
 }

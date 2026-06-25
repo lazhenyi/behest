@@ -67,10 +67,16 @@ pub use nats::NatsEventPublisher;
 pub use redis_streams::RedisStreamsPublisher;
 
 /// A no‑op publisher for testing and opt‑out scenarios.
+///
+/// Accepts all events silently without connecting to any broker.
+/// Useful as a default implementation or for disabling event publishing
+/// in configurations where observability is not required.
 pub struct NoOpPublisher;
 
 impl NoOpPublisher {
-    /// Creates a no‑op publisher.
+    /// Creates a no‑op publisher that discards all events.
+    ///
+    /// This is a zero-allocation operation.
     #[must_use]
     pub fn new() -> Self {
         Self

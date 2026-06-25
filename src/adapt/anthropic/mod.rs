@@ -26,8 +26,8 @@ pub mod types;
 
 pub use chat::AnthropicChatAdapter;
 
-/// Default Anthropic API base URL.
+/// Default Anthropic API base URL (`https://api.anthropic.com/v1`).
 pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 
-/// Anthropic API version header value.
+/// Anthropic API version header value sent as `anthropic-version`.
 pub const API_VERSION: &str = "2023-06-01";

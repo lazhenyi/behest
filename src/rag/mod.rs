@@ -23,6 +23,14 @@ use crate::store::{EmbeddingStore, ScoredEmbedding};
 /// 3. Formats retrieved metadata into a single system message
 ///
 /// When `user_message` is [`None`] the adapter produces no messages.
+///
+/// # Fields
+/// - `provider` – embedding provider used to vectorize the user message.
+/// - `store` – vector store queried for semantically relevant documents.
+/// - `model` – model name passed to the embedding provider.
+/// - `limit` – maximum number of retrieved snippets (default 5).
+/// - `template` – system-prompt template with `{context}` placeholder.
+/// - `metadata_field` – field extracted from each record's metadata (default `"text"`).
 pub struct RagContextAdapter {
     provider: Arc<dyn crate::provider::traits::EmbeddingProvider>,
     store: Arc<dyn EmbeddingStore>,

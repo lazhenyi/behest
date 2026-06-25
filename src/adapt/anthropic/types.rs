@@ -231,7 +231,7 @@ pub struct AnthropicMessageDelta {
     pub stop_reason: Option<String>,
 }
 
-/// Anthropic API error response body.
+/// Anthropic API error response body, deserialized from non-2xx responses.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AnthropicErrorBody {
     /// Error details.

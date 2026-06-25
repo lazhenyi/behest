@@ -2,6 +2,18 @@
 //!
 //! Starts a gRPC server exposing the agent runtime as microservices.
 //! Configure via environment variables or config files.
+//!
+//! ## Features
+//!
+//! * **gRPC services** – provider, model, session, run, tool, usage,
+//!   metrics, embedding, artifact, agent, context, chat, compaction,
+//!   snapshot, admin, health, and reflection.
+//! * **OpenTelemetry** – when the `otel` feature is enabled, spans are
+//!   exported via an OTLP gRPC exporter.
+//! * **TLS** – optional server-side TLS with mutual authentication
+//!   (client CA verification).
+//! * **Graceful shutdown** – listens for SIGINT (Ctrl+C) and drains
+//!   in-flight requests before exiting.
 
 use std::net::SocketAddr;
 use std::sync::Arc;

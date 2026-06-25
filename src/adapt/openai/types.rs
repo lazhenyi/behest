@@ -208,7 +208,7 @@ pub struct OpenAiEmbeddingData {
     pub embedding: Vec<f32>,
 }
 
-/// OpenAI API error response body.
+/// OpenAI API error response body, deserialized from non-2xx responses.
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAiErrorBody {
     /// Error details.

@@ -71,14 +71,17 @@ pub mod qdrant;
 #[cfg(feature = "object_store")]
 pub mod object;
 
-/// Result type for storage operations.
+/// Convenience result alias for storage operations using [`StorageError`].
 pub type StoreResult<T> = std::result::Result<T, StorageError>;
 
 // ---------------------------------------------------------------------------
 // Pagination and filter types
 // ---------------------------------------------------------------------------
 
-/// Pagination parameters for list operations.
+/// Pagination parameters for paginated list operations.
+///
+/// Uses offset-based pagination with configurable limit and offset.
+/// Defaults to returning the first 100 items.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pagination {
     /// Maximum number of items to return.
@@ -129,7 +132,10 @@ pub struct Session {
 }
 
 impl Session {
-    /// Creates a new session with a generated ID and current timestamps.
+    /// Creates a new session with a generated UUIDv7 ID and current timestamps.
+    ///
+    /// The session starts with no metadata (`Value::Null`) and matching
+    /// `created_at` / `updated_at` timestamps.
     #[must_use]
     pub fn new(title: impl Into<String>, model: ModelName) -> Self {
         let now = Utc::now();
@@ -143,7 +149,7 @@ impl Session {
         }
     }
 
-    /// Sets application metadata on the session.
+    /// Sets application metadata on the session, consuming and returning the session.
     #[must_use]
     pub fn with_metadata(mut self, metadata: Value) -> Self {
         self.metadata = metadata;
@@ -157,6 +163,10 @@ impl Session {
 /// 1. A user message with `is_compaction = true` and `compaction_meta.tail_start_id`
 ///    indicating where the retained tail begins.
 /// 2. An assistant message with `is_summary = true` containing the LLM-generated summary.
+///
+/// The `previous_compaction_id` and `summary_text` fields enable incremental
+/// summarization: prior compaction summaries are fed back to the compaction LLM
+/// so it can update the summary instead of regenerating from scratch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompactionMeta {
     /// The first message ID retained in the tail after this compaction.
@@ -169,6 +179,9 @@ pub struct CompactionMeta {
 
 impl CompactionMeta {
     /// Creates compaction metadata for a new compaction user message.
+    ///
+    /// Sets `tail_start_id` to the given ID; `previous_compaction_id`
+    /// and `summary_text` are left as `None`.
     #[must_use]
     pub fn new(tail_start_id: Uuid) -> Self {
         Self {
@@ -178,14 +191,14 @@ impl CompactionMeta {
         }
     }
 
-    /// Sets the previous compaction ID for incremental summarization.
+    /// Sets the previous compaction ID for incremental summarization, consuming and returning self.
     #[must_use]
     pub fn with_previous(mut self, previous_id: Uuid) -> Self {
         self.previous_compaction_id = Some(previous_id);
         self
     }
 
-    /// Sets the summary text.
+    /// Sets the summary text, consuming and returning self.
     #[must_use]
     pub fn with_summary(mut self, summary: String) -> Self {
         self.summary_text = Some(summary);
@@ -194,6 +207,10 @@ impl CompactionMeta {
 }
 
 /// Persisted message exchange within a session.
+///
+/// Each message records a single turn in the conversation: the role (user,
+/// assistant, system, tool), its content parts, optional tool calls or tool
+/// results, token usage, and compaction state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MessageRecord {
     /// Unique message identifier.
@@ -230,7 +247,10 @@ pub struct MessageRecord {
 }
 
 impl MessageRecord {
-    /// Creates a new message record with a generated ID and current timestamp.
+    /// Creates a new message record with a generated UUIDv7 ID and current timestamp.
+    ///
+    /// All optional fields (`tool_calls`, `tool_call_id`, `tool_name`, `usage`,
+    /// compaction flags) are initialized to their default/absent state.
     #[must_use]
     pub fn new(session_id: Uuid, role: MessageRole, content: Vec<ContentPart>) -> Self {
         Self {
@@ -249,7 +269,10 @@ impl MessageRecord {
         }
     }
 
-    /// Sets tool call metadata on a tool result message.
+    /// Sets tool call metadata on a tool result message, consuming and returning self.
+    ///
+    /// Use this when the message represents a tool execution result rather than
+    /// an assistant message that initiates tool calls.
     #[must_use]
     pub fn with_tool_result(mut self, call_id: String, name: String) -> Self {
         self.tool_call_id = Some(call_id);
@@ -257,21 +280,23 @@ impl MessageRecord {
         self
     }
 
-    /// Sets tool calls on the message record.
+    /// Sets tool calls on the message record, consuming and returning self.
+    ///
+    /// Use this when the assistant message initiates one or more tool calls.
     #[must_use]
     pub fn with_tool_calls(mut self, tool_calls: Vec<ToolCall>) -> Self {
         self.tool_calls = tool_calls;
         self
     }
 
-    /// Sets token usage on the message record.
+    /// Sets token usage on the message record, consuming and returning self.
     #[must_use]
     pub fn with_usage(mut self, usage: TokenUsage) -> Self {
         self.usage = Some(usage);
         self
     }
 
-    /// Marks this message as a compaction task.
+    /// Marks this message as a compaction task user message, consuming and returning self.
     #[must_use]
     pub fn with_compaction(mut self, meta: CompactionMeta) -> Self {
         self.is_compaction = true;
@@ -279,7 +304,7 @@ impl MessageRecord {
         self
     }
 
-    /// Marks this message as a compaction summary.
+    /// Marks this message as a compaction summary assistant message, consuming and returning self.
     #[must_use]
     pub fn with_summary(mut self, meta: CompactionMeta) -> Self {
         self.is_summary = true;
@@ -318,7 +343,7 @@ pub enum MessageRole {
 // Embedding types
 // ---------------------------------------------------------------------------
 
-/// Embedding record with vector and metadata.
+/// Embedding record with a dense vector and associated metadata.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EmbeddingRecord {
     /// Unique record identifier.
@@ -327,7 +352,7 @@ pub struct EmbeddingRecord {
     pub session_id: Option<Uuid>,
     /// Model that produced the embedding.
     pub model: String,
-    /// Dense embedding vector.
+    /// Dense embedding vector (list of `f32` components).
     pub vector: Vec<f32>,
     /// Application-specific metadata.
     pub metadata: Value,
@@ -336,7 +361,9 @@ pub struct EmbeddingRecord {
 }
 
 impl EmbeddingRecord {
-    /// Creates a new embedding record with a generated ID and current timestamp.
+    /// Creates a new embedding record with a generated UUIDv7 ID and current timestamp.
+    ///
+    /// `session_id` and `metadata` are initialized to `None` and `Value::Null` respectively.
     #[must_use]
     pub fn new(model: impl Into<String>, vector: Vec<f32>) -> Self {
         Self {
@@ -349,14 +376,14 @@ impl EmbeddingRecord {
         }
     }
 
-    /// Associates this embedding with a session.
+    /// Associates this embedding record with a session, consuming and returning self.
     #[must_use]
     pub fn with_session(mut self, session_id: Uuid) -> Self {
         self.session_id = Some(session_id);
         self
     }
 
-    /// Sets metadata on the embedding record.
+    /// Sets metadata on the embedding record, consuming and returning self.
     #[must_use]
     pub fn with_metadata(mut self, metadata: Value) -> Self {
         self.metadata = metadata;
@@ -364,7 +391,7 @@ impl EmbeddingRecord {
     }
 }
 
-/// Embedding search result with similarity score.
+/// Embedding search result pairing a matching record with its similarity score.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScoredEmbedding {
     /// The matching embedding record.
@@ -377,7 +404,7 @@ pub struct ScoredEmbedding {
 // Artifact types
 // ---------------------------------------------------------------------------
 
-/// Binary artifact stored by the agent runtime.
+/// Binary artifact stored by the agent runtime, such as files, images, or attachments.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Artifact {
     /// Unique artifact identifier.
@@ -398,7 +425,9 @@ pub struct Artifact {
 }
 
 impl Artifact {
-    /// Creates a new artifact with a generated ID and current timestamp.
+    /// Creates a new artifact with a generated UUIDv7 ID and current timestamp.
+    ///
+    /// `session_id` and `metadata` are initialized to `None` and `Value::Null` respectively.
     #[must_use]
     pub fn new(name: impl Into<String>, content_type: impl Into<String>, data: Vec<u8>) -> Self {
         Self {
@@ -412,14 +441,14 @@ impl Artifact {
         }
     }
 
-    /// Associates this artifact with a session.
+    /// Associates this artifact with a session, consuming and returning self.
     #[must_use]
     pub fn with_session(mut self, session_id: Uuid) -> Self {
         self.session_id = Some(session_id);
         self
     }
 
-    /// Sets metadata on the artifact.
+    /// Sets metadata on the artifact, consuming and returning self.
     #[must_use]
     pub fn with_metadata(mut self, metadata: Value) -> Self {
         self.metadata = metadata;
@@ -458,18 +487,22 @@ mod base64_bytes {
 // ---------------------------------------------------------------------------
 
 /// Persists conversation sessions and their message history.
+///
+/// Implementations must be `Send + Sync` to support concurrent access
+/// from the agent runtime. Backends are selected at compile time via
+/// Cargo feature flags.
 #[async_trait]
 pub trait SessionStore: Send + Sync {
     /// Persists a new session and returns it with server-assigned fields.
     async fn create_session(&self, session: Session) -> StoreResult<Session>;
 
-    /// Returns all sessions ordered by most recently updated.
+    /// Returns all sessions ordered by most recently updated (descending).
     async fn list_sessions(&self) -> StoreResult<Vec<Session>>;
 
     /// Returns a session by identifier, or `None` if not found.
     async fn get_session(&self, id: &Uuid) -> StoreResult<Option<Session>>;
 
-    /// Deletes a session and all related data.
+    /// Deletes a session and all related data (cascading delete).
     ///
     /// Implementations MUST cascade the deletion to at minimum:
     /// - All messages belonging to the session
@@ -602,9 +635,15 @@ pub trait SessionStore: Send + Sync {
 }
 
 /// Persists embedding vectors and supports nearest-neighbor search.
+///
+/// Implementations use cosine similarity for ranking results (higher score = closer match).
+/// Backends include in-memory HashMap, PostgreSQL with pgvector, and Qdrant.
 #[async_trait]
 pub trait EmbeddingStore: Send + Sync {
     /// Inserts or updates an embedding record.
+    ///
+    /// If a record with the same ID already exists, it is replaced.
+    /// Returns the stored record on success.
     async fn upsert(&self, record: EmbeddingRecord) -> StoreResult<EmbeddingRecord>;
 
     /// Returns the `limit` nearest neighbors to the query vector.
@@ -613,14 +652,20 @@ pub trait EmbeddingStore: Send + Sync {
     async fn search(&self, query: &[f32], limit: usize) -> StoreResult<Vec<ScoredEmbedding>>;
 
     /// Deletes an embedding by identifier.
+    ///
+    /// Returns `Ok(())` even when the ID does not exist (idempotent).
     async fn delete(&self, id: &Uuid) -> StoreResult<()>;
 
     /// Deletes all embeddings associated with a session.
+    ///
     /// Returns the number of records deleted.
     async fn delete_by_session(&self, session_id: &Uuid) -> StoreResult<u64>;
 }
 
 /// Stores binary artifacts such as files, images, and attachments.
+///
+/// Backends include in-memory HashMap, local filesystem, and Amazon S3-compatible
+/// object stores (via the `object_store` crate).
 #[async_trait]
 pub trait ArtifactStore: Send + Sync {
     /// Stores an artifact and returns it with server-assigned fields.
@@ -629,7 +674,7 @@ pub trait ArtifactStore: Send + Sync {
     /// Retrieves an artifact by identifier, or `None` if not found.
     async fn get(&self, id: &Uuid) -> StoreResult<Option<Artifact>>;
 
-    /// Deletes an artifact by identifier.
+    /// Deletes an artifact by identifier (idempotent).
     async fn delete(&self, id: &Uuid) -> StoreResult<()>;
 
     /// Lists all artifacts associated with a session.
@@ -649,10 +694,10 @@ pub trait ArtifactStore: Send + Sync {
 // Execution types
 // ---------------------------------------------------------------------------
 
-/// Persisted tool execution record.
+/// Persisted record of a single tool invocation.
 ///
-/// Captures the full lifecycle of a tool call: arguments, result, status,
-/// duration, and any error message.
+/// Captures the full lifecycle: input arguments, output result, execution status,
+/// wall-clock duration, and any error message on failure.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolExecution {
     /// Unique execution identifier.
@@ -681,7 +726,10 @@ pub struct ToolExecution {
 }
 
 impl ToolExecution {
-    /// Creates a new tool execution record.
+    /// Creates a new tool execution record with a generated UUIDv7 ID and current timestamp.
+    ///
+    /// The execution starts with `Pending` status, no result, no error,
+    /// and zero duration.
     #[must_use]
     pub fn new(
         session_id: Uuid,
@@ -705,7 +753,7 @@ impl ToolExecution {
         }
     }
 
-    /// Marks the execution as successful with a result.
+    /// Marks the execution as successful with the given result and duration, consuming and returning self.
     #[must_use]
     pub fn with_success(mut self, result: Value, duration: Duration) -> Self {
         self.result = Some(result);
@@ -714,7 +762,7 @@ impl ToolExecution {
         self
     }
 
-    /// Marks the execution as failed with an error message.
+    /// Marks the execution as failed with the given error message and duration, consuming and returning self.
     #[must_use]
     pub fn with_failure(mut self, error: impl Into<String>, duration: Duration) -> Self {
         self.error = Some(error.into());
@@ -764,7 +812,9 @@ pub struct UsageRecord {
 }
 
 impl UsageRecord {
-    /// Creates a usage record from a provider response.
+    /// Creates a usage record from a provider response with a generated UUIDv7 ID and current timestamp.
+    ///
+    /// The token counts are extracted from the given [`TokenUsage`] struct.
     #[must_use]
     pub fn new(
         session_id: Uuid,
@@ -787,10 +837,11 @@ impl UsageRecord {
     }
 }
 
-/// Aggregated statistics for a session.
+/// Pre-computed or live-aggregated statistics for a session.
 ///
-/// Provides a summary view of session activity including message counts,
-/// tool execution counts, and cumulative token usage.
+/// Provides a summary view including message count, tool execution counts
+/// (total / success / failure), cumulative token usage, and average tool
+/// execution duration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionStats {
     /// Session identifier.
@@ -814,7 +865,9 @@ pub struct SessionStats {
 }
 
 impl SessionStats {
-    /// Creates empty stats for a session.
+    /// Creates an all-zero stats struct for a session.
+    ///
+    /// All counters and the average duration are initialized to zero.
     #[must_use]
     pub fn empty(session_id: Uuid) -> Self {
         Self {
@@ -831,25 +884,28 @@ impl SessionStats {
     }
 }
 
-/// Persists tool execution records, token usage, and provides session analytics.
+/// Persists tool execution records and token usage, and provides session analytics.
+///
+/// Implementations must be `Send + Sync`. Backends include in-memory, PostgreSQL,
+/// MySQL, and SQLite (via `sqlx`).
 #[async_trait]
 pub trait ExecutionStore: Send + Sync {
     /// Records a tool execution and returns it with server-assigned fields.
     async fn record_execution(&self, execution: ToolExecution) -> StoreResult<ToolExecution>;
 
-    /// Returns all tool executions for a session ordered by creation time.
+    /// Returns all tool executions for a session ordered by creation time (ascending).
     async fn list_executions(&self, session_id: &Uuid) -> StoreResult<Vec<ToolExecution>>;
 
-    /// Returns executions for a specific message.
+    /// Returns all tool executions for a specific message ordered by creation time.
     async fn list_executions_by_message(
         &self,
         message_id: &Uuid,
     ) -> StoreResult<Vec<ToolExecution>>;
 
-    /// Records token usage for a provider interaction.
+    /// Records token usage for a single provider interaction.
     async fn record_usage(&self, record: UsageRecord) -> StoreResult<UsageRecord>;
 
-    /// Returns all usage records for a session ordered by creation time.
+    /// Returns all usage records for a session ordered by creation time (ascending).
     async fn list_usage(&self, session_id: &Uuid) -> StoreResult<Vec<UsageRecord>>;
 
     /// Computes aggregate statistics for a session.

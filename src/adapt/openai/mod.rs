@@ -30,5 +30,5 @@ pub mod types;
 pub use chat::OpenAiChatAdapter;
 pub use embed::OpenAiEmbeddingAdapter;
 
-/// Default OpenAI API base URL.
+/// Default OpenAI API base URL (`https://api.openai.com/v1`).
 pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";

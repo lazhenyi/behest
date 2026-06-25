@@ -1,4 +1,8 @@
 //! Event mapping between runtime [`AgentEvent`] and gRPC event proto.
+//!
+//! Converts every variant of the runtime event model into its
+//! corresponding protobuf representation, including optional W3C
+//! trace context propagation via the `otel` feature flag.
 
 use crate::provider::FinishReason;
 use crate::runtime::AgentEvent;
@@ -13,6 +17,17 @@ use super::pb::{
 };
 
 /// Converts a runtime [`AgentEvent`] to the protobuf representation.
+///
+/// Each event variant is mapped to its corresponding oneof kind.
+/// A monotonically increasing `sequence` number and the originating
+/// `run_id` are embedded in every event. W3C trace context from the
+/// current tracing span is included when the `otel` feature is active.
+///
+/// # Parameters
+///
+/// * `event` - The runtime agent event to convert.
+/// * `sequence` - Monotonic event sequence number for ordering.
+/// * `run_id` - The originating run identifier.
 #[must_use]
 pub fn to_proto(event: &AgentEvent, sequence: u64, run_id: &str) -> PbAgentEvent {
     let event_kind = match event {
@@ -127,6 +142,10 @@ fn current_trace_context() -> (String, String) {
 }
 
 /// Maps a runtime [`FinishReason`] to the protobuf enum value.
+///
+/// Returns an `i32` corresponding to the proto enum:
+/// 1 = Stop, 2 = ToolCalls, 3 = Length, 4 = ContentFilter,
+/// 5 = Error, 6 = Unknown.
 pub(super) fn finish_reason_to_proto(fr: &FinishReason) -> i32 {
     match fr {
         FinishReason::Stop => 1,

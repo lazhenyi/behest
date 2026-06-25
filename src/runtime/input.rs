@@ -249,9 +249,19 @@ impl InputAdmissionConfig {
     }
 }
 
-/// Input admission pipeline.
+/// Input admission pipeline implementing an event-sourced lifecycle.
 ///
-/// Validates, deduplicates, and admits inputs before they enter the run loop.
+/// Validates, deduplicates, and admits inputs before they enter the run
+/// loop. Emits lifecycle events (`Submitted`, `Admitted`, `Rejected`,
+/// `Processing`, `Completed`) that can be consumed by downstream observers.
+///
+/// # Lifecycle
+///
+/// ```text
+/// Submitted → Admitted → Processing → Completed
+///      ↓
+///   Rejected
+/// ```
 pub struct InputAdmission {
     config: InputAdmissionConfig,
     seen_fingerprints: Mutex<HashSet<u64>>,

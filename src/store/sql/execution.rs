@@ -16,8 +16,9 @@ use crate::store::{
 
 /// SQL-backed execution store supporting PostgreSQL, MySQL, and SQLite.
 ///
-/// Uses runtime SQL queries for cross-database compatibility. The appropriate
-/// database pool type is selected via Cargo feature flags.
+/// The appropriate pool type is selected at compile time via Cargo feature flags.
+/// Uses runtime SQL queries for cross-database compatibility. Implements
+/// [`ExecutionStore`].
 ///
 /// # Migrations
 ///

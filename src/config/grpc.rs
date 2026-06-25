@@ -5,21 +5,22 @@ use serde::{Deserialize, Serialize};
 /// gRPC server configuration.
 ///
 /// Controls listen address, TLS, authentication, and concurrency limits.
+/// By default the server listens on `[::1]:50051` with no TLS or auth.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GrpcConfig {
-    /// Socket address to listen on.
+    /// Socket address to listen on. Default: `"[::1]:50051"`.
     #[serde(default = "default_listen_addr")]
     pub listen_addr: String,
 
-    /// TLS configuration. When `None`, the server runs in plaintext mode.
+    /// TLS configuration. `None` means plaintext (no encryption).
     #[serde(default)]
     pub tls: Option<GrpcTlsConfig>,
 
-    /// Bearer token for authentication. When `None`, no auth is required.
+    /// Bearer token for request authentication. `None` means no auth.
     #[serde(default)]
     pub auth_token: Option<String>,
 
-    /// Maximum number of concurrent runs. When `None`, no limit is enforced.
+    /// Maximum number of concurrent runs. `None` means unlimited.
     #[serde(default)]
     pub max_concurrent_runs: Option<usize>,
 }

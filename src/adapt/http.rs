@@ -11,6 +11,8 @@ use crate::provider::ProviderId;
 
 /// Builds a configured [`reqwest::Client`] from provider HTTP settings.
 ///
+/// Applies the timeout and connect timeout from the config to the client.
+///
 /// # Errors
 ///
 /// Returns [`ProviderError::Transport`] when the underlying client builder fails.
@@ -25,7 +27,9 @@ pub(crate) fn build_client(config: &ProviderHttpConfig) -> Result<Client, Provid
         })
 }
 
-/// Applies a bearer token authorization header when an API key is configured.
+/// Applies a `Bearer` authorization header from the provider API key, if set.
+///
+/// Returns the builder unchanged when no API key is configured.
 pub(crate) fn with_bearer_auth(
     builder: RequestBuilder,
     config: &ProviderHttpConfig,
@@ -44,6 +48,9 @@ pub(crate) fn with_bearer_auth(
 /// The `retry_after_secs` parameter is extracted from the `Retry-After` response
 /// header by the caller and passed explicitly because this function operates on
 /// body text only.
+///
+/// The body text is truncated to 512 characters to avoid including large
+/// payloads in error messages.
 pub(crate) fn status_to_error(
     provider: &ProviderId,
     status: StatusCode,
@@ -85,6 +92,9 @@ pub(crate) fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<
         .and_then(|s| s.parse::<u64>().ok())
 }
 
+/// Truncates a string to at most 512 characters, preserving UTF-8 boundaries.
+///
+/// Appends `"..."` when the input exceeds the limit.
 fn truncate_body(body: &str) -> String {
     if body.len() <= 512 {
         return body.to_owned();

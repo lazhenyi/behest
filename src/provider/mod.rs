@@ -2,6 +2,8 @@
 //!
 //! Implement [`ChatProvider`] or [`EmbeddingProvider`] to adapt a model vendor,
 //! then add the implementation to [`ProviderRegistry`] for runtime dispatch.
+//!
+//! Re-exports all core types at the module root for convenient single-path imports.
 
 pub mod capabilities;
 pub mod config;

@@ -8,8 +8,12 @@ use crate::store::memory::{
 };
 use crate::store::{ArtifactStore, EmbeddingStore, ExecutionStore, SessionStore, StoreResult};
 
-/// A composite store that holds all four in-memory sub-stores
-/// and provides coordinated operations, including cascading deletes.
+/// A composite in-memory store aggregating all four storage domains
+/// with coordinated operations, including cascading deletes.
+///
+/// Provides direct access to each sub-store through public fields for
+/// fine-grained control, plus `delete_session_cascading()` for atomic
+/// cross-domain cleanup.
 ///
 /// # Example
 ///
@@ -36,7 +40,7 @@ pub struct MemoryStore {
 }
 
 impl MemoryStore {
-    /// Creates a new empty composite memory store.
+    /// Creates a new empty composite memory store with all four sub-stores.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -46,11 +50,12 @@ impl MemoryStore {
     ///
     /// This is semantically equivalent to what a real database would do
     /// with foreign-key `ON DELETE CASCADE`, but across in-memory collections.
+    /// Collects errors from all sub-stores instead of short-circuiting.
     ///
     /// # Errors
     ///
-    /// Individual sub-store errors are collected and returned as a single
-    /// [`StorageError::BackendError`](crate::error::StorageError::BackendError).
+    /// Returns [`StorageError::BackendError`](crate::error::StorageError::BackendError)
+    /// aggregating errors from any sub-stores that failed.
     pub async fn delete_session_cascading(&self, id: &Uuid) -> StoreResult<()> {
         // Collect errors from all sub-stores
         let mut errors: Vec<String> = Vec::new();

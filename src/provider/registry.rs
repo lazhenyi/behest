@@ -9,7 +9,7 @@ use crate::provider::{
     EmbeddingResponse, ProviderId, ProviderResult,
 };
 
-/// In-memory registry for chat and embedding providers.
+/// In-memory registry for chat and embedding providers keyed by [`ProviderId`].
 #[derive(Clone, Default)]
 pub struct ProviderRegistry {
     chat: HashMap<ProviderId, Arc<dyn ChatProvider>>,

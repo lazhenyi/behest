@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub struct ProviderId(String);
 
 impl ProviderId {
-    /// Creates a provider identifier.
+    /// Creates a provider identifier from any string-like value.
     #[must_use]
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -59,7 +59,7 @@ impl fmt::Display for ProviderId {
 pub struct ModelName(String);
 
 impl ModelName {
-    /// Creates a model name.
+    /// Creates a model name from any string-like value.
     #[must_use]
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())

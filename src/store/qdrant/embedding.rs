@@ -1,4 +1,4 @@
-//! Qdrant vector database embedding store.
+//! Qdrant vector database embedding store with native vector similarity search.
 #![allow(clippy::cast_possible_truncation)]
 
 use async_trait::async_trait;
@@ -11,7 +11,10 @@ use uuid::Uuid;
 use crate::error::StorageError;
 use crate::store::{EmbeddingRecord, EmbeddingStore, ScoredEmbedding, StoreResult};
 
-/// Qdrant-backed embedding store with native vector similarity search.
+/// Qdrant-backed embedding store with native vector similarity search using cosine distance.
+///
+/// Requires a pre-configured Qdrant client and a known collection name with
+/// matching vector dimensions. Implements [`EmbeddingStore`].
 pub struct QdrantEmbeddingStore {
     client: Qdrant,
     collection: String,
@@ -19,7 +22,9 @@ pub struct QdrantEmbeddingStore {
 }
 
 impl QdrantEmbeddingStore {
-    /// Creates a Qdrant embedding store.
+    /// Creates a Qdrant embedding store for the given collection.
+    ///
+    /// `dimensions` must match the vector dimensionality of the embeddings being stored.
     #[must_use]
     pub fn new(client: Qdrant, collection: String, dimensions: u64) -> Self {
         Self {
@@ -29,11 +34,14 @@ impl QdrantEmbeddingStore {
         }
     }
 
-    /// Ensures the collection exists, creating it if necessary.
+    /// Ensures the Qdrant collection exists, creating it with cosine distance if necessary.
+    ///
+    /// Safe to call multiple times; the existence check avoids duplicate creation errors.
     ///
     /// # Errors
     ///
-    /// Returns [`StorageError::BackendError`] when the operation fails.
+    /// Returns [`StorageError::BackendError`] when the collection existence check
+    /// or creation fails.
     pub async fn ensure_collection(&self) -> StoreResult<()> {
         let exists = self
             .client

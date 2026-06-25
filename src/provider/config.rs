@@ -32,7 +32,7 @@ pub struct ProviderHttpConfig {
 }
 
 impl ProviderHttpConfig {
-    /// Creates a configuration with production-safe timeout defaults.
+    /// Creates [`ProviderHttpConfig`] with production-safe timeout defaults.
     #[must_use]
     pub fn new(id: ProviderId, base_url: impl Into<String>) -> Self {
         Self {

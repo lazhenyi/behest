@@ -14,12 +14,17 @@ use crate::store::{
 };
 
 /// SurrealDB-backed session store using its document model.
+///
+/// Sessions are stored in the `sessions` table and messages in the `messages`
+/// table, linked by `session_id`. Implements [`SessionStore`].
 pub struct SurrealdbSessionStore {
     db: Surreal<Any>,
 }
 
 impl SurrealdbSessionStore {
-    /// Creates a SurrealDB session store from an existing connection.
+    /// Creates a SurrealDB session store from an existing `Surreal<Any>` connection.
+    ///
+    /// The connection should already be established and the namespace/database selected.
     #[must_use]
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }

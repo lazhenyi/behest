@@ -1,4 +1,7 @@
 //! Admin and observability gRPC service implementation.
+//!
+//! Provides runtime status, compaction status, and job pool status
+//! endpoints for monitoring the agent server.
 
 use std::sync::Arc;
 
@@ -12,12 +15,16 @@ use super::pb::{
 use super::state::GrpcState;
 
 /// gRPC admin service for runtime observability.
+///
+/// Exposes RPCs for querying runtime status (uptime, active runs,
+/// session count, provider/tool/context adapter counts), compaction
+/// configuration, and background job pool status.
 pub struct GrpcAdminService {
     state: Arc<GrpcState>,
 }
 
 impl GrpcAdminService {
-    /// Creates a new admin service.
+    /// Creates a new admin service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<GrpcState>) -> Self {
         Self { state }

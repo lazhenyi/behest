@@ -1,4 +1,8 @@
 //! ProviderService and ModelService gRPC implementation.
+//!
+//! Provides RPCs for listing and querying configured providers and
+//! their available models, including streaming and tool-calling
+//! capabilities.
 
 use tonic::{Request, Response, Status};
 
@@ -10,13 +14,16 @@ use crate::grpc::pb::{
 
 use super::pb::{ModelName, ProviderId};
 
-/// gRPC provider service backed by [`crate::config::ProviderConfig`].
+/// gRPC provider service for querying LLM provider configurations.
+///
+/// Exposes the list of configured providers and their details
+/// (type, default model, available models) from the runtime config.
 pub struct GrpcProviderService {
     state: std::sync::Arc<super::state::GrpcState>,
 }
 
 impl GrpcProviderService {
-    /// Creates a new provider service.
+    /// Creates a new provider service backed by the given shared state.
     #[must_use]
     pub fn new(state: std::sync::Arc<super::state::GrpcState>) -> Self {
         Self { state }
@@ -104,13 +111,16 @@ impl ProviderService for GrpcProviderService {
     }
 }
 
-/// gRPC model service backed by the model catalog.
+/// gRPC model service for querying the runtime model catalog.
+///
+/// Returns available models with their provider association and
+/// capability flags (streaming, tool calling).
 pub struct GrpcModelService {
     state: std::sync::Arc<super::state::GrpcState>,
 }
 
 impl GrpcModelService {
-    /// Creates a new model service.
+    /// Creates a new model service backed by the given shared state.
     #[must_use]
     pub fn new(state: std::sync::Arc<super::state::GrpcState>) -> Self {
         Self { state }

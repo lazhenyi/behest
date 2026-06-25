@@ -15,7 +15,8 @@ use crate::provider::{
 use super::error::{RuntimeError, RuntimeResult};
 use super::policy::RuntimePolicy;
 
-/// Routes model requests across providers with retry and fallback logic.
+/// Routes model requests (chat and embedding) across providers with
+/// capability checking, exponential-backoff retry, and fallback chains.
 pub struct ModelRouter {
     registry: ProviderRegistry,
     policy: RuntimePolicy,
@@ -103,13 +104,15 @@ impl ModelRouter {
             .into())
     }
 
-    /// Routes a chat request with fallback providers.
+    /// Routes a chat request across multiple providers with fallback ordering.
     ///
-    /// Tries the primary provider first, then falls back to alternatives in order.
+    /// Each provider is tried in order via [`Self::route_chat`] (which itself
+    /// applies per-provider retry logic). The first successful response is
+    /// returned. When all providers fail, the last error is propagated.
     ///
     /// # Errors
     ///
-    /// Returns `RuntimeError` if all providers fail.
+    /// Returns [`RuntimeError`] if every provider in the chain fails.
     pub async fn route_chat_with_fallback(
         &self,
         provider_ids: &[ProviderId],

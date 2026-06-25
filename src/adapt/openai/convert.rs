@@ -12,7 +12,16 @@ use super::types::{
     OpenAiToolDef,
 };
 
-/// Converts a neutral chat request into an OpenAI chat request.
+/// Converts a neutral [`ChatRequest`] into an [`OpenAiChatRequest`].
+///
+/// Maps messages, tool definitions, tool choice, response format, and sampling
+/// parameters to the OpenAI wire format. When `stream` is `true` the resulting
+/// request uses SSE streaming.
+///
+/// # Parameters
+///
+/// * `request` — The neutral chat request to convert.
+/// * `stream` — Whether to enable SSE streaming.
 pub fn to_openai_request(request: &ChatRequest, stream: bool) -> OpenAiChatRequest {
     OpenAiChatRequest {
         model: request.model.as_str().to_owned(),
@@ -31,6 +40,9 @@ pub fn to_openai_request(request: &ChatRequest, stream: bool) -> OpenAiChatReque
     }
 }
 
+/// Converts one neutral [`Message`] to an [`OpenAiMessage`].
+///
+/// Handles `System`, `User`, `Assistant` (with tool calls), and `Tool` roles.
 fn convert_message(message: &Message) -> OpenAiMessage {
     match message {
         Message::System { content } => OpenAiMessage {
@@ -71,6 +83,10 @@ fn convert_message(message: &Message) -> OpenAiMessage {
     }
 }
 
+/// Serializes content parts to the OpenAI `content` field format.
+///
+/// Single text parts are serialized as a plain string; multiple parts or
+/// non-text content are serialized as a JSON array of content blocks.
 fn serialize_content(parts: &[ContentPart]) -> Value {
     if parts.len() == 1 {
         if let ContentPart::Text { text } = &parts[0] {
@@ -98,6 +114,7 @@ fn serialize_content(parts: &[ContentPart]) -> Value {
     Value::Array(items)
 }
 
+/// Converts a neutral [`ToolSpec`] to an [`OpenAiToolDef`] with `type: "function"`.
 fn convert_tool_spec(spec: &ToolSpec) -> OpenAiToolDef {
     OpenAiToolDef {
         kind: "function".to_owned(),
@@ -109,6 +126,7 @@ fn convert_tool_spec(spec: &ToolSpec) -> OpenAiToolDef {
     }
 }
 
+/// Converts a neutral [`ToolCall`] to an [`OpenAiToolCall`] for assistant messages.
 fn convert_tool_call(call: &ToolCall) -> OpenAiToolCall {
     OpenAiToolCall {
         id: Some(call.id.clone()),
@@ -125,6 +143,10 @@ fn convert_tool_call(call: &ToolCall) -> OpenAiToolCall {
     }
 }
 
+/// Converts a neutral [`ToolChoice`] to an OpenAI tool_choice JSON value.
+///
+/// Unlike Anthropic, OpenAI always sends a tool_choice value (defaulting to
+/// `"auto"`), never `None`.
 fn convert_tool_choice(choice: &ToolChoice) -> Option<Value> {
     match choice {
         ToolChoice::Auto => Some(json!("auto")),
@@ -134,6 +156,9 @@ fn convert_tool_choice(choice: &ToolChoice) -> Option<Value> {
     }
 }
 
+/// Converts a neutral [`ResponseFormat`] to an OpenAI response_format JSON value.
+///
+/// Supports `text`, `json_object`, and `json_schema` (with strict mode) formats.
 fn convert_response_format(format: &ResponseFormat) -> Value {
     match format {
         ResponseFormat::Text => json!({"type": "text"}),
@@ -153,7 +178,15 @@ fn convert_response_format(format: &ResponseFormat) -> Value {
     }
 }
 
-/// Converts an OpenAI chat response into a neutral chat response.
+/// Converts an [`super::types::OpenAiChatResponse`] into a neutral [`ChatResponse`].
+///
+/// Extracts the first choice's message, tool calls, finish reason, and usage
+/// tokens. Returns `None` when the response contains zero choices.
+///
+/// # Parameters
+///
+/// * `provider` — The provider identifier to attach to the response.
+/// * `response` — The raw OpenAI API response.
 pub fn from_openai_response(
     provider: &ProviderId,
     response: &super::types::OpenAiChatResponse,
@@ -171,6 +204,9 @@ pub fn from_openai_response(
     })
 }
 
+/// Converts an [`OpenAiMessage`] response to a neutral [`Message::Assistant`].
+///
+/// Parses text content and tool calls from the response message.
 fn convert_response_message(message: &OpenAiMessage) -> Message {
     let content = parse_content_value(message.content.as_ref());
     let tool_calls = message
@@ -185,6 +221,7 @@ fn convert_response_message(message: &OpenAiMessage) -> Message {
     }
 }
 
+/// Parses the OpenAI `content` field (string, array, or object) into [`ContentPart`]s.
 fn parse_content_value(content: Option<&Value>) -> Vec<ContentPart> {
     match content {
         None => Vec::new(),
@@ -196,6 +233,10 @@ fn parse_content_value(content: Option<&Value>) -> Vec<ContentPart> {
     }
 }
 
+/// Parses one content array item into a [`ContentPart`].
+///
+/// Supports `text` and `image_url` typed items; unknown types are preserved
+/// as [`ContentPart::Json`].
 fn parse_content_item(item: &Value) -> Option<ContentPart> {
     let kind = item.get("type")?.as_str()?;
     match kind {
@@ -213,6 +254,10 @@ fn parse_content_item(item: &Value) -> Option<ContentPart> {
     }
 }
 
+/// Converts OpenAI response tool calls to neutral [`ToolCall`]s.
+///
+/// Filters out calls with missing id or name. Falls back to `Value::Null`
+/// for unparseable JSON arguments.
 fn convert_response_tool_calls(calls: &[OpenAiToolCall]) -> Vec<ToolCall> {
     calls
         .iter()
@@ -233,6 +278,7 @@ fn convert_response_tool_calls(calls: &[OpenAiToolCall]) -> Vec<ToolCall> {
         .collect()
 }
 
+/// Converts an OpenAI finish reason string to the neutral [`FinishReason`].
 fn convert_finish_reason(reason: Option<&str>) -> FinishReason {
     match reason {
         Some("stop") => FinishReason::Stop,
@@ -244,6 +290,7 @@ fn convert_finish_reason(reason: Option<&str>) -> FinishReason {
     }
 }
 
+/// Converts [`OpenAiUsage`] to neutral [`TokenUsage`].
 fn convert_usage(usage: &super::types::OpenAiUsage) -> TokenUsage {
     TokenUsage::new(usage.prompt_tokens, usage.completion_tokens)
 }

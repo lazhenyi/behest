@@ -9,6 +9,10 @@ use crate::error::ProviderError;
 use crate::provider::ProviderId;
 
 /// A single parsed SSE event with optional event name and data payload.
+///
+/// Constructed by [`SseStream`] from raw byte chunks. The `event` field captures
+/// the `event:` line and the `data` field concatenates all `data:` lines with
+/// newline separators.
 #[derive(Debug, Clone)]
 pub(crate) struct SseEvent {
     /// Named event type from the `event:` field, if present.
@@ -20,6 +24,8 @@ pub(crate) struct SseEvent {
 
 impl SseEvent {
     /// Returns `true` when this event signals the end of an OpenAI stream.
+    ///
+    /// OpenAI uses a bare `data: [DONE]` line to mark the end of a stream.
     #[must_use]
     pub(crate) fn is_openai_done(&self) -> bool {
         self.data.trim() == "[DONE]"
@@ -27,6 +33,13 @@ impl SseEvent {
 }
 
 /// Parses a byte stream into SSE events.
+///
+/// Wraps an inner byte stream and buffers partial chunks until a complete
+/// SSE event boundary (`\n\n`, `\r\n\r\n`, or `\r\r`) is found.
+///
+/// # Type parameters
+///
+/// * `S` — The inner byte stream, expected to yield `Result<Bytes, reqwest::Error>`.
 pub(crate) struct SseStream<S> {
     inner: S,
     buffer: String,
@@ -116,10 +129,15 @@ fn find_event_boundary(buffer: &str) -> Option<EventBoundary> {
     None
 }
 
+/// Byte offset marking the end of an SSE event delimiter.
 struct EventBoundary {
     end: usize,
 }
 
+/// Parses a raw event block (drained from the buffer) into an [`SseEvent`].
+///
+/// Scans for `event:` and `data:` lines. Returns `None` when no `data:` lines
+/// are present (e.g. empty or comment-only blocks).
 fn parse_event_block(block: &str) -> Option<SseEvent> {
     let mut event_name: Option<String> = None;
     let mut data_lines: Vec<String> = Vec::new();

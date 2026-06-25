@@ -13,6 +13,15 @@ use crate::provider::{
 use super::types::{OpenAiEmbeddingRequest, OpenAiEmbeddingResponse};
 
 /// OpenAI-compatible embedding adapter.
+///
+/// Implements [`EmbeddingProvider`] for OpenAI's `/v1/embeddings` endpoint.
+/// Supports multiple input texts and optional dimension reduction.
+/// Works with OpenAI, Azure OpenAI, and any OpenAI-compatible API endpoint.
+///
+/// # Authentication
+///
+/// The API key is sent via the `Authorization: Bearer` header. Configure it
+/// through the [`ProviderHttpConfig`] passed to [`new`](Self::new).
 pub struct OpenAiEmbeddingAdapter {
     id: ProviderId,
     client: Client,
@@ -35,6 +44,14 @@ impl OpenAiEmbeddingAdapter {
     }
 
     /// Creates an OpenAI embedding adapter reusing an existing HTTP client.
+    ///
+    /// Useful when multiple adapters share the same connection pool or custom
+    /// TLS configuration.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` — Provider HTTP configuration including API key and base URL.
+    /// * `client` — A pre-built [`reqwest::Client`] to use for all requests.
     #[must_use]
     pub fn with_client(config: ProviderHttpConfig, client: Client) -> Self {
         Self {
@@ -104,6 +121,9 @@ impl EmbeddingProvider for OpenAiEmbeddingAdapter {
     }
 }
 
+/// Extracts plain text from [`EmbeddingInput`] items.
+///
+/// Token-based inputs are serialized as space-separated token strings.
 fn extract_texts(inputs: &[EmbeddingInput]) -> Vec<String> {
     inputs
         .iter()
@@ -118,6 +138,10 @@ fn extract_texts(inputs: &[EmbeddingInput]) -> Vec<String> {
         .collect()
 }
 
+/// Converts an [`OpenAiEmbeddingResponse`] to a neutral [`EmbeddingResponse`].
+///
+/// Maps each embedding data item by index and sets output tokens to 0 since
+/// embedding requests only consume input tokens.
 fn from_response(
     provider: &ProviderId,
     model: &ModelName,

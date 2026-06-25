@@ -2,7 +2,8 @@
 //!
 //! This module provides the core runtime engine for executing AI agents
 //! with streaming-first execution, tool calling, session persistence,
-//! and event-sourced state management.
+//! event-sourced state management, snapshot recovery, compaction,
+//! doom-loop detection, and background job processing.
 
 pub mod accumulator;
 pub mod agent;

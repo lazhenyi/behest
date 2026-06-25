@@ -1,4 +1,5 @@
-//! In-memory embedding store with brute-force cosine similarity search.
+//! In-memory embedding store with brute-force cosine similarity search
+//! over all stored vectors.
 
 use std::collections::HashMap;
 
@@ -8,10 +9,10 @@ use uuid::Uuid;
 
 use crate::store::{EmbeddingRecord, EmbeddingStore, ScoredEmbedding, StoreResult};
 
-/// In-memory embedding store for testing and development.
+/// In-memory embedding store for testing, development, and prototyping.
 ///
-/// Uses brute-force cosine similarity for nearest-neighbor search.
-/// Data is lost when the process exits.
+/// Uses brute-force O(n) cosine similarity scan for nearest-neighbor search.
+/// Data is lost when the process exits. Implements [`EmbeddingStore`].
 #[derive(Default)]
 pub struct MemoryEmbeddingStore {
     records: RwLock<HashMap<Uuid, EmbeddingRecord>>,
@@ -25,6 +26,11 @@ impl MemoryEmbeddingStore {
     }
 }
 
+/// Computes the cosine similarity between two vectors of equal length.
+///
+/// Returns a value in `[-1.0, 1.0]` where `1.0` indicates identical direction,
+/// `0.0` indicates orthogonality, and `-1.0` indicates opposite direction.
+/// Returns `0.0` if the vectors have different lengths or either is zero-vector.
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;

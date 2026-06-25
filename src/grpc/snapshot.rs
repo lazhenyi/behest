@@ -1,4 +1,8 @@
 //! SnapshotService gRPC implementation.
+//!
+//! Provides RPCs for listing, retrieving, and deleting run snapshots
+//! that capture run state (status, iteration, token usage) at a point
+//! in time for recovery and inspection.
 
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
@@ -12,13 +16,16 @@ use crate::runtime::RunId;
 
 use std::sync::Arc;
 
-/// gRPC snapshot service.
+/// gRPC snapshot service for run state persistence.
+///
+/// Supports listing all snapshots, loading a specific snapshot by
+/// run ID, and deleting snapshots from the store.
 pub struct GrpcSnapshotService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcSnapshotService {
-    /// Creates a new snapshot service.
+    /// Creates a new snapshot service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }

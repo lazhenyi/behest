@@ -17,8 +17,9 @@ use super::store::RunEventRecord;
 ///
 /// Unlike [`RunRecord`] which is a static metadata snapshot,
 /// `RunState` is a fully materialized view derived by folding every
-/// recorded event. This enables replay-based state recovery and
-/// batch inspection of run progress without scanning raw events.
+/// recorded event via [`apply`](Self::apply). This enables replay-based
+/// state recovery and batch inspection of run progress without scanning
+/// raw events.
 #[derive(Debug, Clone)]
 pub struct RunState {
     /// Run identifier.
@@ -54,7 +55,8 @@ impl RunState {
     /// event log.
     ///
     /// The `record` provides static metadata (provider, model, created_at)
-    /// while `events` drive the dynamic state projection.
+    /// while `events` drive the dynamic state projection by applying each
+    /// event in order via [`apply`](Self::apply).
     #[must_use]
     pub fn create(record: &RunRecord, events: &[RunEventRecord]) -> Self {
         let updated_at = events.last().map_or(record.updated_at, |e| e.timestamp);
@@ -82,7 +84,12 @@ impl RunState {
         state
     }
 
-    /// Applies an event to incrementally update the projected state.
+    /// Incrementally updates the projected state by applying a single event.
+    ///
+    /// Handles all [`AgentEvent`] variants: `RunStarted` sets provider/model,
+    /// `ModelStarted` advances iteration, `UsageRecorded` accumulates tokens,
+    /// terminal events set the final status, while informational events
+    /// only update the timestamp.
     pub fn apply(&mut self, event: &AgentEvent) {
         match event {
             AgentEvent::RunStarted(e) => {

@@ -13,6 +13,9 @@ use crate::error::StorageError;
 use crate::store::{Artifact, ArtifactStore, StoreResult};
 
 /// Local filesystem artifact store backed by `object_store::local::LocalFileSystem`.
+///
+/// Artifacts are stored as two files per entry: the raw binary data under
+/// `artifacts/{id}` and the serialized metadata under `metadata/{id}.json`.
 pub struct DiskArtifactStore {
     store: object_store::local::LocalFileSystem,
     #[allow(dead_code)]
@@ -22,9 +25,12 @@ pub struct DiskArtifactStore {
 impl DiskArtifactStore {
     /// Creates a disk artifact store rooted at the given directory.
     ///
+    /// The directory is created if it does not exist.
+    ///
     /// # Errors
     ///
-    /// Returns [`StorageError::ConnectionFailed`] when the directory cannot be created.
+    /// Returns [`StorageError::ConnectionFailed`] when the directory cannot be created
+    /// or the local filesystem adapter cannot be initialized.
     pub fn new(root: impl Into<std::path::PathBuf>) -> StoreResult<Self> {
         let root = root.into();
         std::fs::create_dir_all(&root).map_err(|e| StorageError::ConnectionFailed {
@@ -190,13 +196,19 @@ impl ArtifactStore for DiskArtifactStore {
     }
 }
 
-/// Amazon S3 artifact store backed by `object_store::aws::AmazonS3`.
+/// Amazon S3-compatible artifact store backed by `object_store::aws::AmazonS3`.
+///
+/// Artifacts are stored as two objects per entry: the raw binary data
+/// under `artifacts/{id}` and serialized metadata under `metadata/{id}.json`.
 pub struct S3ArtifactStore {
     store: object_store::aws::AmazonS3,
 }
 
 impl S3ArtifactStore {
-    /// Creates an S3 artifact store from a configured `AmazonS3` instance.
+    /// Creates an S3 artifact store from a pre-configured `AmazonS3` instance.
+    ///
+    /// The caller is responsible for configuring the S3 client (region,
+    /// credentials, endpoint, bucket, etc.).
     #[must_use]
     pub fn new(store: object_store::aws::AmazonS3) -> Self {
         Self { store }

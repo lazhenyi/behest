@@ -14,24 +14,27 @@ pub enum QueueBackend {
 }
 
 /// Configuration for external event publishing via message queues.
+///
+/// Supports NATS JetStream and Redis Streams backends. Only the fields
+/// relevant to the selected `backend` need to be set.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueueConfig {
-    /// Queue backend.
+    /// Queue backend selection.
     pub backend: QueueBackend,
 
-    /// NATS connection URL.
+    /// NATS connection URL. Required when `backend` is `Nats`.
     #[serde(default)]
     pub nats_url: Option<String>,
 
-    /// NATS subject for publishing events.
+    /// NATS subject for publishing events. Default: `"behest.events"`.
     #[serde(default = "default_nats_subject")]
     pub nats_subject: String,
 
-    /// Redis connection URL.
+    /// Redis connection URL. Required when `backend` is `RedisStreams`.
     #[serde(default)]
     pub redis_url: Option<String>,
 
-    /// Redis stream key for publishing events.
+    /// Redis stream key for publishing events. Default: `"behest:events"`.
     #[serde(default = "default_redis_stream_key")]
     pub redis_stream_key: String,
 }

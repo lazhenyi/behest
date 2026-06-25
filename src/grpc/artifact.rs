@@ -1,4 +1,7 @@
 //! ArtifactService gRPC implementation.
+//!
+//! Provides RPCs for creating, retrieving, listing, and deleting
+//! artifacts scoped to sessions.
 
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
@@ -12,13 +15,16 @@ use crate::grpc::pb::{
 
 use std::sync::Arc;
 
-/// gRPC artifact service.
+/// gRPC artifact service for session-scoped blob storage.
+///
+/// Supports CRUD operations on artifacts identified by UUID,
+/// with optional JSON metadata.
 pub struct GrpcArtifactService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcArtifactService {
-    /// Creates a new artifact service.
+    /// Creates a new artifact service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }

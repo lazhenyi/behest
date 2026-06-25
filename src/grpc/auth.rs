@@ -2,17 +2,20 @@
 
 use tonic::{Request, Status};
 
-/// Interceptor that validates Bearer tokens on incoming requests.
+/// Interceptor that validates Bearer tokens on incoming gRPC requests.
 ///
 /// When an `expected_token` is configured, every request must include
 /// an `authorization` metadata header with value `Bearer <token>`.
+/// Pass `None` at construction to disable authentication entirely.
 #[derive(Clone)]
 pub struct AuthInterceptor {
     expected_token: Option<String>,
 }
 
 impl AuthInterceptor {
-    /// Creates a new interceptor. Pass `None` to disable authentication.
+    /// Creates a new interceptor with an optional expected bearer token.
+    ///
+    /// Pass `None` to disable authentication for all requests.
     #[must_use]
     pub fn new(expected_token: Option<String>) -> Self {
         Self { expected_token }

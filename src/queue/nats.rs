@@ -10,16 +10,21 @@ use serde_json;
 use super::{EventPublisher, QueueError, QueueResult};
 use crate::runtime::AgentEvent;
 
-/// Publishes `AgentEvent` values to NATS JetStream.
+/// Publishes `AgentEvent` values to a NATS JetStream subject.
+///
+/// Each event is serialized as JSON and published to the configured
+/// JetStream subject. The backing stream must be set up externally.
 pub struct NatsEventPublisher {
     jetstream: jetstream::Context,
     subject: String,
 }
 
 impl NatsEventPublisher {
-    /// Creates a publisher backed by an existing JetStream context.
+    /// Creates a publisher backed by an existing NATS JetStream context.
     ///
-    /// The `subject` is the NATS subject to publish events to.
+    /// # Parameters
+    /// - `jetstream` – an already-initialized JetStream context.
+    /// - `subject` – the NATS subject to publish events to.
     #[must_use]
     pub fn new(jetstream: jetstream::Context, subject: impl Into<String>) -> Self {
         Self {
@@ -29,6 +34,10 @@ impl NatsEventPublisher {
     }
 
     /// Connects to a NATS server and creates a JetStream publisher.
+    ///
+    /// # Parameters
+    /// - `url` – NATS server URL (e.g. `nats://localhost:4222`).
+    /// - `subject` – the NATS subject to publish events to.
     ///
     /// # Errors
     ///

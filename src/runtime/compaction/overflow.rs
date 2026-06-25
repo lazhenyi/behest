@@ -12,13 +12,18 @@
 /// without overflowing. OpenCode uses 20,000 tokens.
 pub const COMPACTION_BUFFER: usize = 20_000;
 
-/// Computes the number of tokens usable for conversation history.
+/// Computes the number of tokens available for conversation history.
 ///
 /// The usable space is the model's context window minus:
 /// 1. The maximum output tokens the model can generate
 /// 2. Optional reserved headroom (defaults to `min(COMPACTION_BUFFER, max_output)`)
 ///
 /// When `model_context` is 0 (unlimited), returns `usize::MAX`.
+///
+/// # Arguments
+/// * `model_context` — The model's maximum context window in tokens (0 = unlimited).
+/// * `max_output` — The model's maximum output tokens.
+/// * `reserved` — Explicit headroom override; `None` uses `min(COMPACTION_BUFFER, max_output)`.
 #[must_use]
 pub fn usable_tokens(model_context: u32, max_output: u32, reserved: Option<usize>) -> usize {
     if model_context == 0 {

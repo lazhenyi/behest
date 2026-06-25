@@ -10,10 +10,11 @@ use crate::store::{
     ExecutionStore, SessionStats, StoreResult, ToolExecution, ToolExecutionStatus, UsageRecord,
 };
 
-/// In-memory execution store for testing and development.
+/// In-memory execution store for testing, development, and prototyping.
 ///
-/// Tracks tool executions and token usage records in memory.
-/// Data is lost when the process exits.
+/// Tracks tool executions and token usage records in memory-backed
+/// `HashMap`s protected by `RwLock`. Data is lost when the process exits.
+/// Implements [`ExecutionStore`].
 #[derive(Default)]
 pub struct MemoryExecutionStore {
     executions: RwLock<HashMap<Uuid, ToolExecution>>,
@@ -28,10 +29,11 @@ impl MemoryExecutionStore {
         Self::default()
     }
 
-    /// Sets the message count for a session (used by `session_stats`).
+    /// Sets the message count for a session, used by [`session_stats`](ExecutionStore::session_stats).
     ///
-    /// In a real backend this would be computed from the messages table;
-    /// the memory store requires the caller to provide it.
+    /// In a real backend this would be computed from a messages table;
+    /// the in-memory store requires the caller to explicitly provide it
+    /// since messages are maintained in the session store, not here.
     pub async fn set_message_count(&self, session_id: Uuid, count: u64) {
         self.message_counts.write().await.insert(session_id, count);
     }

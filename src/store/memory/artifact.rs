@@ -1,4 +1,4 @@
-//! In-memory artifact store backed by `HashMap`.
+//! In-memory artifact store backed by a `HashMap` protected by `RwLock`.
 
 use std::collections::HashMap;
 
@@ -8,10 +8,10 @@ use uuid::Uuid;
 
 use crate::store::{Artifact, ArtifactStore, StoreResult};
 
-/// In-memory artifact store for testing and development.
+/// In-memory artifact store for testing, development, and prototyping.
 ///
-/// Data is stored in a `HashMap` protected by `RwLock` and is lost
-/// when the process exits.
+/// Data is stored in a `HashMap<Uuid, Artifact>` protected by `RwLock`
+/// and is lost when the process exits. Implements [`ArtifactStore`].
 #[derive(Default)]
 pub struct MemoryArtifactStore {
     artifacts: RwLock<HashMap<Uuid, Artifact>>,

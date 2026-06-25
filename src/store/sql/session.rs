@@ -13,14 +13,20 @@ use crate::store::{
 
 /// SQL-backed session store supporting PostgreSQL, MySQL, and SQLite.
 ///
-/// Uses runtime SQL queries for cross-database compatibility. The appropriate
-/// database pool type is selected via Cargo feature flags.
+/// The appropriate pool type is selected at compile time via Cargo feature flags.
+/// Uses runtime SQL queries for cross-database compatibility.
 ///
 /// # Migrations
 ///
 /// Run the SQL files in `src/store/sql/migrations/{postgres,mysql,sqlite}/`
 /// against your database before using this store, or use
 /// [`SqlSessionStore::migrate`] to apply them programmatically.
+///
+/// # Default method behavior
+///
+/// Most `SessionStore` trait methods have default implementations that fall
+/// back to in-memory filtering. This backend provides native SQL overrides
+/// for all required methods.
 pub struct SqlSessionStore {
     #[cfg(feature = "sqlx-postgres")]
     pool: Pool<sqlx::Postgres>,

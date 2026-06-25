@@ -23,6 +23,15 @@ use super::types::{
 };
 
 /// Anthropic Claude chat completion adapter.
+///
+/// Implements [`ChatProvider`] for Anthropic's `/v1/messages` endpoint.
+/// Supports streaming, tool calling, and vision. Embeddings are not supported
+/// by the Anthropic API.
+///
+/// # Authentication
+///
+/// The API key is sent via the `x-api-key` header. Configure it through the
+/// [`ProviderHttpConfig`] passed to [`new`](Self::new).
 pub struct AnthropicChatAdapter {
     id: ProviderId,
     client: Client,
@@ -45,6 +54,14 @@ impl AnthropicChatAdapter {
     }
 
     /// Creates an Anthropic chat adapter reusing an existing HTTP client.
+    ///
+    /// Useful when multiple adapters share the same connection pool or custom
+    /// TLS configuration.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` — Provider HTTP configuration including API key and base URL.
+    /// * `client` — A pre-built [`reqwest::Client`] to use for all requests.
     #[must_use]
     pub fn with_client(config: ProviderHttpConfig, client: Client) -> Self {
         Self {
@@ -172,12 +189,17 @@ impl ChatProvider for AnthropicChatAdapter {
     }
 }
 
+/// Accumulated state for mapping Anthropic SSE events to [`ChatStreamEvent`].
+///
+/// Tracks the model name, in-progress tool calls, and their partial JSON
+/// argument buffers across multiple stream chunks.
 struct StreamState {
     provider: ProviderId,
     model: Option<String>,
     tool_calls: Vec<ToolCallState>,
 }
 
+/// Accumulator for one in-progress tool call during streaming.
 struct ToolCallState {
     id: String,
     name: String,
@@ -194,6 +216,10 @@ impl StreamState {
     }
 }
 
+/// Maps one Anthropic SSE event to a [`ChatStreamEvent`], updating stream state.
+///
+/// Returns `None` for intermediate events that do not produce user-facing
+/// deltas (e.g. `message_start`, `content_block_stop` without tool calls).
 fn map_anthropic_event(
     state: &mut StreamState,
     event: Result<crate::adapt::sse::SseEvent, ProviderError>,
@@ -238,6 +264,8 @@ fn map_anthropic_event(
     }
 }
 
+/// Handles a `content_block_start` event, emitting [`ChatStreamEvent::ToolCallStarted`]
+/// when the new block is a tool use invocation.
 fn handle_block_start(
     state: &mut StreamState,
     _index: usize,
@@ -256,6 +284,8 @@ fn handle_block_start(
     }
 }
 
+/// Handles a `content_block_delta` event, emitting text deltas or tool call
+/// argument deltas as appropriate.
 fn handle_block_delta(
     state: &mut StreamState,
     index: usize,
@@ -286,6 +316,11 @@ fn handle_block_delta(
     }
 }
 
+/// Handles a `content_block_stop` event, emitting [`ChatStreamEvent::ToolCallCompleted`]
+/// when a tool use block completes.
+///
+/// Attempts to parse the accumulated JSON arguments. Falls back to `null` on
+/// parse failure.
 fn handle_block_stop(
     state: &mut StreamState,
     index: usize,
@@ -304,6 +339,12 @@ fn handle_block_stop(
     }))
 }
 
+/// Converts an Anthropic stop reason string to the neutral [`FinishReason`].
+///
+/// Maps `"end_turn"` / `"stop_sequence"` → [`FinishReason::Stop`],
+/// `"tool_use"` → [`FinishReason::ToolCalls`],
+/// `"max_tokens"` → [`FinishReason::Length`],
+/// and anything else → [`FinishReason::Unknown`].
 fn convert_stream_stop_reason(reason: Option<&str>) -> FinishReason {
     match reason {
         Some("end_turn" | "stop_sequence") => FinishReason::Stop,

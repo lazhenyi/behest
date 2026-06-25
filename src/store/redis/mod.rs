@@ -1,4 +1,4 @@
-//! Redis session store implementation.
+//! Redis session store implementation using hashes and sorted sets.
 
 pub mod session;
 
