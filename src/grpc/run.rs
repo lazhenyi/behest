@@ -18,7 +18,24 @@ use crate::runtime::RunRequest;
 use crate::runtime::run::{RunRecord, RunStatus};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{RwLock, mpsc};
+
+/// Parses the `grpc-timeout` header from a tonic request into a [`Duration`].
+fn parse_grpc_timeout<T>(request: &Request<T>) -> Option<Duration> {
+    let val = request.metadata().get("grpc-timeout")?.to_str().ok()?;
+    let (num_str, unit) = val.split_at(val.len() - 1);
+    let num: u64 = num_str.parse().ok()?;
+    match unit {
+        "H" => Some(Duration::from_secs(num * 3600)),
+        "M" => Some(Duration::from_secs(num * 60)),
+        "S" => Some(Duration::from_secs(num)),
+        "m" => Some(Duration::from_millis(num)),
+        "u" => Some(Duration::from_micros(num)),
+        "n" => Some(Duration::from_nanos(num)),
+        _ => None,
+    }
+}
 
 /// In-memory registry of active run tasks for cancellation.
 #[derive(Default)]
@@ -93,6 +110,7 @@ impl RunService for GrpcRunService {
         &self,
         request: Request<CreateRunRequest>,
     ) -> Result<Response<CreateRunResponse>, Status> {
+        let deadline = parse_grpc_timeout(&request);
         let req = request.into_inner();
         let provider_id = req
             .provider
@@ -151,8 +169,17 @@ impl RunService for GrpcRunService {
         let tasks = Arc::clone(&self.state.run_tasks);
 
         let handle = tokio::spawn(async move {
-            if let Err(e) = runtime.run(run_request).await {
-                tracing::error!(error = %e, "asynchronous run failed");
+            let run_future = async {
+                if let Err(e) = runtime.run(run_request).await {
+                    tracing::error!(error = %e, "asynchronous run failed");
+                }
+            };
+            if let Some(d) = deadline {
+                if tokio::time::timeout(d, run_future).await.is_err() {
+                    tracing::warn!("run cancelled: gRPC deadline exceeded");
+                }
+            } else {
+                run_future.await;
             }
         });
 
@@ -178,6 +205,7 @@ impl RunService for GrpcRunService {
         &self,
         request: Request<CreateRunRequest>,
     ) -> Result<Response<Self::CreateRunStreamStream>, Status> {
+        let deadline = parse_grpc_timeout(&request);
         let req = request.into_inner();
         let provider_id = req
             .provider
@@ -214,49 +242,69 @@ impl RunService for GrpcRunService {
         let (tx, rx) = mpsc::channel(256);
 
         // Spawn the run in background.
+        let run_deadline = deadline;
         tokio::spawn(async move {
-            if let Err(e) = runtime.run(run_request).await {
-                tracing::error!(error = %e, "streaming run failed");
+            let run_future = async {
+                if let Err(e) = runtime.run(run_request).await {
+                    tracing::error!(error = %e, "streaming run failed");
+                }
+            };
+            if let Some(d) = run_deadline {
+                if tokio::time::timeout(d, run_future).await.is_err() {
+                    tracing::warn!("streaming run cancelled: gRPC deadline exceeded");
+                }
+            } else {
+                run_future.await;
             }
         });
 
         // Forward broadcast events for this run, filtered by run_id obtained
         // from the first RunStarted event.
+        let stream_deadline = deadline;
         tokio::spawn(async move {
-            let mut sequence: u64 = 0;
-            let mut run_id: Option<RunId> = None;
+            let forward = async {
+                let mut sequence: u64 = 0;
+                let mut run_id: Option<RunId> = None;
 
-            loop {
-                match broadcast_rx.recv().await {
-                    Ok(event) => {
-                        if run_id.is_none() {
-                            run_id = Some(event.run_id());
+                loop {
+                    match broadcast_rx.recv().await {
+                        Ok(event) => {
+                            if run_id.is_none() {
+                                run_id = Some(event.run_id());
+                            }
+                            let Some(rid) = run_id else {
+                                continue;
+                            };
+                            if event.run_id() != rid {
+                                continue;
+                            }
+
+                            let is_terminal = event.is_terminal();
+                            let pb = to_proto(&event, sequence, &rid.to_string());
+                            sequence += 1;
+
+                            if tx.send(Ok(pb)).await.is_err() {
+                                return;
+                            }
+                            if is_terminal {
+                                return;
+                            }
                         }
-                        let Some(rid) = run_id else {
-                            continue;
-                        };
-                        if event.run_id() != rid {
-                            continue;
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!(skipped = n, "broadcast receiver lagged");
                         }
-
-                        let is_terminal = event.is_terminal();
-                        let pb = to_proto(&event, sequence, &rid.to_string());
-                        sequence += 1;
-
-                        if tx.send(Ok(pb)).await.is_err() {
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
                             return;
                         }
-                        if is_terminal {
-                            return;
-                        }
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!(skipped = n, "broadcast receiver lagged");
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        return;
                     }
                 }
+            };
+            if let Some(d) = stream_deadline {
+                if tokio::time::timeout(d, forward).await.is_err() {
+                    tracing::warn!("event stream terminated: gRPC deadline exceeded");
+                }
+            } else {
+                forward.await;
             }
         });
 
@@ -292,7 +340,6 @@ impl RunService for GrpcRunService {
         let runs = self
             .state
             .runtime
-            .store()
             .runs()
             .list_runs_filtered(session_id, status, limit as usize, offset as usize)
             .await
@@ -314,7 +361,6 @@ impl RunService for GrpcRunService {
         let Some(run) = self
             .state
             .runtime
-            .store()
             .runs()
             .get_run(run_id)
             .await
@@ -339,7 +385,6 @@ impl RunService for GrpcRunService {
         let Some(state) = self
             .state
             .runtime
-            .store()
             .runs()
             .get_run_state(run_id)
             .await
@@ -384,7 +429,6 @@ impl RunService for GrpcRunService {
         let Some(run) = self
             .state
             .runtime
-            .store()
             .runs()
             .get_run(run_id)
             .await
@@ -403,7 +447,6 @@ impl RunService for GrpcRunService {
 
         self.state
             .runtime
-            .store()
             .runs()
             .update_run_status(run_id, RunStatus::Cancelled)
             .await
@@ -435,7 +478,6 @@ impl RunService for GrpcRunService {
         let events = self
             .state
             .runtime
-            .store()
             .runs()
             .list_events(run_id)
             .await
@@ -455,7 +497,7 @@ impl RunService for GrpcRunService {
         }
 
         // Check if run is already terminal.
-        if let Ok(Some(run)) = self.state.runtime.store().runs().get_run(run_id).await {
+        if let Ok(Some(run)) = self.state.runtime.runs().get_run(run_id).await {
             if run.status.is_terminal() {
                 drop(tx);
                 return Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(
