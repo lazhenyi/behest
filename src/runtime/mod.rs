@@ -12,6 +12,7 @@ pub mod doom_loop;
 pub mod error;
 pub mod event;
 pub mod input;
+pub mod invocation;
 pub mod job;
 pub mod memory;
 pub mod policy;
@@ -33,6 +34,10 @@ pub use error::RuntimeError;
 pub use event::AgentEvent;
 pub use input::{
     InputAdmission, InputAdmissionConfig, InputEvent, InputId, InputRecord, InputState,
+};
+pub use invocation::{
+    Control, EmitRequest, EventKind, InvocationError, InvocationEvent, InvocationHandle,
+    RuntimeInvocation, SessionContext,
 };
 pub use job::{BackgroundJob, BackgroundJobPool, JobConditions, JobPriority, JobType};
 pub use policy::{CompactionConfig, RuntimePolicy};
