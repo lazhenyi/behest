@@ -26,6 +26,10 @@ use super::stream::{BoxRuntimeEventStream, RuntimeEventEnvelope, RuntimeRoom, Ru
 #[path = "stream_adapter/redis.rs"]
 pub mod redis;
 
+#[cfg(feature = "nats")]
+#[path = "stream_adapter/nats_jetstream.rs"]
+pub mod nats_jetstream;
+
 /// Capacity for the in-memory broadcast channel backing each room.
 const ROOM_CHANNEL_CAPACITY: usize = 256;
 
