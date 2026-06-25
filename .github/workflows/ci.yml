@@ -39,3 +39,19 @@ jobs:
 
       - name: Build docs
         run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps --locked
+
+  proto-breaking:
+    name: Proto Breaking Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Breaking check against main
+        run: buf breaking src/grpc/proto --against "https://github.com/${{ github.repository }}.git#branch=main" --error-format github-actions
