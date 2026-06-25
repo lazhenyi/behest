@@ -13,12 +13,13 @@ use behest::grpc::{
     admin::GrpcAdminService,
     agent_grpc::GrpcAgentService,
     artifact::GrpcArtifactService,
+    chat::GrpcChatService,
     compaction::GrpcCompactionService,
     context::GrpcContextService,
     embedding::GrpcEmbeddingService,
     pb::{
         admin_service_server::AdminServiceServer, agent_service_server::AgentServiceServer,
-        artifact_service_server::ArtifactServiceServer,
+        artifact_service_server::ArtifactServiceServer, chat_service_server::ChatServiceServer,
         compaction_service_server::CompactionServiceServer,
         context_service_server::ContextServiceServer,
         embedding_service_server::EmbeddingServiceServer,
@@ -37,14 +38,46 @@ use behest::grpc::{
     usage::{GrpcMetricsService, GrpcUsageService},
 };
 
+#[cfg(feature = "otel")]
+use opentelemetry::trace::TracerProvider as _;
 use tonic::transport::Server;
+use tracing_subscriber::prelude::*;
 
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    let fmt_layer = tracing_subscriber::fmt::layer();
+    let env_filter = tracing_subscriber::EnvFilter::from_default_env();
+
+    #[cfg(feature = "otel")]
+    let tracer_provider = {
+        let exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
+            .build()?;
+        let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+            .with_resource(
+                opentelemetry_sdk::Resource::builder()
+                    .with_service_name("behest-agent-server")
+                    .build(),
+            )
+            .with_batch_exporter(exporter)
+            .build();
+        opentelemetry::global::set_tracer_provider(provider.clone());
+        provider
+    };
+
+    #[cfg(feature = "otel")]
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("behest"));
+
+    let registry = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer);
+
+    #[cfg(feature = "otel")]
+    registry.with(otel_layer).init();
+
+    #[cfg(not(feature = "otel"))]
+    registry.init();
 
     let config = AgentConfigBuilder::default()
         .build()
@@ -156,6 +189,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             GrpcContextService::new(Arc::clone(&grpc_state)),
             auth.clone(),
         ))
+        .add_service(ChatServiceServer::with_interceptor(
+            GrpcChatService::new(Arc::clone(&grpc_state)),
+            auth.clone(),
+        ))
         .add_service(CompactionServiceServer::with_interceptor(
             GrpcCompactionService::new(Arc::clone(&grpc_state)),
             auth.clone(),
@@ -169,11 +206,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             auth,
         ))
         .add_service(health_service)
+        .add_service(
+            tonic_reflection::server::Builder::configure()
+                .register_encoded_file_descriptor_set(include_bytes!(
+                    "../../agent_descriptor_set.bin"
+                ))
+                .build_v1()?,
+        )
         .serve_with_shutdown(addr, async {
             tokio::signal::ctrl_c().await.ok();
             tracing::info!("shutdown signal received, starting graceful shutdown");
         })
         .await?;
+
+    #[cfg(feature = "otel")]
+    if let Err(e) = tracer_provider.shutdown() {
+        tracing::warn!(error = %e, "tracer provider shutdown failed");
+    }
 
     Ok(())
 }
