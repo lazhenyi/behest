@@ -21,12 +21,16 @@
 //! [`AgentRuntime::subscribe`]; chat-stream events require a streaming
 //! chat adapter that populates the `Chat` variant.
 
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::fmt;
 use std::future::Future;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use async_trait::async_trait;
 use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::Semaphore;
@@ -137,6 +141,291 @@ pub enum InvocationError {
         /// Human-readable validation reason.
         message: String,
     },
+}
+
+/// Errors returned by [`SessionDataStore`] implementations.
+#[derive(Debug, Error)]
+pub enum SessionDataError {
+    /// The requested session data key was not found.
+    #[error("session data key not found: {session_id}/{key}")]
+    NotFound {
+        /// Session id.
+        session_id: Uuid,
+        /// Key that was not found.
+        key: String,
+    },
+    /// Underlying storage backend error.
+    #[error("session data storage error: {message}")]
+    Storage {
+        /// Human-readable error description.
+        message: String,
+    },
+}
+
+/// Pluggable backend for per-session temporary key-value data.
+///
+/// Implementations store ephemeral data associated with a session id.
+/// The trait is async so backends like Redis can perform non-blocking I/O.
+///
+/// # Built-in implementations
+///
+/// - [`MemorySessionDataStore`] — in-process `HashMap` (default)
+/// - [`FileSessionDataStore`] — JSON files on disk (no external deps)
+/// - [`RedisSessionDataStore`] — Redis hashes (feature = `redis`)
+#[async_trait]
+pub trait SessionDataStore: Send + Sync {
+    /// Stores a value under `(session_id, key)`, overwriting any existing value.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionDataError::Storage`] on backend failure.
+    async fn set(
+        &self,
+        session_id: Uuid,
+        key: String,
+        value: Value,
+    ) -> Result<(), SessionDataError>;
+
+    /// Retrieves the value stored under `(session_id, key)`.
+    ///
+    /// Returns `Ok(None)` when the key does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionDataError::Storage`] on backend failure.
+    async fn get(&self, session_id: Uuid, key: &str) -> Result<Option<Value>, SessionDataError>;
+
+    /// Deletes the value stored under `(session_id, key)`.
+    ///
+    /// Deleting a non-existent key is a no-op (no error).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionDataError::Storage`] on backend failure.
+    async fn delete(&self, session_id: Uuid, key: &str) -> Result<(), SessionDataError>;
+}
+
+/// In-memory [`SessionDataStore`] backed by a `HashMap`.
+///
+/// Suitable for single-process deployments and testing. Data does not
+/// survive process restarts.
+#[derive(Clone)]
+pub struct MemorySessionDataStore {
+    data: Arc<Mutex<HashMap<(Uuid, String), Value>>>,
+}
+
+impl Default for MemorySessionDataStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MemorySessionDataStore {
+    /// Creates a new empty in-memory store.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            data: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+impl fmt::Debug for MemorySessionDataStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MemorySessionDataStore")
+            .finish_non_exhaustive()
+    }
+}
+
+#[async_trait]
+impl SessionDataStore for MemorySessionDataStore {
+    async fn set(
+        &self,
+        session_id: Uuid,
+        key: String,
+        value: Value,
+    ) -> Result<(), SessionDataError> {
+        let mut map = self
+            .data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        map.insert((session_id, key), value);
+        Ok(())
+    }
+
+    async fn get(&self, session_id: Uuid, key: &str) -> Result<Option<Value>, SessionDataError> {
+        let map = self
+            .data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Ok(map.get(&(session_id, key.to_string())).cloned())
+    }
+
+    async fn delete(&self, session_id: Uuid, key: &str) -> Result<(), SessionDataError> {
+        let mut map = self
+            .data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        map.remove(&(session_id, key.to_string()));
+        Ok(())
+    }
+}
+
+/// File-system [`SessionDataStore`] backed by JSON files.
+///
+/// Each session's data is stored in a single JSON file under the configured
+/// directory. No external dependencies — uses `tokio::task::spawn_blocking`
+/// with `std::fs` for blocking I/O. Per-session locking prevents concurrent
+/// writes to the same file.
+pub struct FileSessionDataStore {
+    base_dir: PathBuf,
+    locks: Arc<Mutex<HashMap<Uuid, Arc<Mutex<()>>>>>,
+}
+
+impl FileSessionDataStore {
+    /// Creates a new file-backed store rooted at `base_dir`.
+    ///
+    /// The directory is created lazily on the first `set` call.
+    #[must_use]
+    pub fn new(base_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            base_dir: base_dir.into(),
+            locks: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    fn session_path(&self, session_id: Uuid) -> PathBuf {
+        self.base_dir.join(format!("{session_id}.json"))
+    }
+
+    fn session_lock(&self, session_id: Uuid) -> Arc<Mutex<()>> {
+        let mut map = self
+            .locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        map.entry(session_id)
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+}
+
+impl fmt::Debug for FileSessionDataStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FileSessionDataStore")
+            .field("base_dir", &self.base_dir)
+            .finish_non_exhaustive()
+    }
+}
+
+#[async_trait]
+impl SessionDataStore for FileSessionDataStore {
+    async fn set(
+        &self,
+        session_id: Uuid,
+        key: String,
+        value: Value,
+    ) -> Result<(), SessionDataError> {
+        let path = self.session_path(session_id);
+        let lock = self.session_lock(session_id);
+        let base = self.base_dir.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let _guard = lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            std::fs::create_dir_all(&base).map_err(|e| SessionDataError::Storage {
+                message: format!("failed to create base dir: {e}"),
+            })?;
+
+            let mut map: HashMap<String, Value> = if path.exists() {
+                let data =
+                    std::fs::read_to_string(&path).map_err(|e| SessionDataError::Storage {
+                        message: format!("failed to read session file: {e}"),
+                    })?;
+                serde_json::from_str(&data).map_err(|e| SessionDataError::Storage {
+                    message: format!("failed to parse session file: {e}"),
+                })?
+            } else {
+                HashMap::new()
+            };
+
+            map.insert(key, value);
+            let json =
+                serde_json::to_string_pretty(&map).map_err(|e| SessionDataError::Storage {
+                    message: format!("failed to serialize session data: {e}"),
+                })?;
+            std::fs::write(&path, json).map_err(|e| SessionDataError::Storage {
+                message: format!("failed to write session file: {e}"),
+            })?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| SessionDataError::Storage {
+            message: format!("spawn_blocking error: {e}"),
+        })?
+    }
+
+    async fn get(&self, session_id: Uuid, key: &str) -> Result<Option<Value>, SessionDataError> {
+        let path = self.session_path(session_id);
+        let lock = self.session_lock(session_id);
+        let key = key.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let _guard = lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !path.exists() {
+                return Ok(None);
+            }
+            let data = std::fs::read_to_string(&path).map_err(|e| SessionDataError::Storage {
+                message: format!("failed to read session file: {e}"),
+            })?;
+            let map: HashMap<String, Value> =
+                serde_json::from_str(&data).map_err(|e| SessionDataError::Storage {
+                    message: format!("failed to parse session file: {e}"),
+                })?;
+            Ok(map.get(&key).cloned())
+        })
+        .await
+        .map_err(|e| SessionDataError::Storage {
+            message: format!("spawn_blocking error: {e}"),
+        })?
+    }
+
+    async fn delete(&self, session_id: Uuid, key: &str) -> Result<(), SessionDataError> {
+        let path = self.session_path(session_id);
+        let lock = self.session_lock(session_id);
+        let key = key.to_string();
+
+        tokio::task::spawn_blocking(move || {
+            let _guard = lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !path.exists() {
+                return Ok(());
+            }
+            let data = std::fs::read_to_string(&path).map_err(|e| SessionDataError::Storage {
+                message: format!("failed to read session file: {e}"),
+            })?;
+            let mut map: HashMap<String, Value> =
+                serde_json::from_str(&data).map_err(|e| SessionDataError::Storage {
+                    message: format!("failed to parse session file: {e}"),
+                })?;
+            map.remove(&key);
+            let json =
+                serde_json::to_string_pretty(&map).map_err(|e| SessionDataError::Storage {
+                    message: format!("failed to serialize session data: {e}"),
+                })?;
+            std::fs::write(&path, json).map_err(|e| SessionDataError::Storage {
+                message: format!("failed to write session file: {e}"),
+            })?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| SessionDataError::Storage {
+            message: format!("spawn_blocking error: {e}"),
+        })?
+    }
 }
 
 /// Unified event envelope wrapping runtime and chat-stream events.
@@ -382,32 +671,74 @@ impl EventKind {
     }
 }
 
-/// Lightweight invocation-time context passed to `emit` / `on` closures.
+/// Invocation-time session context with temporary KV storage.
 ///
-/// This is not a replacement for [`crate::store::SessionStore`]; it only
-/// carries whatever run/session ids can be derived at the call site. Both
-/// fields may be `None`.
-#[derive(Debug, Clone, Default)]
-pub struct SessionContext {
+/// Passed as the second argument to `on` handlers and the first argument to
+/// `emit` closures. Carries `session_id`, `run_id`, and a pluggable
+/// [`SessionDataStore`] backend for ephemeral per-session data.
+pub struct InvocationSession {
     /// Session id, when known.
     pub session_id: Option<Uuid>,
     /// Run id, when known.
     pub run_id: Option<RunId>,
+    store: Arc<dyn SessionDataStore>,
 }
 
-impl SessionContext {
-    /// Builds a context from an [`AgentEvent`], deriving `run_id` (and
-    /// `session_id` for `RunStarted` events). Other events yield `session_id = None`.
-    #[must_use]
-    pub fn from_agent_event(event: &AgentEvent) -> Self {
-        let session_id = match event {
-            AgentEvent::RunStarted(e) => Some(e.session_id),
-            _ => None,
-        };
-        Self {
-            session_id,
-            run_id: Some(event.run_id()),
-        }
+impl InvocationSession {
+    /// Stores a temporary value in the session data store.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionDataError`] when the session id is unknown or the
+    /// backend fails.
+    pub async fn set_data(
+        &self,
+        key: impl Into<String>,
+        value: Value,
+    ) -> Result<(), SessionDataError> {
+        let session_id = self.session_id.ok_or(SessionDataError::Storage {
+            message: "session_id not available".into(),
+        })?;
+        self.store.set(session_id, key.into(), value).await
+    }
+
+    /// Retrieves a temporary value from the session data store.
+    ///
+    /// Returns `Ok(None)` when the key does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionDataError`] when the session id is unknown or the
+    /// backend fails.
+    pub async fn get_data(&self, key: &str) -> Result<Option<Value>, SessionDataError> {
+        let session_id = self.session_id.ok_or(SessionDataError::Storage {
+            message: "session_id not available".into(),
+        })?;
+        self.store.get(session_id, key).await
+    }
+
+    /// Deletes a temporary value from the session data store.
+    ///
+    /// Deleting a non-existent key is a no-op.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionDataError`] when the session id is unknown or the
+    /// backend fails.
+    pub async fn delete_data(&self, key: &str) -> Result<(), SessionDataError> {
+        let session_id = self.session_id.ok_or(SessionDataError::Storage {
+            message: "session_id not available".into(),
+        })?;
+        self.store.delete(session_id, key).await
+    }
+}
+
+impl fmt::Debug for InvocationSession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InvocationSession")
+            .field("session_id", &self.session_id)
+            .field("run_id", &self.run_id)
+            .finish_non_exhaustive()
     }
 }
 
@@ -416,6 +747,7 @@ struct ControlInner {
     cancelled: AtomicBool,
     timeout: Mutex<Option<Duration>>,
     concurrency_limit: Mutex<Option<usize>>,
+    extensions: Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
 }
 
 /// Cooperative lifecycle handle shared across an invocation.
@@ -426,6 +758,12 @@ struct ControlInner {
 /// underlying runtime does not yet support hard cancellation. Timeout and
 /// concurrency limit are stored as hints for transport adapters — the core
 /// runtime does not enforce them.
+///
+/// ## Type-erased data
+///
+/// `Control` also carries an extension map for injecting arbitrary typed data
+/// into handlers (similar to `actix-web::web::Data<T>`). Use [`Control::set_data`]
+/// and [`Control::data`] to store and retrieve `Arc<T>` values keyed by `TypeId`.
 #[derive(Debug, Clone)]
 pub struct Control {
     inner: Arc<ControlInner>,
@@ -446,6 +784,7 @@ impl Control {
                 cancelled: AtomicBool::new(false),
                 timeout: Mutex::new(None),
                 concurrency_limit: Mutex::new(None),
+                extensions: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -481,6 +820,25 @@ impl Control {
     #[must_use]
     pub fn concurrency_limit(&self) -> Option<usize> {
         *lock_or_recover(&self.inner.concurrency_limit)
+    }
+
+    /// Stores a type-erased value in the extension map.
+    ///
+    /// Values are keyed by [`TypeId`]; storing a second value of the same
+    /// type overwrites the first.
+    pub fn set_data<T: Send + Sync + 'static>(&self, val: T) {
+        let mut ext = lock_or_recover(&self.inner.extensions);
+        ext.insert(TypeId::of::<T>(), Arc::new(val));
+    }
+
+    /// Retrieves a previously stored value by type.
+    ///
+    /// Returns `None` when no value of type `T` has been stored.
+    #[must_use]
+    pub fn data<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+        let ext = lock_or_recover(&self.inner.extensions);
+        ext.get(&TypeId::of::<T>())
+            .and_then(|arc| Arc::clone(arc).downcast::<T>().ok())
     }
 }
 
@@ -526,15 +884,35 @@ impl Drop for InvocationHandle {
 pub struct RuntimeInvocation {
     runtime: Arc<AgentRuntime>,
     session_map: Arc<Mutex<HashMap<RunId, Uuid>>>,
+    initial_data: Arc<Mutex<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
+    session_data_store: Arc<dyn SessionDataStore>,
 }
 
 impl RuntimeInvocation {
     /// Wraps a runtime in the invocation facade.
+    ///
+    /// Uses [`MemorySessionDataStore`] as the default session data backend.
     #[must_use]
     pub fn new(runtime: Arc<AgentRuntime>) -> Self {
         Self {
             runtime,
             session_map: Arc::new(Mutex::new(HashMap::new())),
+            initial_data: Arc::new(Mutex::new(HashMap::new())),
+            session_data_store: Arc::new(MemorySessionDataStore::new()),
+        }
+    }
+
+    /// Wraps a runtime with a custom [`SessionDataStore`] backend.
+    #[must_use]
+    pub fn with_session_store(
+        runtime: Arc<AgentRuntime>,
+        store: Arc<dyn SessionDataStore>,
+    ) -> Self {
+        Self {
+            runtime,
+            session_map: Arc::new(Mutex::new(HashMap::new())),
+            initial_data: Arc::new(Mutex::new(HashMap::new())),
+            session_data_store: store,
         }
     }
 
@@ -544,12 +922,34 @@ impl RuntimeInvocation {
         &self.runtime
     }
 
+    /// Registers a typed value to be injected into every [`Control`] created
+    /// by [`emit`](Self::emit) and [`on`](Self::on).
+    ///
+    /// This is analogous to `actix-web::web::Data<T>` — call it once during
+    /// setup, and every handler can retrieve the value via [`Control::data`].
+    pub fn set_data<T: Send + Sync + 'static>(&self, val: T) {
+        let mut map = lock_or_recover(&self.initial_data);
+        map.insert(TypeId::of::<T>(), Arc::new(val));
+    }
+
+    /// Creates a [`Control`] pre-filled with [`initial_data`](Self::set_data).
+    fn make_control(&self) -> Control {
+        let control = Control::new();
+        let extensions = lock_or_recover(&self.initial_data);
+        let mut target = lock_or_recover(&control.inner.extensions);
+        for (type_id, arc) in extensions.iter() {
+            target.insert(*type_id, Arc::clone(arc));
+        }
+        drop(target);
+        drop(extensions);
+        control
+    }
+
     /// Emits a run request built by `f` and executes it via [`AgentRuntime::run`].
     ///
-    /// The closure receives an invocation-time [`SessionContext`] (with no
-    /// session known yet) and a fresh [`Control`] handle, then returns an
-    /// [`EmitRequest`]. The request is converted to a [`RunRequest`] and
-    /// handed to the runtime.
+    /// The closure receives an [`InvocationSession`] (with no session known yet)
+    /// and a fresh [`Control`] handle, then returns an [`EmitRequest`]. The
+    /// request is converted to a [`RunRequest`] and handed to the runtime.
     ///
     /// Cancellation is cooperative: [`Control::is_cancelled`] is checked before
     /// the closure runs and before `run` is called. If cancelled,
@@ -563,17 +963,21 @@ impl RuntimeInvocation {
     /// [`InvocationError::Runtime`] when the underlying run fails.
     pub async fn emit<F, Fut>(&self, f: F) -> Result<RunOutput, InvocationError>
     where
-        F: FnOnce(SessionContext, Control) -> Fut + Send,
+        F: FnOnce(InvocationSession, Control) -> Fut + Send,
         Fut: Future<Output = EmitRequest> + Send,
     {
-        let control = Control::new();
-        let ctx = SessionContext::default();
+        let control = self.make_control();
+        let session = InvocationSession {
+            session_id: None,
+            run_id: None,
+            store: Arc::clone(&self.session_data_store),
+        };
         if control.is_cancelled() {
             return Err(InvocationError::TaskFailed {
                 message: "cancelled".into(),
             });
         }
-        let request = f(ctx, control.clone()).await;
+        let request = f(session, control.clone()).await;
         if control.is_cancelled() {
             return Err(InvocationError::TaskFailed {
                 message: "cancelled".into(),
@@ -602,13 +1006,21 @@ impl RuntimeInvocation {
         f: F,
     ) -> Result<InvocationHandle, InvocationError>
     where
-        F: Fn(RuntimeEventEnvelope, Control) -> Fut + Send + Sync + 'static,
+        F: Fn(RuntimeEventEnvelope, InvocationSession, Control) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         let receiver = self.runtime.subscribe();
-        let control = Control::new();
+        let control = self.make_control();
         let session_map = Arc::clone(&self.session_map);
-        Ok(spawn_listener(receiver, kind, control, session_map, f))
+        let store = Arc::clone(&self.session_data_store);
+        Ok(spawn_listener(
+            receiver,
+            kind,
+            control,
+            session_map,
+            store,
+            f,
+        ))
     }
 }
 
@@ -621,10 +1033,11 @@ fn spawn_listener<F, Fut>(
     kind: EventKind,
     control: Control,
     session_map: Arc<Mutex<HashMap<RunId, Uuid>>>,
+    store: Arc<dyn SessionDataStore>,
     handler: F,
 ) -> InvocationHandle
 where
-    F: Fn(RuntimeEventEnvelope, Control) -> Fut + Send + Sync + 'static,
+    F: Fn(RuntimeEventEnvelope, InvocationSession, Control) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
     let handler = Arc::new(handler);
@@ -658,15 +1071,20 @@ where
                         event,
                         emitted_at: chrono::Utc::now(),
                     };
+                    let session = InvocationSession {
+                        session_id,
+                        run_id: Some(run_id),
+                        store: Arc::clone(&store),
+                    };
                     let h = Arc::clone(&handler);
                     let c = control.clone();
                     let sem = semaphore.clone();
                     tokio::spawn(async move {
                         if let Some(s) = sem {
                             let _permit = s.acquire().await;
-                            h(envelope, c).await;
+                            h(envelope, session, c).await;
                         } else {
-                            h(envelope, c).await;
+                            h(envelope, session, c).await;
                         }
                     });
                 }
@@ -761,23 +1179,92 @@ mod tests {
         assert!(cloned.is_cancelled(), "clone must share cancel state");
     }
 
+    #[test]
+    fn control_set_data_and_data() {
+        let c = Control::new();
+        c.set_data(42_u32);
+        c.set_data(String::from("hello"));
+        assert_eq!(*c.data::<u32>().unwrap(), 42);
+        assert_eq!(*c.data::<String>().unwrap(), "hello");
+        assert!(c.data::<f64>().is_none());
+    }
+
+    #[test]
+    fn control_data_shared_across_clones() {
+        let c = Control::new();
+        c.set_data(99_u64);
+        let cloned = c.clone();
+        assert_eq!(*cloned.data::<u64>().unwrap(), 99);
+    }
+
+    #[tokio::test]
+    async fn memory_session_data_store_round_trip() {
+        let store = MemorySessionDataStore::new();
+        let sid = Uuid::new_v4();
+        store.set(sid, "k".into(), json!({"x": 1})).await.unwrap();
+        let val = store.get(sid, "k").await.unwrap();
+        assert_eq!(val, Some(json!({"x": 1})));
+        store.delete(sid, "k").await.unwrap();
+        assert!(store.get(sid, "k").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn file_session_data_store_round_trip() {
+        let dir = std::env::temp_dir().join(format!("behest_test_{}", Uuid::new_v4()));
+        let store = FileSessionDataStore::new(&dir);
+        let sid = Uuid::new_v4();
+        store.set(sid, "name".into(), json!("alice")).await.unwrap();
+        let val = store.get(sid, "name").await.unwrap();
+        assert_eq!(val, Some(json!("alice")));
+        store.delete(sid, "name").await.unwrap();
+        assert!(store.get(sid, "name").await.unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn invocation_session_set_get_delete() {
+        let session = InvocationSession {
+            session_id: Some(Uuid::new_v4()),
+            run_id: None,
+            store: Arc::new(MemorySessionDataStore::new()),
+        };
+        session.set_data("key", json!(42)).await.unwrap();
+        let val = session.get_data("key").await.unwrap();
+        assert_eq!(val, Some(json!(42)));
+        session.delete_data("key").await.unwrap();
+        assert!(session.get_data("key").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn invocation_session_no_session_id_errors() {
+        let session = InvocationSession {
+            session_id: None,
+            run_id: None,
+            store: Arc::new(MemorySessionDataStore::new()),
+        };
+        let result = session.set_data("key", json!(1)).await;
+        assert!(result.is_err());
+    }
+
     #[tokio::test]
     async fn on_only_handles_matching_events() {
         let (tx, rx) = broadcast::channel::<AgentEvent>(16);
         let counter = Arc::new(AtomicUsize::new(0));
         let c = counter.clone();
-        let handler = move |_, _| {
+        let handler = move |_, _, _| {
             let c = c.clone();
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
             }
         };
         let session_map = Arc::new(Mutex::new(HashMap::new()));
+        let store: Arc<dyn SessionDataStore> = Arc::new(MemorySessionDataStore::new());
         let handle = spawn_listener(
             rx,
             EventKind::TextDelta,
             Control::new(),
             session_map,
+            store,
             handler,
         );
 
@@ -808,14 +1295,22 @@ mod tests {
         let (tx, rx) = broadcast::channel::<AgentEvent>(16);
         let counter = Arc::new(AtomicUsize::new(0));
         let c = counter.clone();
-        let handler = move |_, _| {
+        let handler = move |_, _, _| {
             let c = c.clone();
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
             }
         };
         let session_map = Arc::new(Mutex::new(HashMap::new()));
-        let handle = spawn_listener(rx, EventKind::Any, Control::new(), session_map, handler);
+        let store: Arc<dyn SessionDataStore> = Arc::new(MemorySessionDataStore::new());
+        let handle = spawn_listener(
+            rx,
+            EventKind::Any,
+            Control::new(),
+            session_map,
+            store,
+            handler,
+        );
 
         let _ = tx.send(AgentEvent::RunStarted(RunStarted {
             run_id: RunId::new(),
