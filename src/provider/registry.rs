@@ -97,6 +97,24 @@ impl ProviderRegistry {
         provider.complete(request).await
     }
 
+    /// Routes a streaming chat request to a registered provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::Unsupported`] when no chat provider is registered
+    /// for the given identifier, or any error from the underlying provider.
+    pub async fn stream(
+        &self,
+        provider_id: &ProviderId,
+        request: ChatRequest,
+    ) -> ProviderResult<crate::provider::ChatStream> {
+        let provider = self
+            .chat(provider_id)
+            .ok_or_else(|| unsupported(provider_id, "chat"))?;
+
+        provider.stream(request).await
+    }
+
     /// Routes an embedding request to a registered provider.
     ///
     /// # Errors
