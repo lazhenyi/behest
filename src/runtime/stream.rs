@@ -42,6 +42,12 @@ impl RuntimeEventId {
         Self(Uuid::now_v7())
     }
 
+    /// Wraps an existing [`Uuid`] as a [`RuntimeEventId`].
+    #[must_use]
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
     /// Views the underlying [`Uuid`].
     #[must_use]
     pub fn as_uuid(&self) -> Uuid {

@@ -48,11 +48,15 @@ pub mod grpc;
 pub use crate::error::{ContextError, Error, ProviderError, Result, StorageError, ToolError};
 pub use crate::runtime::{
     AgentEvent, AgentRuntime, CompactionResult, CompactionService, Control, EmitRequest, EventKind,
-    FileSnapshotStore, InvocationError, InvocationEvent, InvocationHandle, ModelRouter, RunId,
-    RunOutput, RunRequest, RunStatus, RuntimeError, RuntimeEventBridge, RuntimeEventBridgeError,
-    RuntimeEventBridgeHandle, RuntimeEventEnvelope, RuntimeEventId, RuntimeEventStore,
-    RuntimeEventStoreError, RuntimeInvocation, RuntimePolicy, RuntimeRoom, RuntimeStreamAdapter,
-    RuntimeStreamError, RuntimeSubscription, RuntimeSubscriptionError, RuntimeSubscriptionHub,
-    SessionContext, Snapshot, SnapshotStore,
+    FileSessionDataStore, FileSnapshotStore, InvocationError, InvocationEvent, InvocationHandle,
+    InvocationSession, MemorySessionDataStore, ModelRouter, RunId, RunOutput, RunRequest,
+    RunStatus, RuntimeError, RuntimeEventBridge, RuntimeEventBridgeError, RuntimeEventBridgeHandle,
+    RuntimeEventEnvelope, RuntimeEventId, RuntimeEventStore, RuntimeEventStoreError,
+    RuntimeInvocation, RuntimePolicy, RuntimeRoom, RuntimeStreamAdapter, RuntimeStreamError,
+    RuntimeSubscription, RuntimeSubscriptionError, RuntimeSubscriptionHub, SessionDataError,
+    SessionDataStore, Snapshot, SnapshotStore,
 };
 pub use crate::tool_output::{ToolOutputConfig, TruncationResult};
+
+#[cfg(feature = "redis")]
+pub use crate::runtime::RedisSessionDataStore;

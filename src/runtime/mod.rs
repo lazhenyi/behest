@@ -31,6 +31,9 @@ pub mod subscription;
 pub mod tool;
 pub mod turn;
 
+#[cfg(feature = "redis")]
+pub mod session_data_store;
+
 pub use agent::{AgentRuntime, RunOutput};
 pub use compaction::{CompactionResult, CompactionService};
 pub use context::ContextPipeline;
@@ -45,8 +48,9 @@ pub use input::{
     InputAdmission, InputAdmissionConfig, InputEvent, InputId, InputRecord, InputState,
 };
 pub use invocation::{
-    Control, EmitRequest, EventKind, InvocationError, InvocationEvent, InvocationHandle,
-    RuntimeInvocation, SessionContext,
+    Control, EmitRequest, EventKind, FileSessionDataStore, InvocationError, InvocationEvent,
+    InvocationHandle, InvocationSession, MemorySessionDataStore, RuntimeInvocation,
+    SessionDataError, SessionDataStore,
 };
 pub use job::{BackgroundJob, BackgroundJobPool, JobConditions, JobPriority, JobType};
 pub use policy::{CompactionConfig, RuntimePolicy};
@@ -74,4 +78,13 @@ pub use turn::{TurnState, TurnTransition};
 pub use event_store::redis::RedisRuntimeEventStore;
 
 #[cfg(feature = "redis")]
+pub use session_data_store::RedisSessionDataStore;
+
+#[cfg(feature = "redis")]
 pub use stream_adapter::redis::RedisRuntimeStreamAdapter;
+
+#[cfg(feature = "sqlx-postgres")]
+pub use event_store::postgres::PostgresRuntimeEventStore;
+
+#[cfg(feature = "nats")]
+pub use stream_adapter::nats_jetstream::NatsJetStreamStreamAdapter;

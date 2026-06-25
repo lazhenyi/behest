@@ -20,13 +20,14 @@ pub use crate::provider::{
 };
 pub use crate::runtime::{
     AgentEvent, AgentRuntime, CompactionConfig, CompactionResult, CompactionService,
-    ContextPipeline, Control, EmitRequest, EventKind, FileSnapshotStore, InvocationError,
-    InvocationEvent, InvocationHandle, ModelRouter, RunId, RunOutput, RunRequest, RunStatus,
-    RuntimeError, RuntimeEventBridge, RuntimeEventBridgeError, RuntimeEventBridgeHandle,
-    RuntimeEventEnvelope, RuntimeEventId, RuntimeEventStore, RuntimeEventStoreError,
-    RuntimeInvocation, RuntimePolicy, RuntimeRoom, RuntimeStore, RuntimeStreamAdapter,
-    RuntimeStreamError, RuntimeSubscription, RuntimeSubscriptionError, RuntimeSubscriptionHub,
-    SessionContext, SessionGate, SessionGuard, Snapshot, SnapshotStore, ToolRuntime,
+    ContextPipeline, Control, EmitRequest, EventKind, FileSessionDataStore, FileSnapshotStore,
+    InvocationError, InvocationEvent, InvocationHandle, InvocationSession, MemorySessionDataStore,
+    ModelRouter, RunId, RunOutput, RunRequest, RunStatus, RuntimeError, RuntimeEventBridge,
+    RuntimeEventBridgeError, RuntimeEventBridgeHandle, RuntimeEventEnvelope, RuntimeEventId,
+    RuntimeEventStore, RuntimeEventStoreError, RuntimeInvocation, RuntimePolicy, RuntimeRoom,
+    RuntimeStore, RuntimeStreamAdapter, RuntimeStreamError, RuntimeSubscription,
+    RuntimeSubscriptionError, RuntimeSubscriptionHub, SessionDataError, SessionDataStore,
+    SessionGate, SessionGuard, Snapshot, SnapshotStore, ToolRuntime,
 };
 pub use crate::store::memory::{
     MemoryArtifactStore, MemoryEmbeddingStore, MemoryExecutionStore, MemorySessionStore,
@@ -67,6 +68,9 @@ pub use crate::store::surrealdb::SurrealdbSessionStore;
 
 #[cfg(feature = "redis")]
 pub use crate::store::redis::RedisSessionStore;
+
+#[cfg(feature = "redis")]
+pub use crate::runtime::RedisSessionDataStore;
 
 #[cfg(feature = "qdrant")]
 pub use crate::store::qdrant::QdrantEmbeddingStore;
