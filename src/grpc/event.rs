@@ -95,12 +95,35 @@ pub fn to_proto(event: &AgentEvent, sequence: u64, run_id: &str) -> PbAgentEvent
         }
     };
 
+    let (trace_id, span_id) = current_trace_context();
+
     PbAgentEvent {
         sequence,
         run_id: run_id.to_owned(),
         event: Some(event_kind),
         timestamp: Some(crate::grpc::to_prost_timestamp(chrono::Utc::now())),
+        trace_id,
+        span_id,
     }
+}
+
+/// Extracts W3C trace context from the current tracing span.
+///
+/// Returns `(trace_id, span_id)` as hex strings. Both are empty when the `otel`
+/// feature is disabled or no active span carries OTel context.
+fn current_trace_context() -> (String, String) {
+    #[cfg(feature = "otel")]
+    {
+        use opentelemetry::trace::TraceContextExt as _;
+        use tracing_opentelemetry::OpenTelemetrySpanExt as _;
+        let ctx = tracing::Span::current().context();
+        let span_ref = ctx.span();
+        let sc = span_ref.span_context();
+        if sc.is_valid() {
+            return (sc.trace_id().to_string(), sc.span_id().to_string());
+        }
+    }
+    (String::new(), String::new())
 }
 
 /// Maps a runtime [`FinishReason`] to the protobuf enum value.
