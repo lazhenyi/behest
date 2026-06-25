@@ -55,7 +55,7 @@ pub trait RunStore: Send + Sync {
 
     /// Gets the event-sourced state of a run by replaying its event log.
     ///
-    /// Default implementation calls [`get_run`] + [`list_events`] and
+    /// Default implementation calls [`Self::get_run`] + [`Self::list_events`] and
     /// folds them into a [`RunState`]. Backends may override with a
     /// native projection for better performance.
     async fn get_run_state(&self, run_id: RunId) -> RuntimeResult<Option<RunState>> {

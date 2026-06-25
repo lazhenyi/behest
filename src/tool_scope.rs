@@ -303,7 +303,7 @@ impl ScopedToolRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`ToolError::NotFound`](crate::tool::ToolError::NotFound)
+    /// Returns [`ToolError::NotFound`](crate::error::ToolError::NotFound)
     /// when the tool is not in any scope or the base.
     pub async fn execute(
         &self,

@@ -1,6 +1,6 @@
 //! Retrieval-Augmented Generation (RAG) context adapter.
 //!
-//! Embeds the user message via an [`EmbeddingProvider`] and retrieves
+//! Embeds the user message via an [`crate::provider::EmbeddingProvider`] and retrieves
 //! semantically relevant context from an [`EmbeddingStore`], then injects
 //! the retrieved snippets as a system message into the agent context flow.
 

@@ -185,7 +185,7 @@ impl CompactionService {
     /// overflow error. This always performs compaction (does not check
     /// `is_overflow` first).
     ///
-    /// Uses `model_context` to compute a safe [`CompactionConfig::keep_tokens`]
+    /// Uses `model_context` to compute a safe [`crate::runtime::policy::CompactionConfig::keep_tokens`]
     /// override so the compaction prompt itself does not exceed the compaction
     /// model's context window.
     ///

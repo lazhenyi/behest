@@ -46,7 +46,7 @@ struct PruneTarget {
 ///
 /// Two-pass strategy: first pass collects indices of messages that
 /// *would* be pruned and computes the total token savings. Only if
-/// savings exceed [`PRUNE_MINIMUM`] does the second pass apply the
+/// savings exceed `PRUNE_MINIMUM` does the second pass apply the
 /// in-place mutations. This prevents partial data corruption when
 /// the minimum threshold is not met.
 ///

@@ -59,7 +59,7 @@ impl SessionGate {
     ///
     /// # Errors
     ///
-    /// Returns [`RuntimeError::SessionBusy`] if the lock is already held.
+    /// Returns [`SessionBusy`] if the lock is already held.
     pub async fn acquire(&self, session_id: Uuid) -> Result<SessionGuard, SessionBusy> {
         let mutex = {
             let read = self.locks.read().await;
