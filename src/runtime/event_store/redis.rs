@@ -1,8 +1,8 @@
 //! Redis Streams-backed [`RuntimeEventStore`].
 //!
-//! Each `run_id` maps to a Redis Stream key `run:{run_id}`. [`append`] uses
+//! Each `run_id` maps to a Redis Stream key `run:{run_id}`. [`RuntimeEventStore::append`] uses
 //! `XADD` with an auto-incrementing `*` id and stores the serialized envelope
-//! in a single field `data`. [`list_after`] uses `XRANGE` with an optional
+//! in a single field `data`. [`RuntimeEventStore::list_after`] uses `XRANGE` with an optional
 //! lower-bound id derived from `after_seq`.
 //!
 //! The store relies on Redis for both durability and ordering; it does not

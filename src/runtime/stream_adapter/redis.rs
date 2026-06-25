@@ -1,12 +1,12 @@
 //! Redis Pub/Sub-backed [`RuntimeStreamAdapter`].
 //!
-//! Each [`RuntimeRoom`] maps to a Redis Pub/Sub channel. [`publish`] uses
-//! `PUBLISH` with a JSON-serialized envelope. [`subscribe`] uses `SUBSCRIBE`
+//! Each [`RuntimeRoom`] maps to a Redis Pub/Sub channel. [`RuntimeStreamAdapter::publish`] uses
+//! `PUBLISH` with a JSON-serialized envelope. [`RuntimeStreamAdapter::subscribe`] uses `SUBSCRIBE`
 //! and bridges into a [`BoxRuntimeEventStream`].
 //!
 //! This adapter is best-effort only: Redis Pub/Sub is fire-and-forget with
 //! no replay. Durability and replay are the responsibility of
-//! [`RuntimeEventStore`](super::event_store::RuntimeEventStore).
+//! [`RuntimeEventStore`](crate::runtime::event_store::RuntimeEventStore).
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -228,7 +228,7 @@ mod tests {
             }
             Ok(Some(Err(e))) => panic!("unexpected stream error: {e}"),
             Ok(None) => panic!("stream closed unexpectedly"),
-            Err(_) => panic!("timed out waiting for pubsub message"),
+            Err(e) => panic!("timed out waiting for pubsub message: {e}"),
         }
     }
 }

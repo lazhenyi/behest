@@ -1,8 +1,8 @@
 //! PostgreSQL-backed [`RuntimeEventStore`].
 //!
 //! Uses a `runtime_events` table with a composite primary key `(run_id, seq)`.
-//! [`append`] uses `INSERT ... RETURNING seq` with a subquery for the next
-//! sequence number. [`list_after`] uses `SELECT ... WHERE run_id = $1 AND seq > $2
+//! [`RuntimeEventStore::append`] uses `INSERT ... RETURNING seq` with a subquery for the next
+//! sequence number. [`RuntimeEventStore::list_after`] uses `SELECT ... WHERE run_id = $1 AND seq > $2
 //! ORDER BY seq LIMIT $3`.
 //!
 //! Session tracking is handled via a separate `runtime_sessions` table,

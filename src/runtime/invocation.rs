@@ -171,7 +171,7 @@ pub enum SessionDataError {
 ///
 /// - [`MemorySessionDataStore`] — in-process `HashMap` (default)
 /// - [`FileSessionDataStore`] — JSON files on disk (no external deps)
-/// - [`RedisSessionDataStore`] — Redis hashes (feature = `redis`)
+/// - [`RedisSessionDataStore`](crate::runtime::RedisSessionDataStore) — Redis hashes (feature = `redis`)
 #[async_trait]
 pub trait SessionDataStore: Send + Sync {
     /// Stores a value under `(session_id, key)`, overwriting any existing value.

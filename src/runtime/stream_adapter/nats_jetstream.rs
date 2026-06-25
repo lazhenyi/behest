@@ -1,7 +1,7 @@
 //! NATS JetStream-backed [`RuntimeStreamAdapter`].
 //!
-//! Each [`RuntimeRoom`] maps to a JetStream subject. [`publish`] uses
-//! `jetstream.publish()` with a JSON-serialized envelope. [`subscribe`]
+//! Each [`RuntimeRoom`] maps to a JetStream subject. [`RuntimeStreamAdapter::publish`] uses
+//! `jetstream.publish()` with a JSON-serialized envelope. [`RuntimeStreamAdapter::subscribe`]
 //! creates an ephemeral consumer and bridges into a [`BoxRuntimeEventStream`].
 //!
 //! JetStream provides durable, replayable streams. Unlike the in-memory
