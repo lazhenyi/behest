@@ -27,6 +27,10 @@ use super::stream::{RuntimeEventEnvelope, RuntimeEventId};
 #[path = "event_store/redis.rs"]
 pub mod redis;
 
+#[cfg(feature = "sqlx-postgres")]
+#[path = "event_store/postgres.rs"]
+pub mod postgres;
+
 /// Single locked state for [`MemoryRuntimeEventStore`].
 ///
 /// Merging `events`, `seq`, and `sessions` under one [`Mutex`] guarantees that
