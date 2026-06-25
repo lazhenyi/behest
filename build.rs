@@ -20,6 +20,7 @@ fn main() {
                     "src/grpc/proto/agent/v1/agent.proto",
                     "src/grpc/proto/agent/v1/context.proto",
                     "src/grpc/proto/agent/v1/admin.proto",
+                    "src/grpc/proto/agent/v1/chat.proto",
                 ],
                 &["src/grpc/proto"],
             )
