@@ -16,6 +16,7 @@ pub mod admin;
 pub mod agent_grpc;
 pub mod artifact;
 pub mod auth;
+pub mod chat;
 pub mod compaction;
 pub mod context;
 pub mod embedding;
@@ -51,7 +52,7 @@ pub(crate) fn error_to_status(err: crate::Error) -> tonic::Status {
     }
 }
 
-fn provider_error_to_status(err: &crate::ProviderError) -> tonic::Status {
+pub(super) fn provider_error_to_status(err: &crate::ProviderError) -> tonic::Status {
     use crate::ProviderError;
     use tonic::{Code, Status};
 
