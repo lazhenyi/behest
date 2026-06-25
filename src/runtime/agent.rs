@@ -27,7 +27,7 @@ use super::policy::RuntimePolicy;
 use super::run::{RunId, RunRecord, RunRequest, RunStatus};
 use super::session_gate::SessionGate;
 use super::snapshot::{Snapshot, SnapshotStore};
-use super::store::RuntimeStore;
+use super::store::{RunStore, RuntimeStore};
 use super::tool::ToolRuntime;
 use super::turn::{TurnState, TurnTransition};
 use crate::tool_scope::ScopeGuard;
@@ -172,6 +172,36 @@ impl AgentRuntime {
     #[must_use]
     pub fn snapshot_store(&self) -> Option<&Arc<dyn SnapshotStore>> {
         self.snapshot_store.as_ref()
+    }
+
+    /// Returns the session store.
+    #[must_use]
+    pub fn sessions(&self) -> &dyn crate::store::SessionStore {
+        self.store.sessions()
+    }
+
+    /// Returns the execution store.
+    #[must_use]
+    pub fn executions(&self) -> &dyn crate::store::ExecutionStore {
+        self.store.executions()
+    }
+
+    /// Returns the run store.
+    #[must_use]
+    pub fn runs(&self) -> &dyn RunStore {
+        self.store.runs()
+    }
+
+    /// Returns the embedding store, if configured.
+    #[must_use]
+    pub fn embeddings(&self) -> Option<&dyn crate::store::EmbeddingStore> {
+        self.store.embeddings()
+    }
+
+    /// Returns the artifact store, if configured.
+    #[must_use]
+    pub fn artifacts(&self) -> Option<&dyn crate::store::ArtifactStore> {
+        self.store.artifacts()
     }
 
     /// Executes an agent run to completion.
