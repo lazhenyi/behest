@@ -41,9 +41,30 @@ message InvokeToolResponse {
   string output = 2; // JSON
 }
 
+// Register tool request.
+message RegisterToolRequest {
+  string name = 1;
+  string description = 2;
+  string parameters_schema = 3; // JSON
+  string endpoint = 4;          // optional external endpoint URL
+}
+
+// Register tool response.
+message RegisterToolResponse {}
+
+// Unregister tool request.
+message UnregisterToolRequest {
+  string name = 1;
+}
+
+// Unregister tool response.
+message UnregisterToolResponse {}
+
 // Tool service.
 service ToolService {
   rpc ListTools(ListToolsRequest) returns (ListToolsResponse);
   rpc GetTool(GetToolRequest) returns (GetToolResponse);
   rpc InvokeTool(InvokeToolRequest) returns (InvokeToolResponse);
+  rpc RegisterTool(RegisterToolRequest) returns (RegisterToolResponse);
+  rpc UnregisterTool(UnregisterToolRequest) returns (UnregisterToolResponse);
 }

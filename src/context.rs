@@ -437,7 +437,7 @@ mod tests {
         let mut factory = ContextFactory::new();
         factory.register(StaticAdapter::system("You are helpful."));
 
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(crate::tool::FunctionTool::new(
             "echo",
             "Echo",

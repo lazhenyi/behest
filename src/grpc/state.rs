@@ -3,7 +3,10 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use tokio::sync::RwLock;
+
 use super::run::RunTaskRegistry;
+use crate::agent::AgentRegistry;
 #[cfg(any(feature = "openai", feature = "anthropic"))]
 use crate::config::ProviderType;
 use crate::config::{AgentConfig, ProviderConfig};
@@ -35,6 +38,8 @@ pub struct GrpcState {
     pub run_tasks: Arc<RunTaskRegistry>,
     /// Maximum number of concurrent runs (None = unlimited).
     pub max_concurrent_runs: Option<usize>,
+    /// Agent registry for dynamic agent management.
+    pub agent_registry: Arc<RwLock<AgentRegistry>>,
 }
 
 impl GrpcState {
@@ -52,6 +57,7 @@ impl GrpcState {
             started_at: Instant::now(),
             run_tasks,
             max_concurrent_runs,
+            agent_registry: Arc::new(RwLock::new(AgentRegistry::new())),
         }
     }
 

@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package agent.v1;
+
+import "agent/v1/common.proto";
+
+// Agent mode.
+enum AgentMode {
+  AGENT_MODE_UNSPECIFIED = 0;
+  AGENT_MODE_PRIMARY = 1;
+  AGENT_MODE_SUBAGENT = 2;
+}
+
+// Permission effect.
+message PermissionEffect {
+  oneof effect {
+    bool allow = 1;
+    bool deny = 2;
+    bool ask = 3;
+  }
+}
+
+// Permission rule.
+message PermissionRule {
+  string tool = 1;
+  string resource = 2;
+  PermissionEffect effect = 3;
+}
+
+// Agent definition.
+message AgentDefinition {
+  string name = 1;
+  string description = 2;
+  AgentMode mode = 3;
+  string system_prompt = 4;
+  bool hidden = 5;
+  repeated PermissionRule permissions = 6;
+  ModelName model = 7;       // optional
+  uint32 max_steps = 8;      // optional, 0 = unset
+}
+
+// Register agent request.
+message RegisterAgentRequest {
+  AgentDefinition agent = 1;
+}
+
+// Register agent response.
+message RegisterAgentResponse {}
+
+// Get agent request.
+message GetAgentRequest {
+  string name = 1;
+}
+
+// Get agent response.
+message GetAgentResponse {
+  AgentDefinition agent = 1;
+}
+
+// List agents request.
+message ListAgentsRequest {}
+
+// List agents response.
+message ListAgentsResponse {
+  repeated AgentDefinition agents = 1;
+  string default_agent = 2; // optional
+}
+
+// Set default agent request.
+message SetDefaultAgentRequest {
+  string name = 1;
+}
+
+// Set default agent response.
+message SetDefaultAgentResponse {}
+
+// Agent service.
+service AgentService {
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+  rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc SetDefaultAgent(SetDefaultAgentRequest) returns (SetDefaultAgentResponse);
+}

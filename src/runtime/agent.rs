@@ -162,6 +162,18 @@ impl AgentRuntime {
         &self.store
     }
 
+    /// Returns the compaction service.
+    #[must_use]
+    pub fn compaction(&self) -> &CompactionService {
+        &self.compaction
+    }
+
+    /// Returns the snapshot store, if configured.
+    #[must_use]
+    pub fn snapshot_store(&self) -> Option<&Arc<dyn SnapshotStore>> {
+        self.snapshot_store.as_ref()
+    }
+
     /// Executes an agent run to completion.
     ///
     /// The run loop:
@@ -577,7 +589,7 @@ mod tests {
             MockProvider::text_response("Done!"),
         ]);
 
-        let mut tools = ToolRegistry::new();
+        let tools = ToolRegistry::new();
         tools.register(FunctionTool::new(
             "echo",
             "Echoes input",
@@ -624,7 +636,7 @@ mod tests {
 
         let provider = MockProvider::new(responses);
 
-        let mut tools = ToolRegistry::new();
+        let tools = ToolRegistry::new();
         tools.register(FunctionTool::new(
             "echo",
             "Echoes",
@@ -726,7 +738,7 @@ mod tests {
             MockProvider::text_response("Done after resume!"),
         ]);
 
-        let mut tools = ToolRegistry::new();
+        let tools = ToolRegistry::new();
         tools.register(FunctionTool::new(
             "echo",
             "Echoes message",

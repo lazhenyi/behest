@@ -12,11 +12,17 @@ pub mod pb {
     tonic::include_proto!("agent.v1");
 }
 
+pub mod agent_grpc;
+pub mod artifact;
 pub mod auth;
+pub mod compaction;
+pub mod context;
+pub mod embedding;
 pub mod event;
 pub mod provider;
 pub mod run;
 pub mod session;
+pub mod snapshot;
 pub mod state;
 pub mod tool;
 pub mod usage;

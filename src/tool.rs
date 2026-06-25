@@ -288,9 +288,31 @@ impl Tool for ExternalTool {
 ///
 /// The registry maintains tool definitions and provides execution dispatch
 /// for tool calls returned by chat providers.
-#[derive(Clone, Default)]
+///
+/// Uses interior mutability (`RwLock`) to allow concurrent reads and
+/// dynamic registration/unregistration through shared references.
 pub struct ToolRegistry {
-    tools: HashMap<String, Arc<dyn Tool>>,
+    tools: std::sync::RwLock<HashMap<String, Arc<dyn Tool>>>,
+}
+
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self {
+            tools: std::sync::RwLock::new(HashMap::new()),
+        }
+    }
+}
+
+impl Clone for ToolRegistry {
+    fn clone(&self) -> Self {
+        let guard = self
+            .tools
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Self {
+            tools: std::sync::RwLock::new(guard.clone()),
+        }
+    }
 }
 
 impl ToolRegistry {
@@ -301,41 +323,71 @@ impl ToolRegistry {
     }
 
     /// Registers a tool and returns the replaced tool, if any.
-    pub fn register<T>(&mut self, tool: T) -> Option<Arc<dyn Tool>>
+    pub fn register<T>(&self, tool: T) -> Option<Arc<dyn Tool>>
     where
         T: Tool + 'static,
     {
         let name = tool.name().to_owned();
-        self.tools.insert(name, Arc::new(tool))
+        self.tools
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(name, Arc::new(tool))
     }
 
     /// Registers an already shared tool.
-    pub fn register_arc(&mut self, tool: Arc<dyn Tool>) -> Option<Arc<dyn Tool>> {
+    pub fn register_arc(&self, tool: Arc<dyn Tool>) -> Option<Arc<dyn Tool>> {
         let name = tool.name().to_owned();
-        self.tools.insert(name, tool)
+        self.tools
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(name, tool)
+    }
+
+    /// Removes a tool by name and returns the removed tool, if any.
+    pub fn unregister(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.tools
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(name)
     }
 
     /// Returns a registered tool by name.
     #[must_use]
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools.get(name).map(Arc::clone)
+        self.tools
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(name)
+            .map(Arc::clone)
     }
 
     /// Returns all registered tool names.
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.tools.keys().map(String::as_str)
+    #[must_use]
+    pub fn names(&self) -> Vec<String> {
+        self.tools
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .keys()
+            .cloned()
+            .collect()
     }
 
     /// Returns the number of registered tools.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.tools.len()
+        self.tools
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
     }
 
     /// Returns `true` when no tools are registered.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.tools.is_empty()
+        self.tools
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_empty()
     }
 
     /// Generates [`ToolSpec`] definitions for all registered tools,
@@ -345,7 +397,11 @@ impl ToolRegistry {
     /// turns and provider calls.
     #[must_use]
     pub fn specs(&self) -> Vec<ToolSpec> {
-        let mut specs: Vec<ToolSpec> = self.tools.values().map(|t| t.to_spec()).collect();
+        let guard = self
+            .tools
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut specs: Vec<ToolSpec> = guard.values().map(|t| t.to_spec()).collect();
         specs.sort_by(|a, b| a.name.cmp(&b.name));
         specs
     }
@@ -396,7 +452,7 @@ mod tests {
 
     #[test]
     fn tool_registry_should_register_function_tool() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         let tool = FunctionTool::new(
             "echo",
             "Echoes input",
@@ -417,7 +473,7 @@ mod tests {
 
     #[test]
     fn tool_registry_should_generate_specs() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         let tool = FunctionTool::new(
             "echo",
             "Echoes input",
@@ -434,7 +490,7 @@ mod tests {
 
     #[test]
     fn tool_registry_should_replace_existing_tool() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         let tool1 = FunctionTool::new("echo", "First", json!({}), echo_handler);
         let tool2 = FunctionTool::new("echo", "Second", json!({}), echo_handler);
 
@@ -447,7 +503,7 @@ mod tests {
 
     #[tokio::test]
     async fn tool_registry_should_execute_tool_call() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         let tool = FunctionTool::new(
             "echo",
             "Echoes input",
@@ -474,7 +530,7 @@ mod tests {
 
     #[tokio::test]
     async fn tool_registry_should_convert_output_to_message() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         let tool = FunctionTool::new(
             "echo",
             "Echoes input",
@@ -523,7 +579,7 @@ mod tests {
 
     #[test]
     fn specs_should_return_sorted_by_name() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(FunctionTool::new(
             "zebra",
             "Zebra tool",

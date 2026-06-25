@@ -147,6 +147,12 @@ impl CompactionService {
         Self { providers, config }
     }
 
+    /// Returns the compaction configuration.
+    #[must_use]
+    pub fn config(&self) -> &crate::runtime::policy::CompactionConfig {
+        &self.config
+    }
+
     /// Proactive compaction: called before each provider turn to check
     /// whether the conversation will overflow the context window.
     ///

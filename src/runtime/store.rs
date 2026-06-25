@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::provider::Message;
-use crate::store::{ExecutionStore, MessageRecord, MessageRole, SessionStore};
+use crate::store::{
+    ArtifactStore, EmbeddingStore, ExecutionStore, MessageRecord, MessageRole, SessionStore,
+};
 
 use super::error::{RuntimeError, RuntimeResult};
 use super::event::AgentEvent;
@@ -102,11 +104,13 @@ pub trait RunStore: Send + Sync {
     async fn health_check(&self) -> RuntimeResult<()>;
 }
 
-/// Runtime store facade combining session, execution, and run stores.
+/// Runtime store facade combining session, execution, run, embedding, and artifact stores.
 pub struct RuntimeStore {
     sessions: Box<dyn SessionStore>,
     executions: Box<dyn ExecutionStore>,
     runs: Box<dyn RunStore>,
+    embeddings: Option<Box<dyn EmbeddingStore>>,
+    artifacts: Option<Box<dyn ArtifactStore>>,
 }
 
 impl RuntimeStore {
@@ -121,7 +125,23 @@ impl RuntimeStore {
             sessions,
             executions,
             runs,
+            embeddings: None,
+            artifacts: None,
         }
+    }
+
+    /// Attaches an embedding store.
+    #[must_use]
+    pub fn with_embeddings(mut self, store: Box<dyn EmbeddingStore>) -> Self {
+        self.embeddings = Some(store);
+        self
+    }
+
+    /// Attaches an artifact store.
+    #[must_use]
+    pub fn with_artifacts(mut self, store: Box<dyn ArtifactStore>) -> Self {
+        self.artifacts = Some(store);
+        self
     }
 
     /// Returns the session store.
@@ -140,6 +160,18 @@ impl RuntimeStore {
     #[must_use]
     pub fn runs(&self) -> &dyn RunStore {
         &*self.runs
+    }
+
+    /// Returns the embedding store, if configured.
+    #[must_use]
+    pub fn embeddings(&self) -> Option<&dyn EmbeddingStore> {
+        self.embeddings.as_deref()
+    }
+
+    /// Returns the artifact store, if configured.
+    #[must_use]
+    pub fn artifacts(&self) -> Option<&dyn ArtifactStore> {
+        self.artifacts.as_deref()
     }
 
     /// Creates or loads a session.

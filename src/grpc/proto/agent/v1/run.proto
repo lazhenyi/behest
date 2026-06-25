@@ -211,3 +211,96 @@ service RunService {
   // Watch events for a run (server-streaming, replay + live).
   rpc WatchRunEvents(WatchRunEventsRequest) returns (stream AgentEvent);
 }
+
+// --- Compaction service ---
+
+// Get compaction config request.
+message GetCompactionConfigRequest {}
+
+// Get compaction config response.
+message GetCompactionConfigResponse {
+  bool auto = 1;
+  bool prune = 2;
+  uint64 buffer_tokens = 3;
+  uint64 keep_tokens = 4;
+  uint32 tail_turns = 5;
+  string model = 6;
+  string provider = 7;
+  uint32 circuit_breaker_threshold = 8;
+}
+
+// Update compaction config request.
+message UpdateCompactionConfigRequest {
+  bool auto = 1;
+  bool prune = 2;
+  uint64 buffer_tokens = 3;
+  uint64 keep_tokens = 4;
+  uint32 tail_turns = 5;
+  string model = 6;
+  string provider = 7;
+  uint32 circuit_breaker_threshold = 8;
+}
+
+// Update compaction config response.
+message UpdateCompactionConfigResponse {}
+
+// Get circuit breaker state request.
+message GetCircuitBreakerRequest {}
+
+// Get circuit breaker state response.
+message GetCircuitBreakerResponse {
+  bool is_open = 1;
+  uint32 consecutive_failures = 2;
+}
+
+// Compaction service.
+service CompactionService {
+  rpc GetCompactionConfig(GetCompactionConfigRequest) returns (GetCompactionConfigResponse);
+  rpc UpdateCompactionConfig(UpdateCompactionConfigRequest) returns (UpdateCompactionConfigResponse);
+  rpc GetCircuitBreaker(GetCircuitBreakerRequest) returns (GetCircuitBreakerResponse);
+}
+
+// --- Snapshot service ---
+
+// Snapshot info.
+message SnapshotInfo {
+  string run_id = 1;
+  string session_id = 2;
+  RunStatus status = 3;
+  uint32 iteration = 4;
+  TokenUsage total_usage = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+// List snapshots request.
+message ListSnapshotsRequest {}
+
+// List snapshots response.
+message ListSnapshotsResponse {
+  repeated SnapshotInfo snapshots = 1;
+}
+
+// Get snapshot request.
+message GetSnapshotRequest {
+  string run_id = 1;
+}
+
+// Get snapshot response.
+message GetSnapshotResponse {
+  SnapshotInfo snapshot = 1;
+}
+
+// Delete snapshot request.
+message DeleteSnapshotRequest {
+  string run_id = 1;
+}
+
+// Delete snapshot response.
+message DeleteSnapshotResponse {}
+
+// Snapshot service.
+service SnapshotService {
+  rpc ListSnapshots(ListSnapshotsRequest) returns (ListSnapshotsResponse);
+  rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
+  rpc DeleteSnapshot(DeleteSnapshotRequest) returns (DeleteSnapshotResponse);
+}

@@ -8,6 +8,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::tool::Tool;
 use futures_util::future::join_all;
 use serde_json::Value;
 use tokio::sync::Semaphore;
@@ -69,6 +70,17 @@ impl ToolRuntime {
     #[must_use]
     pub fn policy(&self) -> &RuntimePolicy {
         &self.policy
+    }
+
+    /// Registers a tool at the base level of the scoped registry.
+    pub fn register_tool(&self, tool: Arc<dyn Tool>) -> Option<Arc<dyn Tool>> {
+        self.registry.base().register_arc(tool)
+    }
+
+    /// Unregisters a tool from the base level of the scoped registry.
+    #[must_use]
+    pub fn unregister_tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.registry.unregister_from_base(name)
     }
 
     /// Executes a batch of tool calls with bounded parallelism, timeout,
@@ -405,7 +417,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_batch_should_run_tools_in_parallel() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(echo_tool());
         let policy = RuntimePolicy::new().with_max_tool_concurrency(2);
         let runtime = ToolRuntime::new(registry, policy);
@@ -447,7 +459,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_batch_should_validate_schema() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(echo_tool());
         let policy = RuntimePolicy::new();
         let runtime = ToolRuntime::new(registry, policy);
@@ -468,7 +480,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_batch_should_record_to_execution_store() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(echo_tool());
         let policy = RuntimePolicy::new();
         let runtime = ToolRuntime::new(registry, policy);
@@ -490,7 +502,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_batch_should_handle_tool_failure() {
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(failing_tool());
         let policy = RuntimePolicy::new().with_continue_on_tool_failure(true);
         let runtime = ToolRuntime::new(registry, policy);
@@ -565,7 +577,7 @@ mod tests {
         );
         // exclusive_tool is NOT .concurrency_safe() — defaults to false
 
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(concurrent_tool);
         registry.register(exclusive_tool);
 
@@ -613,7 +625,7 @@ mod tests {
         );
         // tool_b is NOT concurrency_safe
 
-        let mut registry = ToolRegistry::new();
+        let registry = ToolRegistry::new();
         registry.register(tool_a);
         registry.register(tool_b);
 

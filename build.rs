@@ -14,6 +14,10 @@ fn main() {
                     "src/grpc/proto/agent/v1/run.proto",
                     "src/grpc/proto/agent/v1/tool.proto",
                     "src/grpc/proto/agent/v1/usage.proto",
+                    "src/grpc/proto/agent/v1/embedding.proto",
+                    "src/grpc/proto/agent/v1/artifact.proto",
+                    "src/grpc/proto/agent/v1/agent.proto",
+                    "src/grpc/proto/agent/v1/context.proto",
                 ],
                 &["src/grpc/proto"],
             )

@@ -192,7 +192,7 @@ fn session_to_proto(s: &crate::store::Session) -> Session {
     }
 }
 
-fn message_to_proto(m: &provider::Message) -> Message {
+pub(crate) fn message_to_proto(m: &provider::Message) -> Message {
     match m {
         provider::Message::System { content } => Message {
             role: "system".to_owned(),

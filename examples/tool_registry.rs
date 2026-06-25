@@ -9,7 +9,7 @@ use behest::tool::{FunctionTool, ToolRegistry};
 use serde_json::{Value, json};
 
 fn main() {
-    let mut registry = ToolRegistry::new();
+    let registry = ToolRegistry::new();
 
     let add = FunctionTool::new(
         "add",

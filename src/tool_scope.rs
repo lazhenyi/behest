@@ -280,6 +280,11 @@ impl ScopedToolRegistry {
         &mut self.base
     }
 
+    /// Removes a tool from the base registry by name.
+    pub fn unregister_from_base(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.base.unregister(name)
+    }
+
     /// Returns the total number of unique tools visible (base + all scopes).
     #[must_use]
     pub fn len(&self) -> usize {
@@ -407,7 +412,7 @@ mod tests {
 
     #[test]
     fn new_should_have_base_tools() {
-        let mut base = ToolRegistry::new();
+        let base = ToolRegistry::new();
         base.register(make_tool("base_tool"));
         let scoped = ScopedToolRegistry::new(base);
 
@@ -429,7 +434,7 @@ mod tests {
 
     #[test]
     fn register_in_scope_should_shadow_base() {
-        let mut base = ToolRegistry::new();
+        let base = ToolRegistry::new();
         base.register(make_tool("shared"));
         let scoped = ScopedToolRegistry::new(base);
 
@@ -445,7 +450,7 @@ mod tests {
 
     #[test]
     fn pop_scope_should_unshadow_base_tool() {
-        let mut base = ToolRegistry::new();
+        let base = ToolRegistry::new();
         base.register(make_tool("shared"));
         let scoped = ScopedToolRegistry::new(base);
 
@@ -704,7 +709,7 @@ mod tests {
 
     #[test]
     fn specs_should_return_sorted_by_name() {
-        let mut base = ToolRegistry::new();
+        let base = ToolRegistry::new();
         base.register(make_tool("zebra"));
         base.register(make_tool("alpha"));
         let scoped = ScopedToolRegistry::new(base);

@@ -4,7 +4,8 @@ use tonic::{Request, Response, Status};
 
 use crate::grpc::pb::{
     GetToolRequest, GetToolResponse, InvokeToolRequest, InvokeToolResponse, ListToolsRequest,
-    ListToolsResponse, ToolInfo, tool_service_server::ToolService,
+    ListToolsResponse, RegisterToolRequest, RegisterToolResponse, ToolInfo, UnregisterToolRequest,
+    UnregisterToolResponse, tool_service_server::ToolService,
 };
 
 use std::sync::Arc;
@@ -85,5 +86,48 @@ impl ToolService for GrpcToolService {
             name: tool.name().to_owned(),
             output: output.value.to_string(),
         }))
+    }
+
+    async fn register_tool(
+        &self,
+        request: Request<RegisterToolRequest>,
+    ) -> Result<Response<RegisterToolResponse>, Status> {
+        let req = request.into_inner();
+
+        if req.name.is_empty() {
+            return Err(Status::invalid_argument("tool name must not be empty"));
+        }
+
+        let schema: serde_json::Value =
+            serde_json::from_str(&req.parameters_schema).map_err(|e| {
+                Status::invalid_argument(format!("invalid parameters schema JSON: {e}"))
+            })?;
+
+        let mut tool = crate::tool::ExternalTool::new(&req.name, &req.description, schema);
+        if !req.endpoint.is_empty() {
+            tool = tool.with_endpoint(&req.endpoint);
+        }
+
+        self.state.runtime.tools().register_tool(Arc::new(tool));
+
+        Ok(Response::new(RegisterToolResponse {}))
+    }
+
+    async fn unregister_tool(
+        &self,
+        request: Request<UnregisterToolRequest>,
+    ) -> Result<Response<UnregisterToolResponse>, Status> {
+        let req = request.into_inner();
+
+        if req.name.is_empty() {
+            return Err(Status::invalid_argument("tool name must not be empty"));
+        }
+
+        let removed = self.state.runtime.tools().unregister_tool(&req.name);
+        if removed.is_none() {
+            return Err(Status::not_found(format!("tool '{}' not found", req.name)));
+        }
+
+        Ok(Response::new(UnregisterToolResponse {}))
     }
 }

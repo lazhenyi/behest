@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package agent.v1;
+
+import "agent/v1/common.proto";
+
+// Build context request.
+message BuildContextRequest {
+  string session_id = 1;
+  string user_message = 2;
+}
+
+// Build context response.
+message BuildContextResponse {
+  repeated Message messages = 1;
+}
+
+// List context adapters request.
+message ListContextAdaptersRequest {}
+
+// List context adapters response.
+message ListContextAdaptersResponse {
+  repeated string adapter_names = 1;
+}
+
+// Context service.
+service ContextService {
+  rpc BuildContext(BuildContextRequest) returns (BuildContextResponse);
+  rpc ListContextAdapters(ListContextAdaptersRequest) returns (ListContextAdaptersResponse);
+}
