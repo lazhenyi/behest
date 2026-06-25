@@ -21,3 +21,10 @@ agent_descriptor_set.bin
 
 # Runtime data
 .omx/
+.agents
+node_modules
+package-lock.json
+package.json
+skills-lock.json
+scripts
+templates

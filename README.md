@@ -1,29 +1,41 @@
+<div align="center">
+
 # behest
+
+**Rust-native building blocks for production AI agent runtimes**
+
+<img src="assets/banner.webp" alt="behest — Rust-native agent runtime" width="100%">
 
 [![CI](https://github.com/lazhenyi/behest/actions/workflows/ci.yml/badge.svg)](https://github.com/lazhenyi/behest/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
-Rust-native building blocks for production AI agent runtimes.
+**English** · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [Français](README.fr.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Italiano](README.it.md)
 
-`behest` provides provider-neutral contracts for chat, streaming, tool calling, embeddings, runtime execution, storage, queues, RAG, observability, and optional gRPC serving. It is designed for systems that need explicit control over model providers, tool execution, persistence, and operational boundaries instead of opaque “agent framework” magic.
+</div>
+
+---
+
+## What this is
+
+`behest` provides provider-neutral contracts for chat, streaming, tool calling, embeddings, runtime execution, storage, queues, RAG, observability, and optional gRPC serving.
+
+It is designed for systems that need explicit control over model providers, tool execution, persistence, and operational boundaries — instead of opaque "agent framework" magic.
 
 > Status: early foundation crate. Public APIs are intentionally compact, strongly typed, and documented.
 
-## Why `behest`
+## Why behest
 
 **behest** /bɪˈhest/ — *n.* a person's orders or command.
 
 > At the **behest** of the user, the agent acts.
 
-Agent runtime 的核心不是“自主意识”，而是受控的委托执行：用户下达意图，系统在明确边界内组合上下文、调用模型、执行工具、持久化状态、发布事件，并可被审计、恢复、限制和替换。
+The core of an agent runtime is not "autonomous consciousness" but controlled delegation: the user issues an intent, and the system composes context, invokes models, executes tools, persists state, publishes events within explicit boundaries — auditable, recoverable, constrainable, and replaceable.
 
-`behest` 这个名字刻意避开 “brain / cognition / intelligence” 这类膨胀隐喻。它只陈述一个工程事实：
+The name `behest` deliberately avoids inflated metaphors like "brain / cognition / intelligence". It only states an engineering fact:
 
 > tool-calling, streaming, memory, queue, RAG, snapshot — all mechanisms exist because someone gave an order.
 
 ## Design goals
-
-`behest` is built around a few strict design constraints:
 
 - **Rust-native first**: typed APIs, explicit errors, no hidden runtime assumptions.
 - **Provider-neutral core**: OpenAI, Anthropic, local models, proxies, or internal providers can implement the same contracts.
@@ -33,7 +45,7 @@ Agent runtime 的核心不是“自主意识”，而是受控的委托执行：
 - **Operational surface**: event publishing, snapshots, session gates, compaction, retry policy, and optional gRPC server.
 - **Small public API**: foundation primitives over framework sprawl.
 
-## What `behest` includes
+## What's inside
 
 | Area | Capability |
 |---|---|
@@ -50,32 +62,12 @@ Agent runtime 的核心不是“自主意识”，而是受控的委托执行：
 | Server | optional gRPC server binary behind `server` feature |
 | Observability | tracing and optional OpenTelemetry integration |
 
-## Installation
-
-```toml
-[dependencies]
-behest = "0.2"
-```
-
-Minimum supported Rust version:
-
-```text
-Rust 1.85+
-Edition 2024
-```
-
-For common application code you will often also want:
-
-```toml
-[dependencies]
-behest = "0.2"
-serde_json = "1"
-
-# Only needed when implementing async provider traits yourself.
-async-trait = "0.1"
-```
-
 ## Quick start
+
+```toml
+[dependencies]
+behest = "0.2"
+```
 
 Create a provider-neutral chat request:
 
@@ -87,7 +79,7 @@ let request = ChatRequest::new(ModelName::new("example-model"))
     .with_user_text("Summarize this project in one sentence.");
 ```
 
-Register providers in a registry and route requests by logical provider ID:
+Register providers in a registry and route requests:
 
 ```rust
 use behest::prelude::*;
@@ -102,7 +94,9 @@ let provider_id = ProviderId::new("my-provider");
 // let response = registry.complete(&provider_id, request).await?;
 ```
 
-## Implement a custom chat provider
+More examples in [`examples/`](examples/).
+
+## Implement a custom provider
 
 `behest` does not force one vendor SDK into the core. Implement `ChatProvider` for any model backend, gateway, local inference service, or internal provider.
 
@@ -135,32 +129,9 @@ impl ChatProvider for EchoProvider {
         })
     }
 }
-
-let mut registry = ProviderRegistry::new();
-
-registry.register_chat(EchoProvider {
-    id: ProviderId::new("echo"),
-});
 ```
 
-Streaming providers can override `stream`:
-
-```rust
-use behest::prelude::*;
-
-async fn run_stream(
-    registry: &ProviderRegistry,
-    provider: &ProviderId,
-    request: ChatRequest,
-) -> ProviderResult<()> {
-    let mut stream = registry.stream(provider, request).await?;
-
-    // Consume ChatStreamEvent values here.
-    // while let Some(event) = stream.next().await { ... }
-
-    Ok(())
-}
-```
+Streaming providers can override `stream`.
 
 ## Define and execute tools
 
@@ -189,18 +160,6 @@ let tool = FunctionTool::new(
 
 let registry = ToolRegistry::new();
 registry.register(tool);
-
-let specs = registry.specs();
-```
-
-The generated `ToolSpec` values can be attached to a `ChatRequest`:
-
-```rust
-use behest::prelude::*;
-
-let request = ChatRequest::new(ModelName::new("example-model"))
-    .with_user_text("Call the echo tool.")
-    .with_tool(registry.specs()[0].clone());
 ```
 
 Tool calls returned by a provider can be executed through the registry:
@@ -209,14 +168,8 @@ Tool calls returned by a provider can be executed through the registry:
 use behest::prelude::*;
 use serde_json::json;
 
-let call = ToolCall::new(
-    "call_1",
-    "echo",
-    json!({ "message": "hello" }),
-);
-
+let call = ToolCall::new("call_1", "echo", json!({ "message": "hello" }));
 let output = registry.execute(&call).await?;
-let tool_message = registry.execute_to_message(&call).await?;
 ```
 
 ## Runtime model
@@ -249,37 +202,6 @@ The runtime brings together:
 - optional snapshot store
 - optional background job pool
 
-Create a run request:
-
-```rust
-use behest::prelude::*;
-
-let request = RunRequest::new(
-    ProviderId::new("openai"),
-    ModelName::new("gpt-4.1-mini"),
-    "Analyze this session and suggest next actions.",
-)
-.with_client_request_id("request-001".to_owned());
-```
-
-Run execution:
-
-```rust
-use behest::prelude::*;
-
-// let output: RunOutput = runtime.run(request).await?;
-```
-
-Subscribe to runtime events:
-
-```rust
-let mut events = runtime.subscribe();
-
-// while let Ok(event) = events.recv().await {
-//     tracing::info!(?event, "agent event");
-// }
-```
-
 ## Configuration
 
 `AgentConfig` supports layered configuration:
@@ -300,45 +222,14 @@ let config = AgentConfig::builder()
 let runtime = config.into_runtime().await?;
 ```
 
-Example `behest.toml`:
-
-```toml
-[runtime]
-max_history_messages = 50
-event_channel_capacity = 256
-
-[runtime.policy]
-max_iterations = 10
-max_tool_concurrency = 4
-tool_timeout_secs = 30
-provider_timeout_secs = 60
-continue_on_tool_failure = true
-retry_on_provider_error = true
-max_retries = 2
-
-[providers.openai]
-provider_type = "openai"
-base_url = "https://api.openai.com/v1"
-api_key = "env:OPENAI_API_KEY"
-model = "gpt-4.1-mini"
-timeout_secs = 60
-connect_timeout_secs = 10
-max_retries = 2
-
-[stores]
-session_backend = "memory"
-execution_backend = "memory"
-run_backend = "memory"
-embedding_backend = "memory"
-artifact_backend = "memory"
-```
-
 Secrets can be loaded through `env:VAR_NAME` indirection:
 
 ```toml
 [providers.openai]
 api_key = "env:OPENAI_API_KEY"
 ```
+
+See [`behest.toml` example](examples/hello_config.rs) for full configuration structure.
 
 ## Provider adapters
 
@@ -358,27 +249,30 @@ behest = { version = "0.2", features = ["openai", "anthropic"] }
 
 ## Feature flags
 
-Default:
+<details>
+<summary>Click to expand full feature list</summary>
+
+**Default:**
 
 | Feature | Description |
 |---|---|
 | `tls-rustls` | Default TLS stack using rustls |
 
-Provider adapters:
+**Provider adapters:**
 
 | Feature | Description |
 |---|---|
 | `openai` | OpenAI-compatible chat and embedding adapters |
 | `anthropic` | Anthropic-compatible chat adapter |
 
-TLS:
+**TLS:**
 
 | Feature | Description |
 |---|---|
 | `tls-rustls` | Enable rustls TLS integration for HTTP / enabled backends |
 | `tls-native` | Enable native TLS integration for HTTP / enabled backends |
 
-Storage:
+**Storage:**
 
 | Feature | Description |
 |---|---|
@@ -392,7 +286,7 @@ Storage:
 | `object_store` | Object storage support, including AWS S3 |
 | `storage-all` | Redis, PostgreSQL, MySQL, SQLite, MongoDB, and SurrealDB storage features |
 
-RAG:
+**RAG:**
 
 | Feature | Description |
 |---|---|
@@ -401,7 +295,7 @@ RAG:
 | `tantivy` | Tantivy backend support |
 | `rag-all` | Enables `rag`, `qdrant`, and `tantivy` |
 
-Queues:
+**Queues:**
 
 | Feature | Description |
 |---|---|
@@ -409,20 +303,22 @@ Queues:
 | `nats` | NATS event publisher |
 | `queue-all` | Enables `queue`, `nats`, and `redis` |
 
-Server and observability:
+**Server and observability:**
 
 | Feature | Description |
 |---|---|
 | `server` | gRPC server binary and protobuf service layer |
 | `otel` | OpenTelemetry tracing integration |
 
-Convenience profile:
+**Convenience profile:**
 
 | Feature | Description |
 |---|---|
 | `full` | Opinionated full runtime profile: OpenAI, Anthropic, Redis, Redis Cluster, NATS, PostgreSQL, MongoDB, SurrealDB, OpenTelemetry, all RAG backends, all queue backends, and object storage. It intentionally does not enable `server`, `sqlx-mysql`, or `sqlx-sqlite`. |
 
-Example:
+</details>
+
+Example with selected features:
 
 ```toml
 [dependencies]
@@ -431,28 +327,6 @@ behest = {
     default-features = false,
     features = ["tls-rustls", "openai", "anthropic", "redis", "queue", "nats"]
 }
-```
-
-## Crate layout
-
-```text
-src/
-├── adapt/              # Provider adapters: OpenAI, Anthropic
-├── agent/              # Agent definitions, modes, permissions, registry
-├── bin/                # Optional binaries, including agent-server
-├── config/             # File/env/builder configuration system
-├── context.rs          # Context adapters and context factory
-├── error.rs            # Public error taxonomy
-├── grpc/               # gRPC server and protobuf service layer
-├── provider/           # Provider traits, request/response models, registry
-├── queue/              # Event publishing integrations
-├── rag/                # Retrieval-Augmented Generation context adapter
-├── runtime/            # Agent runtime kernel, policy, session gate, FSM, snapshots
-├── store/              # Session, execution, embedding, artifact stores
-├── token.rs            # Token estimation helpers
-├── tool.rs             # Tool registry and execution primitives
-├── tool_output.rs      # Tool output truncation
-└── tool_scope.rs       # Scoped tool registries per agent/run
 ```
 
 ## Error model
@@ -489,59 +363,32 @@ This project treats public API clarity and failure-path hygiene as part of the r
 
 ## Development
 
-Format:
-
 ```bash
+# Format
 cargo fmt --all --check
-```
 
-Check all targets and features:
-
-```bash
+# Check all targets and features
 cargo check --all-targets --all-features --locked
-```
 
-Lint:
-
-```bash
+# Lint
 cargo clippy --all-targets --all-features --locked -- -D warnings
-```
 
-Test:
-
-```bash
+# Test
 cargo test --all-features --locked
-```
 
-Build documentation:
-
-```bash
+# Build documentation
 RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps --locked
 ```
 
 Run the complete local verification set:
 
 ```bash
-cargo fmt --all --check
-cargo check --all-targets --all-features --locked
-cargo clippy --all-targets --all-features --locked -- -D warnings
-cargo test --all-features --locked
+cargo fmt --all --check && \
+cargo check --all-targets --all-features --locked && \
+cargo clippy --all-targets --all-features --locked -- -D warnings && \
+cargo test --all-features --locked && \
 RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps --locked
 ```
-
-## CI
-
-The repository CI runs on pushes and pull requests to `main`.
-
-The Rust job checks:
-
-- formatting
-- all targets with all features
-- Clippy with warnings denied
-- tests with all features
-- documentation with warnings denied
-
-Pull requests also run a protobuf breaking-change check for the gRPC service definitions.
 
 ## License
 
