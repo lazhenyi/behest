@@ -49,7 +49,10 @@ pub use crate::error::{ContextError, Error, ProviderError, Result, StorageError,
 pub use crate::runtime::{
     AgentEvent, AgentRuntime, CompactionResult, CompactionService, Control, EmitRequest, EventKind,
     FileSnapshotStore, InvocationError, InvocationEvent, InvocationHandle, ModelRouter, RunId,
-    RunOutput, RunRequest, RunStatus, RuntimeError, RuntimeInvocation, RuntimePolicy,
+    RunOutput, RunRequest, RunStatus, RuntimeError, RuntimeEventBridge, RuntimeEventBridgeError,
+    RuntimeEventBridgeHandle, RuntimeEventEnvelope, RuntimeEventId, RuntimeEventStore,
+    RuntimeEventStoreError, RuntimeInvocation, RuntimePolicy, RuntimeRoom, RuntimeStreamAdapter,
+    RuntimeStreamError, RuntimeSubscription, RuntimeSubscriptionError, RuntimeSubscriptionHub,
     SessionContext, Snapshot, SnapshotStore,
 };
 pub use crate::tool_output::{ToolOutputConfig, TruncationResult};
