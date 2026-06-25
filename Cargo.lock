@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "behest"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "actix-web",
  "async-nats",

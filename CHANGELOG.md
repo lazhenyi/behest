@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — 2026-06-25
+
+### Added
+
+#### Runtime invocation facade
+- `RuntimeInvocation`: transport-neutral emit/on semantics over `AgentRuntime`.
+- `EmitRequest`: request builder with session, idempotency, and metadata.
+- `EventKind`: typed event subscription with 24 agent + chat variants.
+- `Control`: cooperative cancellation/timeout/concurrency hints.
+- `InvocationHandle`: background listener with auto-abort on drop.
+- `SessionContext`: lightweight invocation-time context carrier.
+
+#### Runtime stream infrastructure
+- `RuntimeEventStore`: authoritative replay source with at-least-once delivery.
+- `RuntimeStreamAdapter`: best-effort live fanout with room-based routing (Socket.IO-inspired).
+- `RuntimeSubscriptionHub`: stitches replay + live for reconnecting clients.
+- `RuntimeEventBridge`: drains `AgentRuntime` events into store+adapter.
+- `RuntimeEventEnvelope`: globally unique event id, seq, room routing.
+- `MemoryRuntimeEventStore` / `MemoryRuntimeStreamAdapter`: in-memory implementations.
+
 ## [0.2.2] — 2026-06-25
 
 ### Fixed
