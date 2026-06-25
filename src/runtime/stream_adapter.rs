@@ -22,6 +22,10 @@ use tracing::warn;
 
 use super::stream::{BoxRuntimeEventStream, RuntimeEventEnvelope, RuntimeRoom, RuntimeStreamError};
 
+#[cfg(feature = "redis")]
+#[path = "stream_adapter/redis.rs"]
+pub mod redis;
+
 /// Capacity for the in-memory broadcast channel backing each room.
 const ROOM_CHANNEL_CAPACITY: usize = 256;
 

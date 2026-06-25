@@ -69,3 +69,9 @@ pub use subscription::{
 };
 pub use tool::ToolRuntime;
 pub use turn::{TurnState, TurnTransition};
+
+#[cfg(feature = "redis")]
+pub use event_store::redis::RedisRuntimeEventStore;
+
+#[cfg(feature = "redis")]
+pub use stream_adapter::redis::RedisRuntimeStreamAdapter;

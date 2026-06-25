@@ -21,6 +21,7 @@
 //! [`AgentRuntime::subscribe`]; chat-stream events require a streaming
 //! chat adapter that populates the `Chat` variant.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -28,6 +29,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use thiserror::Error;
+use tokio::sync::Semaphore;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -37,6 +39,7 @@ use crate::runtime::agent::{AgentRuntime, RunOutput};
 use crate::runtime::error::RuntimeError;
 use crate::runtime::event::AgentEvent;
 use crate::runtime::run::{RunId, RunRequest};
+use crate::runtime::stream::RuntimeEventEnvelope;
 
 /// Transport-neutral request for a single runtime invocation.
 ///
@@ -229,6 +232,43 @@ pub enum EventKind {
 }
 
 impl EventKind {
+    /// Returns `true` when `event` matches this kind.
+    #[must_use]
+    #[allow(clippy::too_many_lines)]
+    pub fn matches_agent(self, event: &AgentEvent) -> bool {
+        match self {
+            Self::Any => true,
+            Self::RunStarted => matches!(event, AgentEvent::RunStarted(_)),
+            Self::ContextBuilt => matches!(event, AgentEvent::ContextBuilt(_)),
+            Self::ModelStarted => matches!(event, AgentEvent::ModelStarted(_)),
+            Self::TextDelta => matches!(event, AgentEvent::TextDelta(_)),
+            Self::ToolCallStarted => matches!(event, AgentEvent::ToolCallStarted(_)),
+            Self::ToolCallDelta => matches!(event, AgentEvent::ToolCallDelta(_)),
+            Self::ToolCallCompleted => matches!(event, AgentEvent::ToolCallCompleted(_)),
+            Self::ToolExecutionStarted => matches!(event, AgentEvent::ToolExecutionStarted(_)),
+            Self::ToolExecutionFinished => matches!(event, AgentEvent::ToolExecutionFinished(_)),
+            Self::AssistantMessageCommitted => {
+                matches!(event, AgentEvent::AssistantMessageCommitted(_))
+            }
+            Self::ToolMessageCommitted => matches!(event, AgentEvent::ToolMessageCommitted(_)),
+            Self::UsageRecorded => matches!(event, AgentEvent::UsageRecorded(_)),
+            Self::RunCompleted => matches!(event, AgentEvent::RunCompleted(_)),
+            Self::RunFailed => matches!(event, AgentEvent::RunFailed(_)),
+            Self::RunCancelled => matches!(event, AgentEvent::RunCancelled(_)),
+            Self::DoomLoopDetected => matches!(event, AgentEvent::DoomLoopDetected(_)),
+            Self::CompactionCircuitOpened => {
+                matches!(event, AgentEvent::CompactionCircuitOpened(_))
+            }
+            // Chat variants never match raw AgentEvent
+            Self::ChatStarted
+            | Self::ChatTextDelta
+            | Self::ChatToolCallStarted
+            | Self::ChatToolCallArgumentsDelta
+            | Self::ChatToolCallCompleted
+            | Self::ChatFinished => false,
+        }
+    }
+
     /// Returns `true` when `event` matches this kind.
     #[must_use]
     #[allow(clippy::too_many_lines)]
@@ -485,13 +525,17 @@ impl Drop for InvocationHandle {
 #[derive(Clone)]
 pub struct RuntimeInvocation {
     runtime: Arc<AgentRuntime>,
+    session_map: Arc<Mutex<HashMap<RunId, Uuid>>>,
 }
 
 impl RuntimeInvocation {
     /// Wraps a runtime in the invocation facade.
     #[must_use]
     pub fn new(runtime: Arc<AgentRuntime>) -> Self {
-        Self { runtime }
+        Self {
+            runtime,
+            session_map: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     /// Returns a reference to the underlying runtime.
@@ -547,9 +591,6 @@ impl RuntimeInvocation {
     /// do not block event reception. The returned [`InvocationHandle`] aborts
     /// the listener on drop.
     ///
-    /// Only [`InvocationEvent::Agent`] events are produced by the core loop;
-    /// [`InvocationEvent::Chat`] events are populated by transport adapters.
-    ///
     /// # Errors
     ///
     /// Returns [`InvocationError::InvalidRequest`] only if subscription setup
@@ -561,12 +602,13 @@ impl RuntimeInvocation {
         f: F,
     ) -> Result<InvocationHandle, InvocationError>
     where
-        F: Fn(InvocationEvent, SessionContext, Control) -> Fut + Send + Sync + 'static,
+        F: Fn(RuntimeEventEnvelope, Control) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         let receiver = self.runtime.subscribe();
         let control = Control::new();
-        Ok(spawn_listener(receiver, kind, control, f))
+        let session_map = Arc::clone(&self.session_map);
+        Ok(spawn_listener(receiver, kind, control, session_map, f))
     }
 }
 
@@ -578,13 +620,16 @@ fn spawn_listener<F, Fut>(
     mut receiver: broadcast::Receiver<AgentEvent>,
     kind: EventKind,
     control: Control,
+    session_map: Arc<Mutex<HashMap<RunId, Uuid>>>,
     handler: F,
 ) -> InvocationHandle
 where
-    F: Fn(InvocationEvent, SessionContext, Control) -> Fut + Send + Sync + 'static,
+    F: Fn(RuntimeEventEnvelope, Control) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = ()> + Send + 'static,
 {
     let handler = Arc::new(handler);
+    let concurrency_limit = control.concurrency_limit();
+    let semaphore = concurrency_limit.map(|limit| Arc::new(Semaphore::new(limit)));
     let task = tokio::spawn(async move {
         loop {
             match receiver.recv().await {
@@ -592,15 +637,37 @@ where
                     if control.is_cancelled() {
                         break;
                     }
-                    let ctx = SessionContext::from_agent_event(&event);
-                    let inv = InvocationEvent::Agent(event);
-                    if !kind.matches(&inv) {
+                    if !kind.matches_agent(&event) {
                         continue;
                     }
+                    let run_id = event.run_id();
+                    let session_id = {
+                        let mut map = lock_or_recover(&session_map);
+                        if let AgentEvent::RunStarted(started) = &event {
+                            map.insert(run_id, started.session_id);
+                            Some(started.session_id)
+                        } else {
+                            map.get(&run_id).copied()
+                        }
+                    };
+                    let envelope = RuntimeEventEnvelope {
+                        event_id: crate::runtime::stream::RuntimeEventId::new(),
+                        seq: 0,
+                        run_id,
+                        session_id,
+                        event,
+                        emitted_at: chrono::Utc::now(),
+                    };
                     let h = Arc::clone(&handler);
                     let c = control.clone();
+                    let sem = semaphore.clone();
                     tokio::spawn(async move {
-                        h(inv, ctx, c).await;
+                        if let Some(s) = sem {
+                            let _permit = s.acquire().await;
+                            h(envelope, c).await;
+                        } else {
+                            h(envelope, c).await;
+                        }
                     });
                 }
                 Err(broadcast::error::RecvError::Closed) => break,
@@ -699,13 +766,20 @@ mod tests {
         let (tx, rx) = broadcast::channel::<AgentEvent>(16);
         let counter = Arc::new(AtomicUsize::new(0));
         let c = counter.clone();
-        let handler = move |_, _, _| {
+        let handler = move |_, _| {
             let c = c.clone();
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
             }
         };
-        let handle = spawn_listener(rx, EventKind::TextDelta, Control::new(), handler);
+        let session_map = Arc::new(Mutex::new(HashMap::new()));
+        let handle = spawn_listener(
+            rx,
+            EventKind::TextDelta,
+            Control::new(),
+            session_map,
+            handler,
+        );
 
         let _ = tx.send(AgentEvent::TextDelta(TextDelta {
             run_id: RunId::new(),
@@ -734,13 +808,14 @@ mod tests {
         let (tx, rx) = broadcast::channel::<AgentEvent>(16);
         let counter = Arc::new(AtomicUsize::new(0));
         let c = counter.clone();
-        let handler = move |_, _, _| {
+        let handler = move |_, _| {
             let c = c.clone();
             async move {
                 c.fetch_add(1, Ordering::SeqCst);
             }
         };
-        let handle = spawn_listener(rx, EventKind::Any, Control::new(), handler);
+        let session_map = Arc::new(Mutex::new(HashMap::new()));
+        let handle = spawn_listener(rx, EventKind::Any, Control::new(), session_map, handler);
 
         let _ = tx.send(AgentEvent::RunStarted(RunStarted {
             run_id: RunId::new(),

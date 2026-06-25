@@ -88,28 +88,32 @@ impl RuntimeSubscriptionHub {
 
     /// Returns replay events plus a live stream for `run_id`.
     ///
+    /// The live subscription is opened first so no event published between
+    /// replay and subscription is lost; the caller deduplicates overlapping
+    /// events via [`RuntimeEventEnvelope::seq`](super::stream::RuntimeEventEnvelope::seq).
+    ///
     /// # Errors
     ///
-    /// Returns [`RuntimeSubscriptionError::Replay`] when the event store
-    /// cannot fulfil the replay request, and
-    /// [`RuntimeSubscriptionError::Live`] when the stream adapter refuses
-    /// the live subscription.
+    /// Returns [`RuntimeSubscriptionError::Live`] when the stream adapter
+    /// refuses the live subscription, and
+    /// [`RuntimeSubscriptionError::Replay`] when the event store cannot
+    /// fulfil the replay request.
     pub async fn subscribe_run(
         &self,
         run_id: RunId,
         after_seq: Option<u64>,
         limit: usize,
     ) -> Result<RuntimeSubscription, RuntimeSubscriptionError> {
-        let replay = self
-            .event_store
-            .list_after(run_id, after_seq, limit)
-            .await
-            .map_err(RuntimeSubscriptionError::Replay)?;
         let live = self
             .stream_adapter
             .subscribe(RuntimeRoom::Run(run_id))
             .await
             .map_err(RuntimeSubscriptionError::Live)?;
+        let replay = self
+            .event_store
+            .list_after(run_id, after_seq, limit)
+            .await
+            .map_err(RuntimeSubscriptionError::Replay)?;
         Ok(RuntimeSubscription { replay, live })
     }
 }

@@ -23,6 +23,22 @@ use super::event::AgentEvent;
 use super::run::RunId;
 use super::stream::{RuntimeEventEnvelope, RuntimeEventId};
 
+#[cfg(feature = "redis")]
+#[path = "event_store/redis.rs"]
+pub mod redis;
+
+/// Single locked state for [`MemoryRuntimeEventStore`].
+///
+/// Merging `events`, `seq`, and `sessions` under one [`Mutex`] guarantees that
+/// sequence assignment, session propagation, and event insertion are atomic
+/// per append — no interleaved racing between the three maps.
+#[derive(Debug, Default)]
+struct StoreState {
+    events: HashMap<RunId, Vec<RuntimeEventEnvelope>>,
+    seq: HashMap<RunId, u64>,
+    sessions: HashMap<RunId, Option<uuid::Uuid>>,
+}
+
 /// Errors raised by a [`RuntimeEventStore`].
 #[derive(Debug, Error)]
 pub enum RuntimeEventStoreError {
@@ -74,12 +90,12 @@ pub trait RuntimeEventStore: Send + Sync {
 ///
 /// `seq` is monotonic per `run_id`. When a [`AgentEvent::RunStarted`] is
 /// appended, its `session_id` is cached and attached to subsequent events of
-/// the same run.
+/// the same run. All state is guarded by a single [`Mutex`] so sequence
+/// assignment, session propagation, and event insertion are atomic per
+/// [`RuntimeEventStore::append`].
 #[derive(Debug, Default)]
 pub struct MemoryRuntimeEventStore {
-    events: Mutex<HashMap<RunId, Vec<RuntimeEventEnvelope>>>,
-    seq: Mutex<HashMap<RunId, u64>>,
-    sessions: Mutex<HashMap<RunId, Option<uuid::Uuid>>>,
+    state: Mutex<StoreState>,
 }
 
 impl MemoryRuntimeEventStore {
@@ -97,23 +113,17 @@ impl RuntimeEventStore for MemoryRuntimeEventStore {
         event: AgentEvent,
     ) -> Result<RuntimeEventEnvelope, RuntimeEventStoreError> {
         let run_id = event.run_id();
+        let mut state = self.state.lock().await;
 
         let session_id = if let AgentEvent::RunStarted(started) = &event {
+            state.sessions.insert(run_id, Some(started.session_id));
             Some(started.session_id)
         } else {
-            self.sessions.lock().await.get(&run_id).copied().flatten()
+            state.sessions.get(&run_id).copied().flatten()
         };
 
-        if let AgentEvent::RunStarted(started) = &event {
-            self.sessions
-                .lock()
-                .await
-                .insert(run_id, Some(started.session_id));
-        }
-
         let next_seq = {
-            let mut counters = self.seq.lock().await;
-            let entry = counters.entry(run_id).or_default();
+            let entry = state.seq.entry(run_id).or_default();
             *entry += 1;
             *entry
         };
@@ -127,9 +137,8 @@ impl RuntimeEventStore for MemoryRuntimeEventStore {
             emitted_at: Utc::now(),
         };
 
-        self.events
-            .lock()
-            .await
+        state
+            .events
             .entry(run_id)
             .or_default()
             .push(envelope.clone());
@@ -143,9 +152,9 @@ impl RuntimeEventStore for MemoryRuntimeEventStore {
         after_seq: Option<u64>,
         limit: usize,
     ) -> Result<Vec<RuntimeEventEnvelope>, RuntimeEventStoreError> {
-        let events = self.events.lock().await;
-        let Some(run_events) = events.get(&run_id) else {
-            return Err(RuntimeEventStoreError::NotFound { run_id });
+        let state = self.state.lock().await;
+        let Some(run_events) = state.events.get(&run_id) else {
+            return Ok(Vec::new());
         };
 
         let filtered: Vec<RuntimeEventEnvelope> = run_events
@@ -302,11 +311,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_after_unknown_run_is_not_found() {
+    async fn list_after_unknown_run_returns_empty() {
         let store = MemoryRuntimeEventStore::new();
         let run = RunId::new();
-        let err = store.list_after(run, None, 10).await.unwrap_err();
-        assert!(matches!(err, RuntimeEventStoreError::NotFound { .. }));
+        let page = store.list_after(run, None, 10).await.unwrap();
+        assert!(page.is_empty());
     }
 
     #[tokio::test]
