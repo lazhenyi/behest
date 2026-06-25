@@ -260,8 +260,8 @@ tracing-test = "0.2"
 tonic-build = { version = "0.13", optional = true }
 
 [package.metadata.docs.rs]
-all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+features = ["openai", "anthropic", "redis", "redis-cluster", "nats", "sqlx-postgres", "mongodb", "surrealdb", "otel", "rag-all", "queue-all", "object_store"]
 
 [lints.rust]
 unsafe_code = "forbid"
