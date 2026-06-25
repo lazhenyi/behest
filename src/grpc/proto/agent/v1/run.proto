@@ -29,6 +29,10 @@ message AgentEvent {
     CompactionCircuitOpenedEvent compaction_circuit_opened = 19;
   }
   google.protobuf.Timestamp timestamp = 20;
+  // W3C trace context: trace ID (hex string, empty if unavailable).
+  string trace_id = 21;
+  // W3C trace context: span ID (hex string, empty if unavailable).
+  string span_id = 22;
 }
 
 // Event payloads (run_id and timestamp are on the enclosing AgentEvent).
