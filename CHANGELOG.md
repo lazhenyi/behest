@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] — 2026-06-25
+
+### Added
+
+#### Documentation
+- Multilingual README: Simplified Chinese, Traditional Chinese, French, Japanese, Korean, Italian.
+- Visual banner asset for README.
+
+#### gRPC Server
+- `ChatService` gRPC handler for streaming chat.
+- OpenTelemetry tracing integration with W3C trace context propagation.
+- `tonic-reflection` service registration.
+- Health check, graceful shutdown, tracing env filter.
+- Capability services for embeddings, artifacts, agents, context, compaction, snapshots, and tool registration.
+- TLS support, auth interceptor, concurrency limit, validation, idempotency.
+
+### Fixed
+- Correct rustdoc intra-doc links across 6 source files.
+- CI: install `protoc` for `tonic-build` server feature.
+
+### Changed
+- Refactored `grpc` module with breaking proto changes for cleaner architecture.
+- Split `agent.rs` run loop into `run_loop.rs`.
+
 ## [0.2.0] — 2026-06-24
 
 This is the first public release under the `behest` crate name.
