@@ -10,13 +10,15 @@ use behest::config::AgentConfigBuilder;
 use behest::grpc::auth::AuthInterceptor;
 use behest::grpc::state::GrpcState;
 use behest::grpc::{
+    admin::GrpcAdminService,
     agent_grpc::GrpcAgentService,
     artifact::GrpcArtifactService,
     compaction::GrpcCompactionService,
     context::GrpcContextService,
     embedding::GrpcEmbeddingService,
     pb::{
-        agent_service_server::AgentServiceServer, artifact_service_server::ArtifactServiceServer,
+        admin_service_server::AdminServiceServer, agent_service_server::AgentServiceServer,
+        artifact_service_server::ArtifactServiceServer,
         compaction_service_server::CompactionServiceServer,
         context_service_server::ContextServiceServer,
         embedding_service_server::EmbeddingServiceServer,
@@ -40,7 +42,9 @@ use tonic::transport::Server;
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     let config = AgentConfigBuilder::default()
         .build()
@@ -73,6 +77,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let auth = AuthInterceptor::new(config.grpc.auth_token.clone());
 
     tracing::info!("gRPC server listening on {addr}");
+
+    let (health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<behest::grpc::pb::provider_service_server::ProviderServiceServer<
+            GrpcProviderService,
+        >>()
+        .await;
 
     let mut server = Server::builder();
 
@@ -151,9 +162,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ))
         .add_service(SnapshotServiceServer::with_interceptor(
             GrpcSnapshotService::new(Arc::clone(&grpc_state)),
+            auth.clone(),
+        ))
+        .add_service(AdminServiceServer::with_interceptor(
+            GrpcAdminService::new(Arc::clone(&grpc_state)),
             auth,
         ))
-        .serve(addr)
+        .add_service(health_service)
+        .serve_with_shutdown(addr, async {
+            tokio::signal::ctrl_c().await.ok();
+            tracing::info!("shutdown signal received, starting graceful shutdown");
+        })
         .await?;
 
     Ok(())

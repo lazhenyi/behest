@@ -6,6 +6,7 @@ fn main() {
         let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
         tonic_build::configure()
             .out_dir(&out_dir)
+            .file_descriptor_set_path("agent_descriptor_set.bin")
             .compile_protos(
                 &[
                     "src/grpc/proto/agent/v1/common.proto",
@@ -18,6 +19,7 @@ fn main() {
                     "src/grpc/proto/agent/v1/artifact.proto",
                     "src/grpc/proto/agent/v1/agent.proto",
                     "src/grpc/proto/agent/v1/context.proto",
+                    "src/grpc/proto/agent/v1/admin.proto",
                 ],
                 &["src/grpc/proto"],
             )

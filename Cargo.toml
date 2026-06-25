@@ -165,7 +165,7 @@ tantivy = [
 ]
 object_store = ["dep:object_store", "object_store/aws"]
 
-server = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tokio-stream", "tonic-build", "tonic/tls-ring"]
+server = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tokio-stream", "dep:tonic-health", "dep:tonic-reflection", "tonic-build", "tonic/tls-ring"]
 
 [dependencies]
 object_store = {
@@ -241,6 +241,8 @@ tantivy = { version = "0.26", optional = true }
 actix-web = { version = "4", optional = true, features = ["macros"] }
 
 tonic = { version = "0.13", optional = true, features = ["transport"] }
+tonic-health = { version = "0.13", optional = true }
+tonic-reflection = { version = "0.13", optional = true }
 prost = { version = "0.13", optional = true }
 prost-types = { version = "0.13", optional = true }
 tokio-stream = { version = "0.1", optional = true, features = ["sync"] }
