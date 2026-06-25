@@ -47,7 +47,9 @@ pub mod grpc;
 
 pub use crate::error::{ContextError, Error, ProviderError, Result, StorageError, ToolError};
 pub use crate::runtime::{
-    AgentEvent, AgentRuntime, CompactionResult, CompactionService, FileSnapshotStore, ModelRouter,
-    RunId, RunOutput, RunRequest, RunStatus, RuntimeError, RuntimePolicy, Snapshot, SnapshotStore,
+    AgentEvent, AgentRuntime, CompactionResult, CompactionService, Control, EmitRequest, EventKind,
+    FileSnapshotStore, InvocationError, InvocationEvent, InvocationHandle, ModelRouter, RunId,
+    RunOutput, RunRequest, RunStatus, RuntimeError, RuntimeInvocation, RuntimePolicy,
+    SessionContext, Snapshot, SnapshotStore,
 };
 pub use crate::tool_output::{ToolOutputConfig, TruncationResult};

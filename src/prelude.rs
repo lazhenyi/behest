@@ -20,9 +20,10 @@ pub use crate::provider::{
 };
 pub use crate::runtime::{
     AgentEvent, AgentRuntime, CompactionConfig, CompactionResult, CompactionService,
-    ContextPipeline, FileSnapshotStore, ModelRouter, RunId, RunOutput, RunRequest, RunStatus,
-    RuntimeError, RuntimePolicy, RuntimeStore, SessionGate, SessionGuard, Snapshot, SnapshotStore,
-    ToolRuntime,
+    ContextPipeline, Control, EmitRequest, EventKind, FileSnapshotStore, InvocationError,
+    InvocationEvent, InvocationHandle, ModelRouter, RunId, RunOutput, RunRequest, RunStatus,
+    RuntimeError, RuntimeInvocation, RuntimePolicy, RuntimeStore, SessionContext, SessionGate,
+    SessionGuard, Snapshot, SnapshotStore, ToolRuntime,
 };
 pub use crate::store::memory::{
     MemoryArtifactStore, MemoryEmbeddingStore, MemoryExecutionStore, MemorySessionStore,
