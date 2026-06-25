@@ -22,7 +22,7 @@ use super::error::RuntimeResult;
 /// 2. Applies compaction filter (reorder post-compaction messages)
 /// 3. Invokes registered context adapters (system prompt, RAG, etc.)
 /// 4. Applies token-budget trimming as a safety net
-/// 5. Produces a final `ChatRequest`
+/// 5. Produces a final [`ChatRequest`] or [`ContextOutput`]
 pub struct ContextPipeline {
     factory: ContextFactory,
     max_history_messages: usize,
@@ -53,14 +53,19 @@ impl ContextPipeline {
         }
     }
 
-    /// Sets the maximum number of history messages to include (fallback limit).
+    /// Sets the maximum number of history messages to include as a fallback limit.
+    ///
+    /// This limit applies before token-based trimming. Default: 50.
     #[must_use]
     pub fn with_max_history(mut self, max: usize) -> Self {
         self.max_history_messages = max;
         self
     }
 
-    /// Sets the maximum token budget for history messages.
+    /// Sets the maximum token budget for historical messages before trimming.
+    ///
+    /// Older messages are dropped first when the budget is exceeded.
+    /// Default: 64,000 tokens.
     #[must_use]
     pub fn with_max_history_tokens(mut self, max: usize) -> Self {
         self.max_history_tokens = max;
@@ -68,6 +73,9 @@ impl ContextPipeline {
     }
 
     /// Enables or disables the compaction message filter.
+    ///
+    /// When enabled, compacted message pairs are replaced with a synthetic
+    /// checkpoint system message. Enabled by default.
     #[must_use]
     pub fn with_compaction_filter(mut self, enable: bool) -> Self {
         self.enable_compaction_filter = enable;
@@ -92,11 +100,16 @@ impl ContextPipeline {
         self.factory.adapter_names()
     }
 
-    /// Builds a chat request from context.
+    /// Builds a [`ChatRequest`] from session history, registered adapters,
+    /// and the current user message.
+    ///
+    /// The pipeline loads session messages, applies compaction filtering,
+    /// token-budget trimming, runs registered adapters, and assembles the
+    /// final request with optional tool specs.
     ///
     /// # Errors
     ///
-    /// Returns `RuntimeError` when context building fails.
+    /// Returns `RuntimeError` on adapter failure or storage errors.
     pub async fn build(
         &self,
         store: &super::store::RuntimeStore,
@@ -151,11 +164,16 @@ impl ContextPipeline {
         Ok(request)
     }
 
-    /// Builds context output without creating a request.
+    /// Builds context output without creating a chat request.
+    ///
+    /// Equivalent to [`build`](Self::build) but returns the raw
+    /// [`ContextOutput`] instead of wrapping it in a [`ChatRequest`].
+    /// Useful when the caller needs access to the composed message list
+    /// without binding to a specific model or tools.
     ///
     /// # Errors
     ///
-    /// Returns `RuntimeError` when context building fails.
+    /// Returns `RuntimeError` on adapter failure or storage errors.
     pub async fn build_context(
         &self,
         store: &super::store::RuntimeStore,
@@ -210,12 +228,14 @@ impl Default for ContextPipeline {
     }
 }
 
-/// Applies the compaction message filter.
+/// Applies the compaction message filter to session history.
 ///
-/// Finds the latest completed compaction in the message history and reorders
-/// messages so that the compacted head (old messages that were summarized)
-/// is replaced by the compaction checkpoint while the retained tail and
-/// post-compaction messages remain visible.
+/// Finds the latest valid compaction pair (compaction marker + summary) and
+/// reorders messages so that the compacted head is replaced by a synthetic
+/// checkpoint system message while the retained tail and post-compaction
+/// messages remain visible.
+///
+/// Returns the filtered message list with the compacted head removed.
 ///
 /// Ported from OpenCode V1's `filterCompacted()`.
 fn apply_compaction_filter(records: Vec<MessageRecord>) -> Vec<MessageRecord> {
@@ -325,7 +345,8 @@ fn apply_compaction_filter(records: Vec<MessageRecord>) -> Vec<MessageRecord> {
 ///
 /// Walks from the end of the list forward, accumulating token estimates,
 /// and drops the oldest messages when the budget is exceeded.
-/// Preserves the first message if it is a system message.
+///
+/// Returns the trimmed message list ordered from oldest to newest.
 fn trim_by_tokens(records: Vec<MessageRecord>, max_tokens: usize) -> Vec<MessageRecord> {
     if records.is_empty() {
         return records;

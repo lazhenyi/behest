@@ -9,13 +9,13 @@ use crate::error::Result as CrateResult;
 
 use super::AgentConfig;
 
-/// Loads configuration from the given file path.
+/// Loads configuration from the given file path into the requested type.
 ///
 /// The file format is detected from the extension (`.toml`, `.json`, `.yaml`, `.yml`).
 ///
 /// # Errors
 ///
-/// Returns an error when the file cannot be read or parsed.
+/// Returns an error when the file cannot be read, parsed, or deserialized into `T`.
 pub fn load_file<T: DeserializeOwned>(path: impl AsRef<Path>) -> CrateResult<T> {
     let path = path.as_ref();
     let builder = Config::builder().add_source(config::File::from(path));
@@ -68,8 +68,14 @@ pub fn load_env<T: DeserializeOwned>(prefix: &str) -> CrateResult<T> {
     })
 }
 
-/// Merges multiple configuration layers: manual builder (highest priority),
-/// then file, then environment, then defaults.
+/// Loads configuration from file and environment sources with layered merging.
+///
+/// Layers (lowest to highest priority):
+/// 1. File sources (in insertion order, optional — missing files are skipped)
+/// 2. Environment variable sources (in insertion order)
+///
+/// Manual overrides (e.g. via `AgentConfigBuilder`) can be applied on top
+/// after loading.
 #[derive(Default)]
 pub struct ConfigLoader {
     file_sources: Vec<String>,
@@ -77,31 +83,38 @@ pub struct ConfigLoader {
 }
 
 impl ConfigLoader {
-    /// Creates a new config loader.
+    /// Creates a new [`ConfigLoader`] with no sources registered.
+    ///
+    /// Call [`with_file`](Self::with_file) and [`with_env`](Self::with_env)
+    /// to add sources before calling [`load`](Self::load).
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Adds a config file to the loader.
+    /// Adds a config file to the loading chain (optional — missing files are skipped).
     #[must_use]
     pub fn with_file(mut self, path: impl Into<String>) -> Self {
         self.file_sources.push(path.into());
         self
     }
 
-    /// Adds an environment variable prefix to the loader.
+    /// Adds an environment variable prefix to the loading chain.
+    ///
+    /// Variables are matched case-insensitively; nested keys use `__` as separator.
     #[must_use]
     pub fn with_env(mut self, prefix: impl Into<String>) -> Self {
         self.env_prefixes.push(prefix.into());
         self
     }
 
-    /// Loads and merges all sources into a configuration struct.
+    /// Loads and merges all registered sources into the requested configuration type.
+    ///
+    /// Placeholders (`${VAR}` or `${VAR:-default}`) are substituted after merging.
     ///
     /// # Errors
     ///
-    /// Returns an error when any source cannot be read or parsed.
+    /// Returns an error when any source cannot be read, parsed, or deserialized into `T`.
     pub fn load<T: DeserializeOwned>(&self) -> CrateResult<T> {
         let mut builder = Config::builder();
 
@@ -128,7 +141,9 @@ impl ConfigLoader {
     }
 }
 
-/// Recursively traverses a JSON value and substitutes placeholders in all strings.
+/// Recursively traverses a JSON value and substitutes `${VAR}` / `${VAR:-default}` placeholders in all strings.
+///
+/// The operation modifies `value` in place.
 pub fn substitute_json(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::String(s) => {
@@ -148,7 +163,10 @@ pub fn substitute_json(value: &mut serde_json::Value) {
     }
 }
 
-/// Replaces placeholders like `${VAR_NAME}` or `${VAR_NAME:-default}` with environment variables.
+/// Replaces `${VAR_NAME}` or `${VAR_NAME:-default}` patterns with environment variable values.
+///
+/// When a variable is unset and no default is provided, the placeholder is replaced
+/// with an empty string.
 #[must_use]
 pub fn substitute_string(input: &str) -> String {
     let mut result = String::new();
@@ -232,7 +250,10 @@ impl AgentConfig {
     }
 }
 
-/// Recursively merges overlay JSON into base JSON.
+/// Recursively merges `overlay` JSON into `base` JSON, modifying `base` in place.
+///
+/// When both values are JSON objects, keys from `overlay` are merged recursively.
+/// When either value is not an object, `overlay` replaces `base` entirely.
 pub fn merge_json(base: &mut serde_json::Value, overlay: serde_json::Value) {
     match (base, overlay) {
         (serde_json::Value::Object(base_map), serde_json::Value::Object(overlay_map)) => {

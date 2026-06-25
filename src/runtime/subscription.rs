@@ -215,7 +215,10 @@ pub struct RuntimeEventBridgeHandle {
 }
 
 impl RuntimeEventBridgeHandle {
-    /// Aborts the bridge task. Idempotent.
+    /// Aborts the bridge task.
+    ///
+    /// Idempotent and safe to call from any thread. After abort,
+    /// [`join`](Self::join) returns [`RuntimeEventBridgeError::Cancelled`].
     pub fn abort(&self) {
         self.task.abort();
     }

@@ -1,4 +1,5 @@
-//! Shared utility functions for store backends.
+//! Shared utility functions for store backends: UUID parsing, timestamp parsing,
+//! and JSON serialization with proper error reporting.
 
 use uuid::Uuid;
 

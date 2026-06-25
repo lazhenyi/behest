@@ -1,4 +1,7 @@
 //! EmbeddingService gRPC implementation.
+//!
+//! Provides RPCs for upserting, searching, and deleting vector
+//! embeddings scoped to sessions.
 
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
@@ -12,13 +15,17 @@ use crate::grpc::pb::{
 
 use std::sync::Arc;
 
-/// gRPC embedding service.
+/// gRPC embedding service for vector storage and similarity search.
+///
+/// Supports upserting embedding records with metadata, searching by
+/// query vector with configurable limits, and deleting records by
+/// ID or session.
 pub struct GrpcEmbeddingService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcEmbeddingService {
-    /// Creates a new embedding service.
+    /// Creates a new embedding service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }

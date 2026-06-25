@@ -35,8 +35,9 @@ use crate::tool_scope::ScopeGuard;
 /// Streaming-first agent runtime kernel.
 ///
 /// Ties together provider registry, context pipeline, tool runtime,
-/// compaction service, persistent stores, and background job pool into a
-/// complete agent execution loop.
+/// compaction service, persistent stores, background job pool, snapshot
+/// recovery, session gating, and input admission into a complete agent
+/// execution loop.
 pub struct AgentRuntime {
     providers: crate::provider::ProviderRegistry,
     pub(super) context: ContextPipeline,
@@ -54,7 +55,12 @@ pub struct AgentRuntime {
 }
 
 impl AgentRuntime {
-    /// Creates a new agent runtime.
+    /// Creates a new agent runtime with the given provider registry, context
+    /// pipeline, tool runtime, store, and policy.
+    ///
+    /// The runtime initializes a compaction service, input admission
+    /// pipeline, session gate, and a broadcast channel for run events
+    /// (capacity 256).
     #[must_use]
     pub fn new(
         providers: crate::provider::ProviderRegistry,
@@ -86,7 +92,8 @@ impl AgentRuntime {
     /// Injects a background job pool for event persistence and publishing.
     ///
     /// Callers are responsible for calling [`BackgroundJobPool::start`]
-    /// on the pool before passing it in.
+    /// on the pool before passing it in. The pool is used by `emit`
+    /// to persist events and optionally forward them to an external publisher.
     #[must_use]
     pub fn with_background_jobs(mut self, pool: Arc<BackgroundJobPool>) -> Self {
         self.background_jobs = Some(pool);
@@ -97,6 +104,7 @@ impl AgentRuntime {
     ///
     /// When set, every [`AgentEvent`] emitted during a run will also be
     /// published to the configured [`EventPublisher`] via fire-and-forget.
+    /// Requires the `queue` feature and a configured background job pool.
     #[cfg(feature = "queue")]
     #[must_use]
     pub fn with_event_publisher(mut self, publisher: Arc<dyn EventPublisher>) -> Self {
@@ -108,6 +116,9 @@ impl AgentRuntime {
     }
 
     /// Sets an optional snapshot store for FSM run recovery.
+    ///
+    /// When configured, intermediate run state is persisted after each
+    /// turn, allowing crashed runs to be resumed via [`resume`](Self::resume).
     #[must_use]
     pub fn with_snapshot_store(mut self, snapshot_store: Arc<dyn SnapshotStore>) -> Self {
         self.snapshot_store = Some(snapshot_store);
@@ -115,18 +126,23 @@ impl AgentRuntime {
     }
 
     /// Returns a reference to the background job pool, if configured.
+    ///
+    /// Returns `None` if no pool was injected via [`with_background_jobs`](Self::with_background_jobs).
     #[must_use]
     pub fn background_jobs(&self) -> Option<&Arc<BackgroundJobPool>> {
         self.background_jobs.as_ref()
     }
 
-    /// Returns the session gate.
+    /// Returns the session gate used to serialize concurrent runs per session.
     #[must_use]
     pub fn session_gate(&self) -> &SessionGate {
         &self.session_gate
     }
 
-    /// Subscribes to runtime events.
+    /// Subscribes to runtime events via a tokio broadcast receiver.
+    ///
+    /// The receiver starts with the oldest event still in the buffer
+    /// (capacity 256). Slow consumers that fall behind will miss events.
     #[must_use]
     pub fn subscribe(&self) -> broadcast::Receiver<AgentEvent> {
         self.event_tx.subscribe()
@@ -376,6 +392,13 @@ impl AgentRuntime {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Captures the current run state as a snapshot for crash recovery.
+    ///
+    /// A no-op when no snapshot store is configured.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] on snapshot persistence failure.
     pub(super) async fn save_snapshot_helper(
         &self,
         run_id: RunId,
@@ -409,6 +432,13 @@ impl AgentRuntime {
         Ok(())
     }
 
+    /// Deletes the snapshot for a completed or failed run.
+    ///
+    /// A no-op when no snapshot store is configured.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] on snapshot deletion failure.
     pub(super) async fn delete_snapshot_helper(&self, run_id: RunId) -> RuntimeResult<()> {
         if let Some(store) = &self.snapshot_store {
             store.delete(run_id).await?;
@@ -416,6 +446,12 @@ impl AgentRuntime {
         Ok(())
     }
 
+    /// Emits an [`AgentEvent`] through all available delivery channels.
+    ///
+    /// Events are broadcast to local subscribers via the internal tokio
+    /// broadcast channel. If background jobs are configured, the event is
+    /// also scheduled for persistent storage. With the `queue` feature,
+    /// events are additionally forwarded to the external event publisher.
     pub(super) fn emit(&self, event: &AgentEvent) {
         if let Err(e) = self.event_tx.send(event.clone()) {
             warn!(lag = ?e, "event channel full, consumer too slow — event dropped");
@@ -456,6 +492,11 @@ impl AgentRuntime {
         }
     }
 
+    /// Persists a run status update to the underlying run store.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] on persistence failure.
     pub(super) async fn update_status(
         &self,
         run_id: RunId,
@@ -464,6 +505,10 @@ impl AgentRuntime {
         self.store.runs().update_run_status(run_id, status).await
     }
 
+    /// Marks a run as failed in the store and emits a terminal [`RunFailed`](super::event::RunFailed) event.
+    ///
+    /// The error message is logged. Status update errors are logged but
+    /// not propagated, making this safe to call from cleanup paths.
     pub(super) async fn fail_run(&self, run_id: RunId, err: &RuntimeError) {
         let error_msg = err.to_string();
         error!(%run_id, error = %error_msg, "run failed");

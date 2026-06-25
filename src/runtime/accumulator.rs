@@ -7,7 +7,9 @@ use std::collections::HashMap;
 
 use crate::provider::{ContentPart, Message, ToolCall};
 
-/// Accumulates streaming deltas into complete messages.
+/// Accumulates streaming deltas from a provider into a complete assistant
+/// message and zero or more tool calls. Tracks both text content and
+/// partial tool call arguments until all deltas are received.
 #[derive(Debug, Default)]
 pub struct StreamAccumulator {
     text: String,
@@ -21,7 +23,7 @@ impl StreamAccumulator {
         Self::default()
     }
 
-    /// Appends a text delta.
+    /// Appends a text delta chunk to the internal buffer.
     pub fn append_text(&mut self, delta: &str) {
         self.text.push_str(delta);
     }
@@ -51,7 +53,8 @@ impl StreamAccumulator {
         &self.text
     }
 
-    /// Returns completed tool calls.
+    /// Parses accumulated tool call arguments into [`ToolCall`] values.
+    /// Unparseable JSON arguments produce a [`serde_json::Value::Null`] fallback.
     #[must_use]
     pub fn tool_calls(&self) -> Vec<ToolCall> {
         self.tool_calls
@@ -64,7 +67,11 @@ impl StreamAccumulator {
             .collect()
     }
 
-    /// Converts to an assistant message.
+    /// Assembles an assistant [`Message`] from the accumulated text and
+    /// tool calls. Handles three cases:
+    /// - Neither text nor tool calls → empty assistant message.
+    /// - Text only → [`Message::assistant_text`].
+    /// - Tool calls present (with optional text) → structured [`Message::Assistant`].
     #[must_use]
     pub fn to_message(&self) -> Message {
         let tool_calls = self.tool_calls();

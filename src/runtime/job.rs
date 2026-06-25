@@ -155,7 +155,13 @@ pub struct BackgroundJobPool {
 }
 
 impl BackgroundJobPool {
-    /// Creates a new background job pool.
+    /// Creates a new background job pool wrapped in [`Arc`].
+    ///
+    /// # Arguments
+    /// * `store` — Shared runtime store for event persistence.
+    /// * `event_publisher` — Optional external queue publisher (requires `queue` feature).
+    /// * `persistence_path` — Optional filesystem path for persisting pending
+    ///   jobs across restarts. When `None`, pending jobs are discarded on shutdown.
     #[must_use]
     pub fn new(
         store: Arc<RuntimeStore>,

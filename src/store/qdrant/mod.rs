@@ -1,4 +1,4 @@
-//! Qdrant embedding store implementation.
+//! Qdrant vector database embedding store implementation.
 
 pub mod embedding;
 

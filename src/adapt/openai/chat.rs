@@ -20,6 +20,16 @@ use super::convert::{from_openai_response, to_openai_request};
 use super::types::{OpenAiChatResponse, OpenAiStreamChunk, OpenAiToolCall};
 
 /// OpenAI-compatible chat completion adapter.
+///
+/// Implements [`ChatProvider`] for OpenAI's `/v1/chat/completions` endpoint.
+/// Supports streaming, tool calling (including parallel), structured output
+/// (JSON schema), and vision. Works with OpenAI, Azure OpenAI, and any
+/// OpenAI-compatible API endpoint.
+///
+/// # Authentication
+///
+/// The API key is sent via the `Authorization: Bearer` header. Configure it
+/// through the [`ProviderHttpConfig`] passed to [`new`](Self::new).
 pub struct OpenAiChatAdapter {
     id: ProviderId,
     client: Client,
@@ -42,6 +52,14 @@ impl OpenAiChatAdapter {
     }
 
     /// Creates an OpenAI chat adapter reusing an existing HTTP client.
+    ///
+    /// Useful when multiple adapters share the same connection pool or custom
+    /// TLS configuration.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` — Provider HTTP configuration including API key and base URL.
+    /// * `client` — A pre-built [`reqwest::Client`] to use for all requests.
     #[must_use]
     pub fn with_client(config: ProviderHttpConfig, client: Client) -> Self {
         Self {
@@ -163,6 +181,10 @@ impl ChatProvider for OpenAiChatAdapter {
     }
 }
 
+/// Accumulated state for mapping OpenAI SSE deltas to [`ChatStreamEvent`].
+///
+/// Tracks tool call identifiers, names, and partial JSON argument buffers
+/// indexed by the stream choice index.
 struct OpenAiStreamState {
     provider: ProviderId,
     index_to_id: HashMap<usize, String>,
@@ -181,6 +203,10 @@ impl OpenAiStreamState {
     }
 }
 
+/// Maps one raw SSE event from an OpenAI stream to a [`ChatStreamEvent`].
+///
+/// Filters out `[DONE]` terminal events and delegates chunk parsing to
+/// [`parse_chunk_event`].
 fn map_sse_event(
     state: &mut OpenAiStreamState,
     event: Result<SseEvent, ProviderError>,
@@ -192,6 +218,11 @@ fn map_sse_event(
     }
 }
 
+/// Parses one SSE data line as an [`OpenAiStreamChunk`] and emits the
+/// corresponding [`ChatStreamEvent`].
+///
+/// Handles text deltas, tool call deltas (start, arguments, completion),
+/// and finish signals.
 fn parse_chunk_event(
     state: &mut OpenAiStreamState,
     data: &str,
@@ -234,6 +265,7 @@ fn parse_chunk_event(
     None
 }
 
+/// Converts an OpenAI stream finish reason string to the neutral [`FinishReason`].
 fn convert_stream_finish(reason: &str) -> FinishReason {
     match reason {
         "stop" => FinishReason::Stop,
@@ -244,6 +276,12 @@ fn convert_stream_finish(reason: &str) -> FinishReason {
     }
 }
 
+/// Converts OpenAI tool call stream deltas into [`ChatStreamEvent`]s.
+///
+/// Tracks tool call identity (id, name) and argument accumulation across
+/// multiple chunks. Emits [`ChatStreamEvent::ToolCallStarted`] when both
+/// id and name are available, and [`ChatStreamEvent::ToolCallArgumentsDelta`]
+/// for each argument fragment.
 fn convert_tool_call_deltas(
     state: &mut OpenAiStreamState,
     calls: &[OpenAiToolCall],
@@ -287,6 +325,7 @@ fn convert_tool_call_deltas(
     None
 }
 
+/// Wraps a [`reqwest::Error`] from JSON deserialization into [`ProviderError::Decode`].
 fn decode_error(provider_id: &ProviderId, error: &reqwest::Error) -> ProviderError {
     ProviderError::Decode {
         provider: provider_id.clone(),

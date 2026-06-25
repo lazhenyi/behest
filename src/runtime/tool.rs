@@ -25,7 +25,10 @@ use crate::tool::{ToolOutput, ToolRegistry};
 use crate::tool_output::{self, ToolOutputConfig};
 use crate::tool_scope::ScopedToolRegistry;
 
-/// Result of a single tool execution within the runtime.
+/// Outcome of running a single tool call within the runtime.
+///
+/// Carries the original [`ToolCall`], the execution result (success or error),
+/// and the [`Message`] produced for the conversation history.
 #[derive(Debug)]
 pub struct ToolExecutionOutcome {
     /// The original tool call.
@@ -73,11 +76,16 @@ impl ToolRuntime {
     }
 
     /// Registers a tool at the base level of the scoped registry.
+    ///
+    /// Returns the previously registered tool with the same name, if any.
     pub fn register_tool(&self, tool: Arc<dyn Tool>) -> Option<Arc<dyn Tool>> {
         self.registry.base().register_arc(tool)
     }
 
     /// Unregisters a tool from the base level of the scoped registry.
+    ///
+    /// Returns the removed tool if it existed, or [`None`] if no tool with
+    /// `name` was registered.
     #[must_use]
     pub fn unregister_tool(&self, name: &str) -> Option<Arc<dyn Tool>> {
         self.registry.unregister_from_base(name)

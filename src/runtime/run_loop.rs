@@ -1,4 +1,29 @@
-//! Agent run loop — extracted from `agent.rs` to keep that file under 1000 lines.
+//! Agent run loop — the core iterative execution engine.
+//!
+//! Orchestrates the turn-by-turn lifecycle of an agent invocation:
+//! policy checking, context building, model calling (streaming or
+//! complete), response processing, tool execution, and persisting.
+//! Extracted from [`super::agent::AgentRuntime`] to keep that file
+//! under 1000 lines.
+//!
+//! # States
+//!
+//! The loop is driven by [`TurnState`] transitions via [`TurnTransition`]:
+//!
+//! ```text
+//! CheckingPolicy → BuildingContext → CallingModel
+//!                                               ↓
+//! ProcessingResponse ←────────────────── ←── ←──┘
+//!        ↓ (tool calls)
+//! ExecutingTools → Persisting → CheckingPolicy (next iteration)
+//! ```
+//!
+//! # Recovery
+//!
+//! On provider context overflow (`FinishReason::Length`) the loop falls
+//! back to a streaming-only model call, and on output truncation it
+//! prompts the model to continue where it left off. Snapshot-based
+//! recovery allows resuming from any intermediate state.
 
 use std::sync::Arc;
 
@@ -24,6 +49,36 @@ use super::run::{RunId, RunRequest, RunStatus};
 use super::turn::{TurnAction, TurnOutcome, TurnState, TurnTransition};
 
 impl AgentRuntime {
+    /// Runs the agent turn loop — the main iterative execution driver.
+    ///
+    /// Drives the state machine through policy checking, context building,
+    /// model calling, response processing, tool execution, and persisting.
+    /// Wraps [`Self::run_loop_inner`] with snapshot cleanup on return.
+    ///
+    /// # Arguments
+    /// * `run_id` — Identifies the current run.
+    /// * `session_id` — Identifies the conversation session.
+    /// * `provider` — The chat provider for model calls.
+    /// * `request` — The original run request parameters.
+    /// * `tool_specs` — Tool definitions available to the model.
+    /// * `has_tools` — Whether tools are configured for this run.
+    /// * `iteration` — Current iteration counter (1-based).
+    /// * `total_usage` — Accumulated token usage across all iterations.
+    /// * `last_finish` — Finish reason from the previous model call, if any.
+    /// * `assistant_message` — Most recent assistant message, for resumption.
+    /// * `assistant_msg_id` — Store ID of the most recent assistant message.
+    /// * `start_state` — Turn state to resume from (for snapshot recovery).
+    /// * `doom_detector` — Shared doom-loop detector for this run.
+    /// * `breaker` — Compaction circuit breaker for this run.
+    /// * `output_recovery_count` — Number of truncation recoveries so far.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::IterationLimitExceeded`] when the iteration
+    /// budget is exhausted, [`RuntimeError::TokenBudgetExceeded`] when the
+    /// token budget is exceeded, [`RuntimeError::DoomLoopDetected`] when a
+    /// repetitive tool-call pattern is found, or other [`RuntimeError`]
+    /// variants from provider or storage failures.
     #[allow(clippy::too_many_arguments)]
     pub(super) async fn run_loop(
         &self,

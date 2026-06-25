@@ -15,18 +15,21 @@ use crate::store::{
 
 /// MongoDB-backed session store using a document-per-session model.
 ///
-/// Messages are stored in a separate collection linked by `session_id`.
+/// Sessions and messages are stored in separate collections (`sessions`
+/// and `messages`) linked by `session_id`. Implements [`SessionStore`].
 pub struct MongodbSessionStore {
     sessions: Collection<SessionDoc>,
     messages: Collection<MessageDoc>,
 }
 
 impl MongodbSessionStore {
-    /// Creates a MongoDB session store from a client and database name.
+    /// Creates a MongoDB session store by connecting to the given URI and database.
+    ///
+    /// The `sessions` and `messages` collections are resolved from the database.
     ///
     /// # Errors
     ///
-    /// Returns [`StorageError::ConnectionFailed`] when the connection fails.
+    /// Returns [`StorageError::ConnectionFailed`] when the connection to MongoDB fails.
     pub async fn new(uri: &str, database: &str) -> StoreResult<Self> {
         let client =
             Client::with_uri_str(uri)
@@ -44,7 +47,9 @@ impl MongodbSessionStore {
         })
     }
 
-    /// Creates a MongoDB session store from existing collections.
+    /// Creates a MongoDB session store from pre-existing collections, bypassing connection setup.
+    ///
+    /// Useful for testing with mocked or in-memory MongoDB collections.
     #[must_use]
     pub fn from_collections(
         sessions: Collection<SessionDoc>,
@@ -54,17 +59,20 @@ impl MongodbSessionStore {
     }
 }
 
-/// MongoDB session document.
+/// MongoDB document representing a persisted session.
+///
+/// The `id` field is mapped to MongoDB's `_id` as a UUID string.
+/// `metadata` is serialized to a BSON [`Document`] for native querying.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionDoc {
-    /// Session identifier.
+    /// Session identifier (stored as `_id` in MongoDB).
     #[serde(rename = "_id")]
     pub id: String,
     /// Session title.
     pub title: String,
     /// Model name.
     pub model: String,
-    /// Metadata as a BSON document.
+    /// Metadata as a BSON document (for native querying).
     pub metadata: Document,
     /// Creation timestamp.
     pub created_at: chrono::DateTime<chrono::Utc>,
@@ -120,7 +128,10 @@ impl SessionDoc {
     }
 }
 
-/// MongoDB message document.
+/// MongoDB document representing a persisted message.
+///
+/// The `id` is stored as `_id` and `session_id` links to the parent session.
+/// Tool calls and compaction metadata are embedded directly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageDoc {
     /// Message identifier.

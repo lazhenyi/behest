@@ -2,7 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Describes which features a provider can serve.
+/// Static capability advertisement returned by provider implementations.
+///
+/// Used by the runtime for feature negotiation and routing decisions.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderCapabilities {
     /// Provider can return a complete chat response.
@@ -26,7 +28,7 @@ pub struct ProviderCapabilities {
 }
 
 impl ProviderCapabilities {
-    /// Returns a capability set for basic non-streaming chat providers.
+    /// Returns a capability set for a basic non-streaming chat provider.
     #[must_use]
     pub const fn chat() -> Self {
         Self {
@@ -35,7 +37,7 @@ impl ProviderCapabilities {
         }
     }
 
-    /// Returns a capability set for embedding-only providers.
+    /// Returns a capability set for an embedding-only provider.
     #[must_use]
     pub const fn embeddings() -> Self {
         Self {

@@ -1,4 +1,8 @@
 //! gRPC ChatService implementation — raw provider passthrough streaming.
+//!
+//! Bypasses runtime orchestration to stream chat completions directly
+//! from a provider. Supports text deltas, tool call events, and
+//! finish/usage signals.
 
 use std::sync::Arc;
 
@@ -19,12 +23,16 @@ use super::pb::chat_service_server::ChatService;
 use super::pb::{ChatStreamStarted, RawChatRequest};
 
 /// gRPC ChatService: raw provider streaming without runtime orchestration.
+///
+/// Streams chat completion events (text deltas, tool calls, finish)
+/// directly from the configured provider, bypassing session management
+/// and tool execution.
 pub struct GrpcChatService {
     state: Arc<GrpcState>,
 }
 
 impl GrpcChatService {
-    /// Creates a new ChatService backed by the given runtime state.
+    /// Creates a new chat service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<GrpcState>) -> Self {
         Self { state }

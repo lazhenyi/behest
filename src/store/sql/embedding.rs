@@ -8,9 +8,10 @@ use uuid::Uuid;
 use crate::error::StorageError;
 use crate::store::{EmbeddingRecord, EmbeddingStore, ScoredEmbedding, StoreResult};
 
-/// PostgreSQL-backed embedding store using pgvector for vector similarity search.
+/// PostgreSQL-backed embedding store using the pgvector extension for vector similarity search.
 ///
-/// Requires the `pgvector` extension to be installed on the PostgreSQL server.
+/// Requires the `pgvector` extension to be installed on the PostgreSQL server
+/// and the `embeddings` table to exist. Implements [`EmbeddingStore`].
 ///
 /// # Migrations
 ///
@@ -21,17 +22,19 @@ pub struct SqlEmbeddingStore {
 }
 
 impl SqlEmbeddingStore {
-    /// Creates a SQL embedding store from a PostgreSQL pool.
+    /// Creates a SQL embedding store from a PostgreSQL connection pool.
+    ///
+    /// The pool should already be configured and connected.
     #[must_use]
     pub fn new(pool: Pool<Postgres>) -> Self {
         Self { pool }
     }
 
-    /// Runs the embedding migration against the connected database.
+    /// Runs the embedded `pgvector` migration against the connected database.
     ///
     /// # Errors
     ///
-    /// Returns [`StorageError::MigrationFailed`] when migrations fail.
+    /// Returns [`StorageError::MigrationFailed`] when the migration fails to apply.
     pub async fn migrate(&self) -> StoreResult<()> {
         sqlx::migrate!("src/store/sql/migrations/postgres")
             .run(&self.pool)

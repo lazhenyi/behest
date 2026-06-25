@@ -74,7 +74,11 @@ pub trait SnapshotStore: Send + Sync + 'static {
     async fn list(&self) -> RuntimeResult<Vec<Snapshot>>;
 }
 
-/// Filesystem-based snapshot storage.
+/// Filesystem-based [`SnapshotStore`] with atomic write semantics.
+///
+/// Snapshots are serialized as JSON files. Each write first goes to a `.tmp`
+/// file and is then atomically renamed to the final path, preventing partial
+/// snapshots from being visible to concurrent readers.
 pub struct FileSnapshotStore {
     base_dir: PathBuf,
 }

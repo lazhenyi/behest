@@ -1,4 +1,4 @@
-//! MongoDB session store implementation.
+//! MongoDB session store implementation using document-per-session model.
 
 pub mod session;
 

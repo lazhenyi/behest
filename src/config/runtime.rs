@@ -9,55 +9,58 @@ use crate::runtime::{CompactionConfig, RuntimePolicy};
 /// Runtime configuration covering policy, context limits, and event channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConfig {
-    /// Execution policy.
+    /// Execution policy (max iterations, timeouts, retries).
     #[serde(default)]
     pub policy: RuntimePolicyConfig,
 
-    /// Maximum number of history messages before trimming.
+    /// Maximum number of history messages before trimming. Default: 50.
     #[serde(default = "default_max_history_messages")]
     pub max_history_messages: usize,
 
-    /// Internal broadcast channel capacity for local event subscribers.
+    /// Internal broadcast channel capacity for local event subscribers. Default: 256.
     #[serde(default = "default_event_channel_capacity")]
     pub event_channel_capacity: usize,
 
-    /// Directory for storing run recovery snapshots.
+    /// Directory for storing run recovery snapshots. `None` disables snapshotting.
     #[serde(default)]
     pub snapshot_dir: Option<String>,
 }
 
 /// Per-run execution limits and constraints.
+///
+/// All fields have sensible defaults; only non-default values need to be
+/// set explicitly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimePolicyConfig {
-    /// Maximum model call iterations per run.
+    /// Maximum model call iterations per run. Default: 10.
     #[serde(default = "default_max_iterations")]
     pub max_iterations: usize,
 
-    /// Maximum total tokens per run (None = unlimited).
+    /// Maximum total tokens per run. `None` means unlimited.
     #[serde(default)]
     pub max_tokens: Option<usize>,
 
-    /// Maximum concurrent tool executions.
+    /// Maximum concurrent tool executions. Default: 4.
     #[serde(default = "default_max_tool_concurrency")]
     pub max_tool_concurrency: usize,
 
-    /// Timeout for individual tool execution, in seconds.
+    /// Timeout for individual tool execution, in seconds. Default: 30.
     #[serde(default = "default_tool_timeout_secs")]
     pub tool_timeout_secs: u64,
 
-    /// Timeout for provider calls, in seconds.
+    /// Timeout for provider calls, in seconds. Default: 60.
     #[serde(default = "default_provider_timeout_secs")]
     pub provider_timeout_secs: u64,
 
-    /// Continue the run when a tool fails.
+    /// Continue the run when a tool fails. Default: `true`.
     #[serde(default = "default_continue_on_tool_failure")]
     pub continue_on_tool_failure: bool,
 
-    /// Retry on retryable provider errors.
+    /// Retry on retryable provider errors. Default: `true`.
     #[serde(default = "default_retry_on_provider_error")]
     pub retry_on_provider_error: bool,
 
-    /// Maximum retries for provider calls per attempt.
+    /// Maximum retries for provider calls per attempt. Default: 2.
     #[serde(default = "default_max_retries")]
     pub max_retries: usize,
 }

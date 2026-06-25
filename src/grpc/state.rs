@@ -1,4 +1,8 @@
 //! Shared gRPC server state.
+//!
+//! Defines [`GrpcState`] — the shared state container passed to all
+//! gRPC service implementations — and the [`ModelCatalogEntry`] type
+//! used by the model-service endpoint.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -13,7 +17,10 @@ use crate::config::{AgentConfig, ProviderConfig};
 use crate::provider::{ModelName, ProviderId};
 use crate::runtime::AgentRuntime;
 
-/// JSON encodable model catalog entry.
+/// A single entry in the runtime model catalog.
+///
+/// Associates a model name with its provider and capability flags.
+/// JSON-serializable for debug display.
 #[derive(Debug, Clone)]
 pub struct ModelCatalogEntry {
     /// Provider this model belongs to.
@@ -26,7 +33,11 @@ pub struct ModelCatalogEntry {
     pub tool_calling: bool,
 }
 
-/// Shared state for all gRPC services.
+/// Shared state container passed to every gRPC service implementation.
+///
+/// Holds the agent runtime, configuration, run-task registry, and
+/// agent registry — all behind `Arc` for concurrent access across
+/// multiple service instances.
 pub struct GrpcState {
     /// Agent runtime kernel.
     pub runtime: Arc<AgentRuntime>,
@@ -43,7 +54,7 @@ pub struct GrpcState {
 }
 
 impl GrpcState {
-    /// Creates a new gRPC state.
+    /// Creates a new gRPC state with the given runtime, config, and task registry.
     #[must_use]
     pub fn new(
         runtime: Arc<AgentRuntime>,
@@ -61,7 +72,7 @@ impl GrpcState {
         }
     }
 
-    /// Returns a provider config by string identifier.
+    /// Returns the provider config for the given string identifier, if present.
     #[must_use]
     pub fn provider_config(&self, id: &str) -> Option<&ProviderConfig> {
         self.config
@@ -70,14 +81,21 @@ impl GrpcState {
             .find_map(|(k, v)| if k.as_str() == id { Some(v) } else { None })
     }
 
-    /// Builds the model catalog from provider configs.
+    /// Builds the model catalog from the configured providers.
+    ///
+    /// Returns all default models and explicitly listed models with
+    /// their streaming and tool-calling capabilities.
     #[must_use]
     pub fn model_catalog(&self) -> Vec<ModelCatalogEntry> {
         build_model_catalog(&self.config.providers)
     }
 }
 
-/// Builds a model catalog from provider configurations.
+/// Builds a model catalog from the given provider configuration map.
+///
+/// Iterates over every provider and collects its default model
+/// (if any) and all explicitly configured models into a flat list
+/// of [`ModelCatalogEntry`].
 pub(crate) fn build_model_catalog(
     providers: &std::collections::HashMap<ProviderId, ProviderConfig>,
 ) -> Vec<ModelCatalogEntry> {

@@ -1,4 +1,7 @@
 //! SessionService gRPC implementation.
+//!
+//! Provides RPCs for creating, listing, retrieving, updating, and
+//! deleting sessions, as well as listing messages within a session.
 
 use tonic::{Request, Response, Status};
 
@@ -15,13 +18,17 @@ use std::sync::Arc;
 
 use crate::provider;
 
-/// gRPC session service.
+/// gRPC session service for conversation lifecycle management.
+///
+/// Manages sessions (create, read, update, delete) with paginated
+/// listing and message retrieval. Sessions track model association
+/// and metadata.
 pub struct GrpcSessionService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcSessionService {
-    /// Creates a new session service.
+    /// Creates a new session service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }

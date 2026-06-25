@@ -1,7 +1,12 @@
-//! SQL-based storage backends using `sqlx`.
+//! SQL-based storage backends using the `sqlx` crate.
 //!
-//! Supports PostgreSQL, MySQL, and SQLite for session storage,
-//! and PostgreSQL (with pgvector) for embedding storage.
+//! Supported databases:
+//! - **PostgreSQL** (via feature `sqlx-postgres`): session, execution, and pgvector embedding stores
+//! - **MySQL** (via feature `sqlx-mysql`): session and execution stores
+//! - **SQLite** (via feature `sqlx-sqlite`): session and execution stores
+//!
+//! Each backend is selected at compile time via Cargo feature flags and
+//! uses runtime SQL queries for cross-database compatibility.
 
 pub mod session;
 

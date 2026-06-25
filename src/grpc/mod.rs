@@ -1,7 +1,9 @@
 //! gRPC server adapter for the agent runtime.
 //!
 //! Compiles protobuf definitions from `src/grpc/proto/` and
-//! implements the generated service traits.
+//! implements the generated service traits for admin, agent,
+//! artifact, auth, chat, compaction, context, embedding, event,
+//! provider, run, session, snapshot, tool, and usage services.
 //!
 //! Enable with `features = ["server"]`.
 
@@ -30,6 +32,10 @@ pub mod tool;
 pub mod usage;
 
 /// Converts a [`chrono::DateTime`] to a protobuf timestamp.
+///
+/// # Panics
+///
+/// Panics if the nanosecond component exceeds [`i32::MAX`].
 pub(crate) fn to_prost_timestamp(dt: chrono::DateTime<chrono::Utc>) -> prost_types::Timestamp {
     prost_types::Timestamp {
         seconds: dt.timestamp(),
@@ -52,6 +58,10 @@ pub(crate) fn error_to_status(err: crate::Error) -> tonic::Status {
     }
 }
 
+/// Maps a [`ProviderError`](crate::ProviderError) to a gRPC [`Status`].
+///
+/// Converts provider-specific errors (authentication, rate limiting, timeout,
+/// transport, etc.) into semantically appropriate gRPC status codes.
 pub(super) fn provider_error_to_status(err: &crate::ProviderError) -> tonic::Status {
     use crate::ProviderError;
     use tonic::{Code, Status};

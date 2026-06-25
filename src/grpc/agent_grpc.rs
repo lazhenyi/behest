@@ -1,4 +1,7 @@
 //! AgentService gRPC implementation.
+//!
+//! Provides RPCs for registering, querying, listing agents,
+//! and setting the default agent for new sessions.
 
 use tonic::{Request, Response, Status};
 
@@ -14,13 +17,16 @@ use crate::provider::ModelName;
 
 use std::sync::Arc;
 
-/// gRPC agent service.
+/// gRPC agent service for managing agent definitions.
+///
+/// Supports registration, lookup, listing, and default agent
+/// selection for the runtime.
 pub struct GrpcAgentService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcAgentService {
-    /// Creates a new agent service.
+    /// Creates a new agent service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }

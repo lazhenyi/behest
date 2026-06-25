@@ -1,4 +1,7 @@
 //! CompactionService gRPC implementation.
+//!
+//! Provides RPCs for querying and updating the runtime's session
+//! compaction configuration and circuit breaker state.
 
 use tonic::{Request, Response, Status};
 
@@ -10,13 +13,17 @@ use crate::grpc::pb::{
 
 use std::sync::Arc;
 
-/// gRPC compaction service.
+/// gRPC compaction service for session context management.
+///
+/// Exposes the runtime's compaction config (auto mode, pruning,
+/// token budgets, circuit breaker thresholds) and allows monitoring
+/// of compaction health.
 pub struct GrpcCompactionService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcCompactionService {
-    /// Creates a new compaction service.
+    /// Creates a new compaction service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }

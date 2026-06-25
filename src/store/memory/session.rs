@@ -1,4 +1,4 @@
-//! In-memory session store backed by `HashMap`.
+//! In-memory session store backed by `HashMap`s for sessions and messages.
 
 use std::collections::HashMap;
 
@@ -9,10 +9,11 @@ use uuid::Uuid;
 use crate::provider::{ModelName, TokenUsage};
 use crate::store::{MessageRecord, Session, SessionStore, StoreResult};
 
-/// In-memory session store for testing and development.
+/// In-memory session store for testing, development, and prototyping.
 ///
-/// Data is stored in `HashMap`s protected by `RwLock` and is lost
-/// when the process exits.
+/// Sessions are stored in `HashMap<Uuid, Session>` and messages in
+/// `HashMap<Uuid, Vec<MessageRecord>>`, both protected by `RwLock`.
+/// Data is lost when the process exits. Implements [`SessionStore`].
 #[derive(Default)]
 pub struct MemorySessionStore {
     sessions: RwLock<HashMap<Uuid, Session>>,

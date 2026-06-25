@@ -11,7 +11,10 @@ use serde_json;
 use super::{EventPublisher, QueueError, QueueResult};
 use crate::runtime::AgentEvent;
 
-/// Publishes `AgentEvent` values to a Redis stream.
+/// Publishes `AgentEvent` values to a Redis stream via `XADD`.
+///
+/// Each event is serialized as JSON and appended to the configured
+/// stream key. Useful for audit logging and event sourcing pipelines.
 pub struct RedisStreamsPublisher {
     conn: MultiplexedConnection,
     stream_key: String,
@@ -19,6 +22,10 @@ pub struct RedisStreamsPublisher {
 
 impl RedisStreamsPublisher {
     /// Creates a publisher from an existing Redis multiplexed connection.
+    ///
+    /// # Parameters
+    /// - `conn` – an established Redis multiplexed async connection.
+    /// - `stream_key` – the Redis stream key to `XADD` events to.
     #[must_use]
     pub fn new(conn: MultiplexedConnection, stream_key: impl Into<String>) -> Self {
         Self {
@@ -29,10 +36,14 @@ impl RedisStreamsPublisher {
 
     /// Connects to a Redis instance and returns a stream publisher.
     ///
+    /// # Parameters
+    /// - `url` – Redis connection URL (e.g. `redis://localhost:6379`).
+    /// - `stream_key` – the Redis stream key to `XADD` events to.
+    ///
     /// # Errors
     ///
-    /// Returns [`QueueError::ConnectionFailed`] if the Redis connection
-    /// cannot be established.
+    /// Returns [`QueueError::ConnectionFailed`] if the Redis client creation
+    /// or the async connection handshake fails.
     pub async fn connect(url: &str, stream_key: impl Into<String>) -> QueueResult<Self> {
         let client = redis::Client::open(url).map_err(|e| QueueError::ConnectionFailed {
             message: format!("Redis client creation failed: {e}"),

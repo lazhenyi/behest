@@ -49,7 +49,7 @@ pub enum AgentEvent {
 }
 
 impl AgentEvent {
-    /// Returns the run identifier for any event variant.
+    /// Returns the run identifier for any event variant without pattern matching.
     #[must_use]
     pub fn run_id(&self) -> RunId {
         match self {
@@ -84,7 +84,7 @@ impl AgentEvent {
     }
 }
 
-/// Run started event.
+/// Emitted when a run begins execution after session load and input admission.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunStarted {
     /// Run identifier.
@@ -99,7 +99,7 @@ pub struct RunStarted {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Context built event.
+/// Emitted after context has been assembled from session history and adapters.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextBuilt {
     /// Run identifier.
@@ -110,7 +110,7 @@ pub struct ContextBuilt {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Model started event.
+/// Emitted when a model invocation begins, carrying iteration count.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelStarted {
     /// Run identifier.
@@ -125,7 +125,7 @@ pub struct ModelStarted {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Text delta event.
+/// Streaming text delta emitted during model response generation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextDelta {
     /// Run identifier.
@@ -136,7 +136,7 @@ pub struct TextDelta {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Tool call started event.
+/// Emitted when the model requests a tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallStarted {
     /// Run identifier.
@@ -149,7 +149,7 @@ pub struct ToolCallStarted {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Tool call arguments delta event.
+/// Streaming delta for tool call arguments during model response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallDelta {
     /// Run identifier.
@@ -162,7 +162,7 @@ pub struct ToolCallDelta {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Tool call completed event.
+/// Emitted when the model finishes emitting a complete tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallCompleted {
     /// Run identifier.
@@ -173,7 +173,7 @@ pub struct ToolCallCompleted {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Tool execution started event.
+/// Emitted when a tool function begins executing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolExecutionStarted {
     /// Run identifier.
@@ -186,7 +186,7 @@ pub struct ToolExecutionStarted {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Tool execution finished event.
+/// Emitted when a tool function completes, carrying the result and duration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolExecutionFinished {
     /// Run identifier.
@@ -203,22 +203,22 @@ pub struct ToolExecutionFinished {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Result of tool execution.
+/// Result of a single tool execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ToolExecutionResult {
     /// Tool executed successfully.
     Success {
-        /// Output value.
+        /// Output value returned by the tool.
         output: Value,
     },
     /// Tool execution failed.
     Failure {
-        /// Error message.
+        /// Error message describing why it failed.
         error: String,
     },
 }
 
-/// Message committed event.
+/// Notification that a message has been persisted to the session store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageCommitted {
     /// Run identifier.
@@ -229,7 +229,7 @@ pub struct MessageCommitted {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Usage recorded event.
+/// Emitted after each model invocation to record token consumption.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageRecorded {
     /// Run identifier.
@@ -240,7 +240,7 @@ pub struct UsageRecorded {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Run completed event.
+/// Terminal event emitted when a run finishes successfully.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunCompleted {
     /// Run identifier.
@@ -253,7 +253,7 @@ pub struct RunCompleted {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Run failed event.
+/// Terminal event emitted when a run terminates with an error.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunFailed {
     /// Run identifier.
@@ -264,7 +264,7 @@ pub struct RunFailed {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Run cancelled event.
+/// Terminal event emitted when a run is cancelled before completion.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunCancelled {
     /// Run identifier.
@@ -273,7 +273,7 @@ pub struct RunCancelled {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Doom loop detected event.
+/// Emitted when the agent is detected to be in a repetitive tool call cycle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DoomLoopDetected {
     /// Run identifier.
@@ -284,7 +284,7 @@ pub struct DoomLoopDetected {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Compaction circuit breaker opened event.
+/// Emitted when the compaction circuit breaker opens due to repeated failures.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompactionCircuitOpened {
     /// Run identifier.

@@ -24,6 +24,8 @@ pub enum ProviderType {
 ///
 /// Supports `env:VAR_NAME` syntax for `api_key` to reference
 /// environment variables instead of embedding secrets directly.
+///
+/// Builder methods (`with_*`) are available for ergonomic construction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
     /// Which adapter implementation to use.
@@ -70,6 +72,9 @@ pub struct ProviderConfig {
 
 impl ProviderConfig {
     /// Creates a minimal provider config with only the base URL.
+    ///
+    /// All other fields (`provider_type`, `model`, `api_key`, etc.) are set
+    /// to their defaults. Use the `with_*` builder methods to customize.
     #[must_use]
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
@@ -86,21 +91,22 @@ impl ProviderConfig {
         }
     }
 
-    /// Sets the provider adapter type.
+    /// Sets the provider adapter type (e.g. `ProviderType::OpenAi`).
     #[must_use]
     pub fn with_provider_type(mut self, provider_type: ProviderType) -> Self {
         self.provider_type = Some(provider_type);
         self
     }
 
-    /// Sets the default model name.
+    /// Sets the default model name for completion requests.
     #[must_use]
     pub fn with_model(mut self, model: impl Into<ModelName>) -> Self {
         self.model = Some(model.into());
         self
     }
 
-    /// Sets the API key directly.
+    /// Sets the API key, optionally using `"env:VAR_NAME"` to defer to an
+    /// environment variable at resolve time.
     #[must_use]
     pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
         self.api_key = Some(api_key.into());

@@ -18,21 +18,21 @@ use super::event::AgentEvent;
 use super::run::{RunId, RunRecord, RunStatus};
 use super::state::RunState;
 
-/// Persistent record of a run event.
+/// Persistent record of a run event with sequence number ordering.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunEventRecord {
-    /// Event sequence number within the run.
+    /// Monotonically increasing event sequence number within the run.
     pub sequence: u64,
-    /// Run identifier.
+    /// Run this event belongs to.
     pub run_id: RunId,
-    /// Event payload.
+    /// The event payload.
     pub event: AgentEvent,
     /// When the event was recorded.
     pub timestamp: DateTime<Utc>,
 }
 
 impl RunEventRecord {
-    /// Creates a new run event record.
+    /// Creates a new run event record with the current timestamp.
     #[must_use]
     pub fn new(sequence: u64, run_id: RunId, event: AgentEvent) -> Self {
         Self {
@@ -45,12 +45,28 @@ impl RunEventRecord {
 }
 
 /// Store for run lifecycle and events.
+///
+/// Implementations provide persistence for run metadata and the
+/// event-sourced event log. Default implementations are provided for
+/// [`get_run_state`](Self::get_run_state) and
+/// [`list_runs_filtered`](Self::list_runs_filtered), which backends
+/// may override with native projections for efficiency.
 #[async_trait]
 pub trait RunStore: Send + Sync {
-    /// Creates a new run record.
+    /// Persists a new run record.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] on persistence failure.
     async fn create_run(&self, record: RunRecord) -> RuntimeResult<()>;
 
-    /// Gets a run by ID.
+    /// Loads a run record by its identifier.
+    ///
+    /// Returns `None` when no run with the given ID exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] on persistence failure.
     async fn get_run(&self, run_id: RunId) -> RuntimeResult<Option<RunRecord>>;
 
     /// Gets the event-sourced state of a run by replaying its event log.
@@ -66,16 +82,36 @@ pub trait RunStore: Send + Sync {
         Ok(Some(RunState::create(&record, &events)))
     }
 
-    /// Updates run status.
+    /// Updates the status of an existing run.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] on persistence failure.
     async fn update_run_status(&self, run_id: RunId, status: RunStatus) -> RuntimeResult<()>;
 
-    /// Appends an event to a run.
+    /// Appends an event to a run's event log.
+    ///
+    /// The event is stored as a [`RunEventRecord`] with a monotonically
+    /// increasing sequence number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] on persistence failure.
     async fn append_event(&self, record: RunEventRecord) -> RuntimeResult<()>;
 
-    /// Lists events for a run.
+    /// Returns the full event log for a run, ordered by sequence number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::RunNotFound`] when the run does not exist,
+    /// or [`RuntimeError::Storage`] on persistence failure.
     async fn list_events(&self, run_id: RunId) -> RuntimeResult<Vec<RunEventRecord>>;
 
-    /// Lists runs for a session.
+    /// Lists all runs belonging to a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] on persistence failure.
     async fn list_runs(&self, session_id: Uuid) -> RuntimeResult<Vec<RunRecord>>;
 
     /// Lists runs with optional filters and pagination.
@@ -97,14 +133,25 @@ pub trait RunStore: Send + Sync {
         }))
     }
 
-    /// Deletes a run and its events.
+    /// Deletes a run and all its associated events.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] on persistence failure.
     async fn delete_run(&self, run_id: RunId) -> RuntimeResult<()>;
 
-    /// Health check.
+    /// Performs a health check against the underlying storage backend.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RuntimeError::Storage`] when the backend is unhealthy.
     async fn health_check(&self) -> RuntimeResult<()>;
 }
 
-/// Runtime store facade combining session, execution, run, embedding, and artifact stores.
+/// Runtime store facade composing session, execution, run, embedding, and artifact stores.
+///
+/// Provides a unified interface for all runtime persistence operations.
+/// Individual sub-stores are accessed via their respective accessor methods.
 pub struct RuntimeStore {
     sessions: Box<dyn SessionStore>,
     executions: Box<dyn ExecutionStore>,
@@ -114,7 +161,11 @@ pub struct RuntimeStore {
 }
 
 impl RuntimeStore {
-    /// Creates a new runtime store.
+    /// Creates a new runtime store with session, execution, and run stores.
+    ///
+    /// Embedding and artifact stores are optional — attach them with
+    /// [`with_embeddings`](Self::with_embeddings) and
+    /// [`with_artifacts`](Self::with_artifacts).
     #[must_use]
     pub fn new(
         sessions: Box<dyn SessionStore>,
@@ -130,14 +181,14 @@ impl RuntimeStore {
         }
     }
 
-    /// Attaches an embedding store.
+    /// Attaches an optional embedding store for vector search operations.
     #[must_use]
     pub fn with_embeddings(mut self, store: Box<dyn EmbeddingStore>) -> Self {
         self.embeddings = Some(store);
         self
     }
 
-    /// Attaches an artifact store.
+    /// Attaches an optional artifact store for file/blob storage.
     #[must_use]
     pub fn with_artifacts(mut self, store: Box<dyn ArtifactStore>) -> Self {
         self.artifacts = Some(store);
@@ -229,7 +280,10 @@ impl RuntimeStore {
     }
 }
 
-/// Converts a provider Message to a store MessageRecord.
+/// Converts a provider [`Message`] to a persisted [`MessageRecord`].
+///
+/// Maps message role variants to their corresponding store representations,
+/// preserving tool call metadata for assistant and tool messages.
 fn message_to_record(session_id: Uuid, message: &Message) -> MessageRecord {
     match message {
         Message::System { content } => {
@@ -252,7 +306,10 @@ fn message_to_record(session_id: Uuid, message: &Message) -> MessageRecord {
     }
 }
 
-/// Converts a store MessageRecord back to a provider Message.
+/// Converts a stored [`MessageRecord`] back to a provider [`Message`].
+///
+/// Returns `None` for unrecognized role variants. Preserves tool call IDs
+/// and names for tool role messages.
 #[must_use]
 pub fn record_to_message(record: MessageRecord) -> Option<Message> {
     match record.role {

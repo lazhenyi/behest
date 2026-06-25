@@ -12,9 +12,15 @@ use crate::provider::{
 };
 
 /// Result type returned by provider implementations.
+///
+/// Wraps [`ProviderError`], covering network failures, authentication errors,
+/// content filter rejections, and unsupported feature requests.
 pub type ProviderResult<T> = std::result::Result<T, ProviderError>;
 
-/// Boxed stream returned by streaming chat providers.
+/// Boxed, pinned, asynchronous stream of chat events.
+///
+/// Each item is a [`ProviderResult`] wrapping a [`ChatStreamEvent`]. The stream
+/// ends with a `Finished` event or a terminal error.
 pub type ChatStream = Pin<Box<dyn Stream<Item = ProviderResult<ChatStreamEvent>> + Send + 'static>>;
 
 /// Provider capable of serving chat completion requests.
@@ -27,9 +33,21 @@ pub trait ChatProvider: Send + Sync {
     fn capabilities(&self) -> ProviderCapabilities;
 
     /// Completes a chat request.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError`] on network failure, invalid model configuration,
+    /// authentication rejection, or content filter intervention.
     async fn complete(&self, request: ChatRequest) -> ProviderResult<ChatResponse>;
 
     /// Streams a chat request.
+    ///
+    /// The default implementation returns [`ProviderError::Unsupported`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError`] when the stream cannot be established —
+    /// network errors, invalid model configuration, or authentication failures.
     async fn stream(&self, request: ChatRequest) -> ProviderResult<ChatStream> {
         let _ = request;
 
@@ -50,5 +68,10 @@ pub trait EmbeddingProvider: Send + Sync {
     fn capabilities(&self) -> ProviderCapabilities;
 
     /// Embeds request inputs.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError`] on network failure, invalid model configuration,
+    /// or authentication rejection.
     async fn embed(&self, request: EmbeddingRequest) -> ProviderResult<EmbeddingResponse>;
 }

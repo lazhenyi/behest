@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  width: 1920px;
+  height: 1080px;
+  background: #050505;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Subtle grid texture */
+body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+}
+
+/* Volumetric haze */
+.glow {
+  position: absolute;
+  width: 800px;
+  height: 800px;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.15;
+}
+
+.glow-1 {
+  top: -200px;
+  right: -100px;
+  background: #c9a96e;
+}
+
+.glow-2 {
+  bottom: -300px;
+  left: -200px;
+  background: #4a4a4a;
+}
+
+.container {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  height: 100%;
+  padding: 0 160px;
+}
+
+/* Thin rim light line */
+.rim-light {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(201, 169, 110, 0.4), transparent);
+}
+
+.project-name {
+  font-size: 128px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -4px;
+  line-height: 1.1;
+  margin-bottom: 24px;
+  text-shadow: 0 4px 40px rgba(0,0,0,0.5);
+}
+
+.tagline {
+  font-size: 36px;
+  font-weight: 400;
+  color: #a0a0a0;
+  line-height: 1.4;
+  max-width: 900px;
+  margin-bottom: 48px;
+}
+
+.tags {
+  display: flex;
+  gap: 16px;
+}
+
+.tag {
+  padding: 8px 20px;
+  border: 1px solid rgba(201, 169, 110, 0.3);
+  border-radius: 4px;
+  font-size: 18px;
+  font-weight: 500;
+  color: #c9a96e;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* Metallic accent line */
+.accent-line {
+  width: 120px;
+  height: 3px;
+  background: linear-gradient(90deg, #c9a96e, transparent);
+  margin-bottom: 32px;
+}
+
+.version-badge {
+  position: absolute;
+  bottom: 60px;
+  right: 160px;
+  padding: 12px 24px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  font-size: 20px;
+  color: #666;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+</style>
+</head>
+<body>
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+  <div class="rim-light"></div>
+  
+  <div class="container">
+    <div class="project-name">behest</div>
+    <div class="accent-line"></div>
+    <div class="tagline">Rust-native building blocks for production AI agent runtimes</div>
+    <div class="tags">
+      <span class="tag">Typed</span>
+      <span class="tag">Provider-Neutral</span>
+      <span class="tag">Streaming</span>
+    </div>
+  </div>
+  
+  <div class="version-badge">v0.2.0</div>
+</body>
+</html>

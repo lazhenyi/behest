@@ -114,7 +114,16 @@ impl CompactionCircuitBreaker {
 
 // ── Compaction Service ───────────────────────────────────────────────
 
-/// Service for conversational context compaction.
+/// Service for LLM-driven conversational context compaction.
+///
+/// When conversation history approaches a model's context window, this
+/// service summarises older messages via a smaller/cheaper "compaction"
+/// LLM call. The resulting anchored summary preserves semantic continuity
+/// while freeing tokens for the main provider.
+///
+/// Supports both proactive compaction (before each turn) and reactive
+/// compaction (after a provider context-overflow error). A circuit breaker
+/// gates repeated failures to avoid cascading costs.
 pub struct CompactionService {
     /// Provider registry for model access.
     providers: crate::provider::ProviderRegistry,

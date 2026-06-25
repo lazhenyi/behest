@@ -1,4 +1,7 @@
 //! ToolService gRPC implementation.
+//!
+//! Provides RPCs for listing, querying, invoking, registering, and
+//! unregistering tools in the runtime tool registry.
 
 use tonic::{Request, Response, Status};
 
@@ -10,13 +13,17 @@ use crate::grpc::pb::{
 
 use std::sync::Arc;
 
-/// gRPC tool service.
+/// gRPC tool service for runtime tool registry management.
+///
+/// Supports listing registered tools with their JSON schema,
+/// invoking tools by name, and dynamic registration/removal of
+/// external tools.
 pub struct GrpcToolService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcToolService {
-    /// Creates a new tool service.
+    /// Creates a new tool service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }

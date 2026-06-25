@@ -5,83 +5,87 @@ use thiserror::Error;
 use super::run::RunId;
 
 /// Errors that can occur during runtime execution.
+///
+/// Covers provider resolution, session management, run lifecycle, policy
+/// enforcement, tool execution, storage, snapshot recovery, doom-loop
+/// detection, and input admission failures.
 #[derive(Debug, Error)]
 pub enum RuntimeError {
-    /// Provider not found in registry.
+    /// The requested provider was not found in the registry.
     #[error("provider not found: {0}")]
     ProviderNotFound(String),
 
-    /// Session not found.
+    /// The requested session does not exist.
     #[error("session not found: {0}")]
     SessionNotFound(uuid::Uuid),
 
-    /// Run not found.
+    /// The requested run was not found.
     #[error("run not found: {0}")]
     RunNotFound(RunId),
 
-    /// Run is in invalid state for operation.
+    /// Operation cannot proceed because the run is in an unexpected state.
     #[error("invalid run state: expected {expected}, got {actual}")]
     InvalidRunState {
-        /// Expected state.
+        /// Expected state descriptor.
         expected: String,
-        /// Actual state.
+        /// Actual state descriptor.
         actual: String,
     },
 
-    /// Maximum iteration limit exceeded.
+    /// The run exceeded the maximum allowed model call iterations.
     #[error("iteration limit exceeded: {0}")]
     IterationLimitExceeded(usize),
 
-    /// Token budget exceeded.
+    /// Accumulated token usage exceeded the configured budget.
     #[error("token budget exceeded: {used} > {limit}")]
     TokenBudgetExceeded {
-        /// Tokens used.
+        /// Tokens consumed so far.
         used: usize,
-        /// Token limit.
+        /// Maximum allowed tokens.
         limit: usize,
     },
 
-    /// Context length exceeded the model's maximum.
+    /// Estimated context size exceeds the model's maximum context window.
     #[error("context length exceeded: model context {context}, estimated {estimated}")]
     ContextOverflow {
-        /// Model context window size.
+        /// Model's maximum context window size.
         context: u32,
-        /// Estimated token usage.
+        /// Estimated token usage for the full context.
         estimated: usize,
     },
 
-    /// Session is already being processed by another run.
+    /// Session is locked by another concurrent run.
     #[error("session busy: {0}")]
     SessionBusy(uuid::Uuid),
 
-    /// Tool execution timeout.
+    /// A tool call exceeded its configured execution timeout.
     #[error("tool execution timeout: {tool}")]
     ToolTimeout {
-        /// Tool name.
+        /// Name of the timed-out tool.
         tool: String,
     },
 
-    /// Provider error.
+    /// An error propagated from the provider layer.
     #[error(transparent)]
     Provider(#[from] crate::error::ProviderError),
 
-    /// Context error.
+    /// An error propagated from the context layer.
     #[error(transparent)]
     Context(#[from] crate::error::ContextError),
 
-    /// Storage error.
+    /// An error propagated from the storage layer.
     #[error(transparent)]
     Storage(#[from] crate::error::StorageError),
 
-    /// Tool error.
+    /// An error propagated from the tool layer.
     #[error(transparent)]
     Tool(#[from] crate::error::ToolError),
 
-    /// Snapshot or recovery failed.
+    /// Snapshot persistence or recovery failed.
     #[error("recovery error: {0}")]
     RecoveryFailed(String),
 
-    /// Doom loop detected — agent is stuck in repetitive tool call pattern.
+    /// Doom loop detected — agent is stuck in a repetitive tool call pattern.
     #[error("doom loop detected: {description}")]
     DoomLoopDetected {
         /// Human-readable description of the detected pattern.
@@ -91,13 +95,13 @@ pub enum RuntimeError {
     /// Input was rejected by the admission pipeline.
     #[error("input rejected: {input_id} — {reason}")]
     InputRejected {
-        /// Input identifier.
+        /// Identifier of the rejected input.
         input_id: crate::runtime::input::InputId,
-        /// Rejection reason.
+        /// Reason for rejection.
         reason: String,
     },
 
-    /// Input admission internal error.
+    /// Internal error during input admission processing.
     #[error("input admission error: {0}")]
     InputAdmissionFailed(String),
 }

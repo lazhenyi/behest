@@ -1,4 +1,7 @@
 //! UsageService and MetricsService gRPC implementation.
+//!
+//! Provides RPCs for querying token usage (per-session or aggregated)
+//! and exposing runtime metrics in both JSON and Prometheus formats.
 
 use tonic::{Request, Response, Status};
 
@@ -11,13 +14,16 @@ use crate::grpc::pb::{
 use super::pb::TokenUsage;
 use std::sync::Arc;
 
-/// gRPC usage service.
+/// gRPC usage service for token consumption tracking.
+///
+/// Returns per-session usage records and aggregate token counts
+/// across all sessions.
 pub struct GrpcUsageService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcUsageService {
-    /// Creates a new usage service.
+    /// Creates a new usage service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }
@@ -95,13 +101,16 @@ impl UsageService for GrpcUsageService {
     }
 }
 
-/// gRPC metrics service.
+/// gRPC metrics service for runtime observability.
+///
+/// Exposes server metrics (uptime, active runs, session count)
+/// as JSON or in Prometheus exposition format for scraping.
 pub struct GrpcMetricsService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcMetricsService {
-    /// Creates a new metrics service.
+    /// Creates a new metrics service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }

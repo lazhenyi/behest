@@ -10,6 +10,9 @@
 //! |---------|---------|------|--------|-----------|-------|
 //! | `openai` | [`openai::OpenAiChatAdapter`] | ✅ | ✅ | ✅ | ✅ |
 //! | `anthropic` | [`anthropic::AnthropicChatAdapter`] | ✅ | ✅ | ❌ | ✅ |
+//!
+//! Shared HTTP and SSE infrastructure lives in the private `http` and `sse`
+//! submodules and is compiled whenever at least one adapter feature is enabled.
 
 #[cfg(any(feature = "openai", feature = "anthropic"))]
 pub(crate) mod http;

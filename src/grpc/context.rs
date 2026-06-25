@@ -1,4 +1,7 @@
 //! ContextService gRPC implementation.
+//!
+//! Provides RPCs for building session context from adapters and
+//! listing available context adapters registered in the runtime.
 
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
@@ -10,13 +13,16 @@ use crate::grpc::pb::{
 
 use std::sync::Arc;
 
-/// gRPC context service.
+/// gRPC context service for building structured prompts.
+///
+/// Assembles context from registered adapters (files, tools, etc.)
+/// into a message list for a given session.
 pub struct GrpcContextService {
     state: Arc<super::state::GrpcState>,
 }
 
 impl GrpcContextService {
-    /// Creates a new context service.
+    /// Creates a new context service backed by the given shared state.
     #[must_use]
     pub fn new(state: Arc<super::state::GrpcState>) -> Self {
         Self { state }
