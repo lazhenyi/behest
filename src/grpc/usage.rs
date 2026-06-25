@@ -43,7 +43,6 @@ impl UsageService for GrpcUsageService {
         let records = if let Some(sid) = session_id {
             self.state
                 .runtime
-                .store()
                 .executions()
                 .list_usage(&sid)
                 .await
@@ -52,7 +51,6 @@ impl UsageService for GrpcUsageService {
             let sessions = self
                 .state
                 .runtime
-                .store()
                 .sessions()
                 .list_sessions()
                 .await
@@ -62,7 +60,6 @@ impl UsageService for GrpcUsageService {
                 let mut usage = self
                     .state
                     .runtime
-                    .store()
                     .executions()
                     .list_usage(&s.id)
                     .await
@@ -122,7 +119,6 @@ impl MetricsService for GrpcMetricsService {
         let total_sessions = self
             .state
             .runtime
-            .store()
             .sessions()
             .list_sessions()
             .await
@@ -149,7 +145,6 @@ impl MetricsService for GrpcMetricsService {
         let total_sessions = self
             .state
             .runtime
-            .store()
             .sessions()
             .list_sessions()
             .await

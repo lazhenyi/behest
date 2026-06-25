@@ -36,7 +36,6 @@ impl EmbeddingService for GrpcEmbeddingService {
         let store = self
             .state
             .runtime
-            .store()
             .embeddings()
             .ok_or_else(|| Status::unavailable("embedding store not configured"))?;
 
@@ -78,7 +77,6 @@ impl EmbeddingService for GrpcEmbeddingService {
         let store = self
             .state
             .runtime
-            .store()
             .embeddings()
             .ok_or_else(|| Status::unavailable("embedding store not configured"))?;
 
@@ -113,7 +111,6 @@ impl EmbeddingService for GrpcEmbeddingService {
         let store = self
             .state
             .runtime
-            .store()
             .embeddings()
             .ok_or_else(|| Status::unavailable("embedding store not configured"))?;
 
@@ -137,7 +134,6 @@ impl EmbeddingService for GrpcEmbeddingService {
         let store = self
             .state
             .runtime
-            .store()
             .embeddings()
             .ok_or_else(|| Status::unavailable("embedding store not configured"))?;
 

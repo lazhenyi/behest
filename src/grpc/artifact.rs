@@ -36,7 +36,6 @@ impl ArtifactService for GrpcArtifactService {
         let store = self
             .state
             .runtime
-            .store()
             .artifacts()
             .ok_or_else(|| Status::unavailable("artifact store not configured"))?;
 
@@ -79,7 +78,6 @@ impl ArtifactService for GrpcArtifactService {
         let store = self
             .state
             .runtime
-            .store()
             .artifacts()
             .ok_or_else(|| Status::unavailable("artifact store not configured"))?;
 
@@ -106,7 +104,6 @@ impl ArtifactService for GrpcArtifactService {
         let store = self
             .state
             .runtime
-            .store()
             .artifacts()
             .ok_or_else(|| Status::unavailable("artifact store not configured"))?;
 
@@ -130,7 +127,6 @@ impl ArtifactService for GrpcArtifactService {
         let store = self
             .state
             .runtime
-            .store()
             .artifacts()
             .ok_or_else(|| Status::unavailable("artifact store not configured"))?;
 
@@ -158,7 +154,6 @@ impl ArtifactService for GrpcArtifactService {
         let store = self
             .state
             .runtime
-            .store()
             .artifacts()
             .ok_or_else(|| Status::unavailable("artifact store not configured"))?;
 

@@ -45,7 +45,6 @@ impl SessionService for GrpcSessionService {
         let created = self
             .state
             .runtime
-            .store()
             .sessions()
             .create_session(sess)
             .await
@@ -75,7 +74,6 @@ impl SessionService for GrpcSessionService {
         let sessions = self
             .state
             .runtime
-            .store()
             .sessions()
             .list_sessions_paginated(pagination, crate::store::SessionFilter::default())
             .await
@@ -97,7 +95,6 @@ impl SessionService for GrpcSessionService {
         let Some(session) = self
             .state
             .runtime
-            .store()
             .sessions()
             .get_session(&id)
             .await
@@ -125,7 +122,6 @@ impl SessionService for GrpcSessionService {
         let session = self
             .state
             .runtime
-            .store()
             .sessions()
             .update_session(&id, title, model.as_ref())
             .await
@@ -146,7 +142,6 @@ impl SessionService for GrpcSessionService {
 
         self.state
             .runtime
-            .store()
             .sessions()
             .delete_session(&id)
             .await

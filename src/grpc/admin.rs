@@ -35,7 +35,6 @@ impl AdminService for GrpcAdminService {
         let total_sessions = self
             .state
             .runtime
-            .store()
             .sessions()
             .list_sessions()
             .await
