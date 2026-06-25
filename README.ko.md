@@ -54,6 +54,8 @@
 | 채팅 모델 타입 | 메시지, 콘텐츠 파트, 도구 호출, 응답 형식, 토큰 사용량, 종료 이유 |
 | 도구 런타임 | `Tool`, `FunctionTool`, `ExternalTool`, `ToolRegistry`, 스키마 생성, 실행 디스패치 |
 | 에이전트 런타임 | 컨텍스트 구성, 모델 호출, 도구 루프, 세션 영속화, 이벤트 발사 |
+| 런타임 호출 | `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, 전송 중립 emit/on 파사드 |
+| 런타임 스트림 | `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub`, 리플레이 + 라이브 팬아웃 |
 | 런타임 보안 | 세션 게이트, 런타임 정책, 입력 허가, 둠 루프 감지, 도구 출력 절단 |
 | 스토리지 | 메모리 스토리지, Redis, SQLx, MongoDB, SurrealDB, 객체 스토리지, Qdrant 임베딩 |
 | 컨텍스트와 RAG | 컨텍스트 어댑터, 정적/함수 어댑터, 선택적 RAG 어댑터 |

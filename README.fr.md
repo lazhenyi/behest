@@ -54,6 +54,8 @@ Le nom `behest` évite délibérément les métaphores gonflées comme « brain 
 | Types modèle chat | messages, parties de contenu, appels d'outils, formats de réponse, utilisation de tokens, raisons de fin |
 | Runtime d'outils | `Tool`, `FunctionTool`, `ExternalTool`, `ToolRegistry`, génération de schema, dispatch d'exécution |
 | Runtime d'agent | construction de contexte, appels modèle, boucle d'outils, persistance de session, émission d'événements |
+| Invocation runtime | `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, facade emit/on neutre au transport |
+| Stream runtime | `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub`, replay + diffusion en direct |
 | Sécurité runtime | porte de session, politique runtime, admission d'entrée, détection de boucle morte, troncature de sortie d'outils |
 | Stockage | stockage mémoire, Redis, SQLx, MongoDB, SurrealDB, stockage objet, embeddings Qdrant |
 | Contexte et RAG | adaptateurs de contexte, adaptateurs statiques/fonction, adaptateur RAG optionnel |

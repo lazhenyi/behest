@@ -54,6 +54,8 @@ The name `behest` deliberately avoids inflated metaphors like "brain / cognition
 | Chat model types | messages, content parts, tool calls, response formats, token usage, finish reasons |
 | Tool runtime | `Tool`, `FunctionTool`, `ExternalTool`, `ToolRegistry`, schema generation, execution dispatch |
 | Agent runtime | context building, model calls, tool loop, session persistence, event emission |
+| Runtime invocation | `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, transport-neutral emit/on facade |
+| Runtime stream | `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub`, replay + live fanout |
 | Runtime safety | session gate, runtime policy, input admission, doom-loop detection, tool output truncation |
 | Storage | memory stores, Redis, SQLx, MongoDB, SurrealDB, object storage, Qdrant embeddings |
 | Context and RAG | context adapters, static/function adapters, optional RAG adapter |

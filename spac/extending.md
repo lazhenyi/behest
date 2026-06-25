@@ -54,6 +54,43 @@ pub mod myprovider;
 
 ## Runtime 扩展
 
+### 新增 RuntimeInvocation 事件类型
+
+在 `src/runtime/invocation.rs` 的 `EventKind` enum 中新增 variant 时：
+
+1. 在 `EventKind` enum 中添加新 variant
+2. 在 `EventKind::matches()` 中添加对应 match arm（映射到 `InvocationEvent::Agent` 或 `InvocationEvent::Chat`）
+3. 如果是 AgentEvent variant，在 `src/runtime/event.rs` 中同步新增
+4. 如果是 ChatStreamEvent variant，确保对应的 transport adapter 会填充它
+
+### 新增 RuntimeEventStore backend
+
+实现 `RuntimeEventStore` trait（在 `src/runtime/event_store.rs` 中定义）：
+
+```rust
+#[async_trait]
+pub trait RuntimeEventStore: Send + Sync {
+    async fn append(&self, envelope: RuntimeEventEnvelope) -> Result<(), RuntimeEventStoreError>;
+    async fn list_after(&self, room: RuntimeRoom, after_seq: u64) -> Result<Vec<RuntimeEventEnvelope>, RuntimeEventStoreError>;
+}
+```
+
+已有实现：`MemoryRuntimeEventStore`（内存）、`FailingRuntimeEventStore`（测试用）。
+
+### 新增 RuntimeStreamAdapter backend
+
+实现 `RuntimeStreamAdapter` trait（在 `src/runtime/stream_adapter.rs` 中定义）：
+
+```rust
+#[async_trait]
+pub trait RuntimeStreamAdapter: Send + Sync {
+    async fn publish(&self, envelope: RuntimeEventEnvelope) -> Result<(), RuntimeStreamError>;
+    fn subscribe(&self, room: RuntimeRoom) -> BoxRuntimeEventStream;
+}
+```
+
+已有实现：`MemoryRuntimeStreamAdapter`（内存 broadcast）、`FailingRuntimeStreamAdapter`（测试用）。
+
 ### 新增 AgentEvent variant
 
 在 `src/runtime/event.rs` 中新增 variant 时，同步更新：

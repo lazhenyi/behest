@@ -40,6 +40,11 @@
               │   accumulator.rs ← StreamAccumulator (text + tool call) │
               │   memory.rs ← MemoryRunStore                            │
               │   error.rs  ← RuntimeError enum                         │
+              │   invocation.rs ← RuntimeInvocation (emit/on facade)    │
+              │   event_store.rs ← RuntimeEventStore (replay source)    │
+              │   stream.rs ← RuntimeEventEnvelope, RuntimeRoom         │
+              │   stream_adapter.rs ← RuntimeStreamAdapter (live fanout)│
+              │   subscription.rs ← RuntimeSubscriptionHub (replay+live)│
               └────────────────────────────┬────────────────────────────┘
                                            │ persists via
               ┌────────────────────────────┼────────────────────────────┐
@@ -79,7 +84,7 @@
 | 模块 | 职责 | 对外暴露 |
 |------|------|---------|
 | `provider/` | 模型无关 trait、类型、注册表 | `ChatProvider`, `EmbeddingProvider`, `ProviderRegistry`, message/tool 类型, `ProviderConfig`, `ProviderId`, `ModelName` |
-| `runtime/` | agent 执行内核：状态机、事件、策略、compaction、输入准入、后台作业 | `AgentRuntime`, `RunOutput`, `AgentEvent`, `RuntimePolicy`, `ModelRouter`, `RunState`, `InputAdmission`, `BackgroundJobPool`, `ContextPipeline`, `ToolRuntime` |
+| `runtime/` | agent 执行内核：状态机、事件、策略、compaction、输入准入、后台作业、调用门面、流基础设施 | `AgentRuntime`, `RunOutput`, `AgentEvent`, `RuntimePolicy`, `ModelRouter`, `RunState`, `InputAdmission`, `BackgroundJobPool`, `ContextPipeline`, `ToolRuntime`, `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub` |
 | `agent/` | agent 定义（primary/subagent）和权限 | `AgentDefinition`, `AgentRegistry`, `AgentMode`, `PermissionRule`, `PermissionEffect` |
 | `adapt/` | HTTP adapter 实现（OpenAI, Anthropic） | feature-gated，不暴露到 prelude |
 | `store/` | 持久化抽象 | `SessionStore`, `EmbeddingStore`, `ExecutionStore`, `ArtifactStore`, `CompactionMeta`, `SessionStats`，feature-gated backends（memory/redis/sql/mongodb/surrealdb/qdrant/object） |

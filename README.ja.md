@@ -54,6 +54,8 @@
 | チャットモデルタイプ | メッセージ、コンテンツパーツ、ツール呼び出し、レスポンスフォーマット、トークン使用量、終了理由 |
 | ツールランタイム | `Tool`、`FunctionTool`、`ExternalTool`、`ToolRegistry`、スキーマ生成、実行ディスパッチ |
 | エージェントランタイム | コンテキスト構築、モデル呼び出し、ツールループ、セッション永続化、イベント発行 |
+| ランタイム呼び出し | `RuntimeInvocation`、`EmitRequest`、`EventKind`、`Control`、トランスポート中立な emit/on ファサード |
+| ランタイムストリーム | `RuntimeEventStore`、`RuntimeStreamAdapter`、`RuntimeSubscriptionHub`、リプレイ + ライブファナウト |
 | ランタイムセキュリティ | セッションゲート、ランタイムポリシー、入力准入、ドゥームループ検出、ツール出力切り詰め |
 | ストレージ | メモリストレージ、Redis、SQLx、MongoDB、SurrealDB、オブジェクトストレージ、Qdrant 埋め込み |
 | コンテキストと RAG | コンテキストアダプター、静的/関数アダプター、オプション RAG アダプター |
