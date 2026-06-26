@@ -56,6 +56,7 @@
 | エージェントランタイム | コンテキスト構築、モデル呼び出し、ツールループ、セッション永続化、イベント発行 |
 | ランタイム呼び出し | `RuntimeInvocation`、`EmitRequest`、`EventKind`、`Control`、トランスポート中立な emit/on ファサード |
 | ランタイムストリーム | `RuntimeEventStore`、`RuntimeStreamAdapter`、`RuntimeSubscriptionHub`、リプレイ + ライブファナウト |
+| 推論グラフ | `ReasoningGraph`、`ReasoningOperator`、`ControlKind`、DAG ベースの推論戦略 |
 | ランタイムセキュリティ | セッションゲート、ランタイムポリシー、入力准入、ドゥームループ検出、ツール出力切り詰め |
 | ストレージ | メモリストレージ、Redis、SQLx、MongoDB、SurrealDB、オブジェクトストレージ、Qdrant 埋め込み |
 | コンテキストと RAG | コンテキストアダプター、静的/関数アダプター、オプション RAG アダプター |

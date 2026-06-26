@@ -56,6 +56,7 @@ The name `behest` deliberately avoids inflated metaphors like "brain / cognition
 | Agent runtime | context building, model calls, tool loop, session persistence, event emission |
 | Runtime invocation | `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, transport-neutral emit/on facade |
 | Runtime stream | `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub`, replay + live fanout |
+| Reasoning graph | `ReasoningGraph`, `ReasoningOperator`, `ControlKind`, DAG-based reasoning strategies |
 | Runtime safety | session gate, runtime policy, input admission, doom-loop detection, tool output truncation |
 | Storage | memory stores, Redis, SQLx, MongoDB, SurrealDB, object storage, Qdrant embeddings |
 | Context and RAG | context adapters, static/function adapters, optional RAG adapter |
