@@ -112,6 +112,7 @@ struct ToolCallAccumulator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
     fn accumulate_text() {
@@ -171,5 +172,72 @@ mod tests {
             }
             _ => panic!("Expected Assistant message with tool calls"),
         }
+    }
+
+    #[test]
+    fn to_message_empty_accumulator_returns_empty_assistant() {
+        let acc = StreamAccumulator::new();
+
+        let msg = acc.to_message();
+        match msg {
+            Message::Assistant {
+                content,
+                tool_calls,
+            } => {
+                assert!(content.is_empty());
+                assert!(tool_calls.is_empty());
+            }
+            _ => panic!("Expected empty Assistant message"),
+        }
+    }
+
+    #[test]
+    fn invalid_tool_arguments_fall_back_to_null() {
+        let mut acc = StreamAccumulator::new();
+        acc.start_tool_call("call_1".to_string(), "tool".to_string());
+        acc.append_tool_arguments("call_1", "{invalid json");
+
+        let calls = acc.tool_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].arguments, Value::Null);
+    }
+
+    #[test]
+    fn clear_resets_text_and_tool_calls() {
+        let mut acc = StreamAccumulator::new();
+        acc.append_text("partial");
+        acc.start_tool_call("call_1".to_string(), "tool".to_string());
+        acc.append_tool_arguments("call_1", "{}");
+
+        acc.clear();
+
+        assert_eq!(acc.text(), "");
+        assert!(acc.tool_calls().is_empty());
+        match acc.to_message() {
+            Message::Assistant {
+                content,
+                tool_calls,
+            } => {
+                assert!(content.is_empty());
+                assert!(tool_calls.is_empty());
+            }
+            _ => panic!("Expected empty Assistant message after clear"),
+        }
+    }
+
+    #[test]
+    fn starting_same_tool_call_id_replaces_previous_state() {
+        let mut acc = StreamAccumulator::new();
+        acc.start_tool_call("call_1".to_string(), "first_tool".to_string());
+        acc.append_tool_arguments("call_1", r#"{"old":"value"}"#);
+
+        acc.start_tool_call("call_1".to_string(), "second_tool".to_string());
+        acc.append_tool_arguments("call_1", r#"{"fresh":true}"#);
+
+        let calls = acc.tool_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "second_tool");
+        assert_eq!(calls[0].arguments["fresh"], true);
+        assert_eq!(calls[0].arguments.get("old"), None);
     }
 }
