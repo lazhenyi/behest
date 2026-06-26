@@ -220,6 +220,7 @@ dotenvy = "0.15"
 config = { version = "0.15", default-features = false, features = ["toml", "json", "yaml"] }
 
 indexmap = { version = "2", features = ["serde"] }
+petgraph = "0.8"
 bytes = "1"
 base64 = "0.22"
 

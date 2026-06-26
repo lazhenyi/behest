@@ -19,6 +19,7 @@
 //! - [`store`]: Persistence layer for sessions, embeddings, and artifacts
 //! - [`adapt`]: Concrete provider adapters (OpenAI, Anthropic)
 //! - [`error`]: Error types and result aliases
+//! - [`reasoning`]: Reasoning graph runtime — unified IR for agent reasoning strategies
 //! - [`rag`]: Retrieval-Augmented Generation context adapter (feature = `rag`)
 //! - [`queue`]: External event publishing to message brokers (feature = `queue`)
 
@@ -29,6 +30,7 @@ pub mod context;
 pub mod error;
 pub mod prelude;
 pub mod provider;
+pub mod reasoning;
 pub mod runtime;
 pub mod store;
 pub mod token;
