@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.2] — 2026-06-25
+
+### Added
+
+#### Runtime backends
+- PostgreSQL-backed `RuntimeEventStore` (`sqlx-postgres` feature).
+- Redis-backed `SessionDataStore` (`redis` feature).
+- NATS JetStream-backed `RuntimeStreamAdapter` (`nats` feature).
+- `SessionDataStore` trait for per-session temporary key-value storage.
+- `MemorySessionDataStore` and `FileSessionDataStore` implementations.
+
+### Fixed
+- Correct rustdoc intra-doc links in new backend modules.
+
 ## [0.3.1] — 2026-06-25
 
 ### Changed
