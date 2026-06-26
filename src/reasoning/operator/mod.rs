@@ -217,7 +217,7 @@ pub trait MemoryStore: Send + Sync {
 ///
 /// # Provider priority
 ///
-/// If an operator has its own provider (via [`provider`](ReasoningOperator::provider)),
+/// If an operator has its own provider (via `provider` field),
 /// it should use that. Otherwise fall back to [`OperatorContext::llm`].
 ///
 /// # Prompt

@@ -20,15 +20,13 @@ use crate::reasoning::state::TaskState;
 
 /// A directed graph of reasoning operators connected by control flow edges.
 ///
-/// The graph is the central data structure produced by a [`ReasoningStrategy`].
+/// The graph is the central data structure produced by a reasoning strategy.
 /// It can be traversed by a graph scheduler that executes operators in
 /// topological order, respecting control flow semantics.
 ///
 /// The graph is always a **DAG** (directed acyclic graph). Iterative behaviour
-/// (e.g., the ReAct loop) is expressed via [`loop_start`] — the runtime
+/// (e.g., the ReAct loop) is expressed via [`loop_start`](Self::loop_start) — the runtime
 /// re-executes from that node until the [`TerminationPolicy`] triggers.
-///
-/// [`ReasoningStrategy`]: crate::reasoning::strategy::ReasoningStrategy
 pub struct ReasoningGraph {
     pub(crate) graph: DiGraph<GraphNode, ControlEdge>,
     pub(crate) termination: TerminationPolicy,
