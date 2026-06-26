@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.3] — 2026-06-26
+
+### Added
+
+#### Reasoning graph
+- `ReasoningGraph`: directed acyclic graph for multi-step reasoning strategies.
+- `ReasoningOperator` trait: atomic state transformation with LLM/tool integration.
+- `ControlKind`: edge semantics (pipeline, branch, loop, fan-out/in).
+- 22 built-in operators: decompose, analyze, synthesize, hypothesize, verify, etc.
+- `CustomOperator`: user-defined operator with closure-based implementation.
+- `ReasoningScheduler`: graph traversal with topological ordering.
+- `ReasoningControl`: cooperative cancellation and progress tracking.
+
+#### Examples
+- Added 14 comprehensive examples covering all major features.
+
 ## [0.3.2] — 2026-06-25
 
 ### Added
