@@ -29,7 +29,7 @@
 //! use std::sync::Arc;
 //! use behest::runtime::extension::ExtensionPoint;
 //!
-//! let ep: ExtensionPoint<dyn String> = ExtensionPoint::new();
+//! let ep: ExtensionPoint<String> = ExtensionPoint::new();
 //! ep.register("greeting", Arc::new("hello".to_string())).unwrap();
 //! assert_eq!(ep.get("greeting").map(|s| (*s).clone()), Some("hello".to_string()));
 //! ```
