@@ -15,6 +15,8 @@ use crate::store::{
 
 use super::error::{RuntimeError, RuntimeResult};
 use super::event::AgentEvent;
+use super::extension::ExtensionPoint;
+use super::extensions::Extensions;
 use super::run::{RunId, RunRecord, RunStatus};
 use super::state::RunState;
 
@@ -158,6 +160,12 @@ pub struct RuntimeStore {
     runs: Box<dyn RunStore>,
     embeddings: Option<Box<dyn EmbeddingStore>>,
     artifacts: Option<Box<dyn ArtifactStore>>,
+
+    sessions_ep: ExtensionPoint<dyn SessionStore>,
+    executions_ep: ExtensionPoint<dyn ExecutionStore>,
+    runs_ep: ExtensionPoint<dyn RunStore>,
+    embeddings_ep: ExtensionPoint<dyn EmbeddingStore>,
+    artifacts_ep: ExtensionPoint<dyn ArtifactStore>,
 }
 
 impl RuntimeStore {
@@ -178,6 +186,11 @@ impl RuntimeStore {
             runs,
             embeddings: None,
             artifacts: None,
+            sessions_ep: ExtensionPoint::new(),
+            executions_ep: ExtensionPoint::new(),
+            runs_ep: ExtensionPoint::new(),
+            embeddings_ep: ExtensionPoint::new(),
+            artifacts_ep: ExtensionPoint::new(),
         }
     }
 
@@ -223,6 +236,50 @@ impl RuntimeStore {
     #[must_use]
     pub fn artifacts(&self) -> Option<&dyn ArtifactStore> {
         self.artifacts.as_deref()
+    }
+
+    /// Creates a `RuntimeStore` from an [`Extensions`] facade.
+    ///
+    /// Currently a transitional stub that builds default in-memory stores.
+    /// Future versions will read from the provided `Extensions`.
+    #[must_use]
+    #[allow(unused_variables)]
+    pub fn from_extensions(exts: &Extensions) -> Self {
+        Self::new(
+            Box::new(crate::store::memory::MemorySessionStore::new()),
+            Box::new(crate::store::memory::MemoryExecutionStore::new()),
+            Box::new(crate::runtime::memory::MemoryRunStore::new()),
+        )
+    }
+
+    /// Returns the session store extension point.
+    #[must_use]
+    pub fn sessions_ep(&self) -> &ExtensionPoint<dyn SessionStore> {
+        &self.sessions_ep
+    }
+
+    /// Returns the execution store extension point.
+    #[must_use]
+    pub fn executions_ep(&self) -> &ExtensionPoint<dyn ExecutionStore> {
+        &self.executions_ep
+    }
+
+    /// Returns the run store extension point.
+    #[must_use]
+    pub fn runs_ep(&self) -> &ExtensionPoint<dyn RunStore> {
+        &self.runs_ep
+    }
+
+    /// Returns the embedding store extension point.
+    #[must_use]
+    pub fn embeddings_ep(&self) -> &ExtensionPoint<dyn EmbeddingStore> {
+        &self.embeddings_ep
+    }
+
+    /// Returns the artifact store extension point.
+    #[must_use]
+    pub fn artifacts_ep(&self) -> &ExtensionPoint<dyn ArtifactStore> {
+        &self.artifacts_ep
     }
 
     /// Creates or loads a session.
