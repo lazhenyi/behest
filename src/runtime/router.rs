@@ -3,6 +3,7 @@
 //! Wraps `ProviderRegistry` with capability checking, retry logic,
 //! fallback strategies, and usage aggregation.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use tracing::{debug, warn};
@@ -18,14 +19,14 @@ use super::policy::RuntimePolicy;
 /// Routes model requests (chat and embedding) across providers with
 /// capability checking, exponential-backoff retry, and fallback chains.
 pub struct ModelRouter {
-    registry: ProviderRegistry,
+    registry: Arc<ProviderRegistry>,
     policy: RuntimePolicy,
 }
 
 impl ModelRouter {
     /// Creates a new model router.
     #[must_use]
-    pub fn new(registry: ProviderRegistry, policy: RuntimePolicy) -> Self {
+    pub fn new(registry: Arc<ProviderRegistry>, policy: RuntimePolicy) -> Self {
         Self { registry, policy }
     }
 
@@ -273,7 +274,7 @@ mod tests {
         let mut registry = ProviderRegistry::new();
         registry.register_chat(MockChatProvider::new("test", 0));
 
-        let router = ModelRouter::new(registry, RuntimePolicy::new());
+        let router = ModelRouter::new(Arc::new(registry), RuntimePolicy::new());
         let request = ChatRequest::new(ModelName::new("test"));
 
         let result = router
@@ -289,7 +290,7 @@ mod tests {
         registry.register_chat(MockChatProvider::new("test", 2));
 
         let policy = RuntimePolicy::new().with_max_retries(3);
-        let router = ModelRouter::new(registry, policy);
+        let router = ModelRouter::new(Arc::new(registry), policy);
         let request = ChatRequest::new(ModelName::new("test"));
 
         let result = router
@@ -305,7 +306,7 @@ mod tests {
         registry.register_chat(MockChatProvider::new("test", 10));
 
         let policy = RuntimePolicy::new().with_max_retries(2);
-        let router = ModelRouter::new(registry, policy);
+        let router = ModelRouter::new(Arc::new(registry), policy);
         let request = ChatRequest::new(ModelName::new("test"));
 
         let result = router
@@ -323,7 +324,7 @@ mod tests {
             ProviderCapabilities::chat(),
         ));
 
-        let router = ModelRouter::new(registry, RuntimePolicy::new());
+        let router = ModelRouter::new(Arc::new(registry), RuntimePolicy::new());
         let request = ChatRequest::new(ModelName::new("test"));
 
         let required = ProviderCapabilities {
@@ -349,7 +350,7 @@ mod tests {
         registry.register_chat(MockChatProvider::new("fallback", 0));
 
         let policy = RuntimePolicy::new().with_max_retries(0);
-        let router = ModelRouter::new(registry, policy);
+        let router = ModelRouter::new(Arc::new(registry), policy);
         let request = ChatRequest::new(ModelName::new("test"));
 
         let providers = vec![ProviderId::new("primary"), ProviderId::new("fallback")];
@@ -363,7 +364,7 @@ mod tests {
     #[tokio::test]
     async fn route_chat_should_return_error_for_unknown_provider() {
         let registry = ProviderRegistry::new();
-        let router = ModelRouter::new(registry, RuntimePolicy::new());
+        let router = ModelRouter::new(Arc::new(registry), RuntimePolicy::new());
         let request = ChatRequest::new(ModelName::new("test"));
 
         let result = router
