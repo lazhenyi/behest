@@ -46,7 +46,7 @@ impl AdminService for GrpcAdminService {
             .list_sessions()
             .await
             .map_or(0, |s| s.len());
-        let provider_count = self.state.runtime.providers().chat_ids().count();
+        let provider_count = self.state.runtime.providers().chat_ids().len();
         let tool_count = self.state.runtime.tools().registry().specs().len();
         let context_adapter_count = self.state.runtime.context().adapter_names().count();
 

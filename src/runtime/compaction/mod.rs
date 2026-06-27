@@ -375,7 +375,7 @@ impl CompactionService {
             .config
             .provider
             .clone()
-            .or_else(|| self.providers.chat_ids().next().cloned())
+            .or_else(|| self.providers.chat_ids().first().cloned())
             .ok_or_else(|| {
                 RuntimeError::ProviderNotFound("no provider configured for compaction".to_owned())
             })?;

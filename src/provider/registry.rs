@@ -1,6 +1,5 @@
 //! Runtime registry for provider implementations.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::error::ProviderError;
@@ -8,12 +7,13 @@ use crate::provider::{
     ChatProvider, ChatRequest, ChatResponse, EmbeddingProvider, EmbeddingRequest,
     EmbeddingResponse, ProviderId, ProviderResult,
 };
+use crate::runtime::ExtensionPoint;
 
 /// In-memory registry for chat and embedding providers keyed by [`ProviderId`].
 #[derive(Clone, Default)]
 pub struct ProviderRegistry {
-    chat: HashMap<ProviderId, Arc<dyn ChatProvider>>,
-    embeddings: HashMap<ProviderId, Arc<dyn EmbeddingProvider>>,
+    chat: ExtensionPoint<dyn ChatProvider>,
+    embeddings: ExtensionPoint<dyn EmbeddingProvider>,
 }
 
 impl ProviderRegistry {
@@ -29,7 +29,8 @@ impl ProviderRegistry {
         P: ChatProvider + 'static,
     {
         let id = provider.id();
-        self.chat.insert(id, Arc::new(provider))
+        self.chat
+            .register_or_replace(id.as_str(), Arc::new(provider))
     }
 
     /// Registers an already shared chat provider.
@@ -37,7 +38,8 @@ impl ProviderRegistry {
         &mut self,
         provider: Arc<dyn ChatProvider>,
     ) -> Option<Arc<dyn ChatProvider>> {
-        self.chat.insert(provider.id(), provider)
+        self.chat
+            .register_or_replace(provider.id().as_str(), provider)
     }
 
     /// Registers an embedding provider and returns the replaced provider, if any.
@@ -46,7 +48,8 @@ impl ProviderRegistry {
         P: EmbeddingProvider + 'static,
     {
         let id = provider.id();
-        self.embeddings.insert(id, Arc::new(provider))
+        self.embeddings
+            .register_or_replace(id.as_str(), Arc::new(provider))
     }
 
     /// Registers an already shared embedding provider.
@@ -54,29 +57,34 @@ impl ProviderRegistry {
         &mut self,
         provider: Arc<dyn EmbeddingProvider>,
     ) -> Option<Arc<dyn EmbeddingProvider>> {
-        self.embeddings.insert(provider.id(), provider)
+        self.embeddings
+            .register_or_replace(provider.id().as_str(), provider)
     }
 
     /// Returns a registered chat provider by id.
     #[must_use]
     pub fn chat(&self, id: &ProviderId) -> Option<Arc<dyn ChatProvider>> {
-        self.chat.get(id).map(Arc::clone)
+        self.chat.get(id.as_str())
     }
 
     /// Returns a registered embedding provider by id.
     #[must_use]
     pub fn embedding(&self, id: &ProviderId) -> Option<Arc<dyn EmbeddingProvider>> {
-        self.embeddings.get(id).map(Arc::clone)
+        self.embeddings.get(id.as_str())
     }
 
     /// Returns registered chat provider identifiers.
-    pub fn chat_ids(&self) -> impl Iterator<Item = &ProviderId> {
-        self.chat.keys()
+    pub fn chat_ids(&self) -> Vec<ProviderId> {
+        self.chat.names().into_iter().map(ProviderId::new).collect()
     }
 
     /// Returns registered embedding provider identifiers.
-    pub fn embedding_ids(&self) -> impl Iterator<Item = &ProviderId> {
-        self.embeddings.keys()
+    pub fn embedding_ids(&self) -> Vec<ProviderId> {
+        self.embeddings
+            .names()
+            .into_iter()
+            .map(ProviderId::new)
+            .collect()
     }
 
     /// Routes a chat request to a registered provider.
@@ -206,8 +214,8 @@ mod tests {
     #[test]
     fn registry_should_be_empty_when_new() {
         let registry = ProviderRegistry::new();
-        assert!(registry.chat_ids().count() == 0);
-        assert!(registry.embedding_ids().count() == 0);
+        assert!(registry.chat_ids().is_empty());
+        assert!(registry.embedding_ids().is_empty());
     }
 
     #[test]
@@ -238,7 +246,7 @@ mod tests {
         let replaced = registry.register_chat(MockChatProvider { id: id.clone() });
 
         assert!(replaced.is_some());
-        assert_eq!(registry.chat_ids().count(), 1);
+        assert_eq!(registry.chat_ids().len(), 1);
     }
 
     #[tokio::test]
