@@ -52,14 +52,14 @@ pub use crate::runtime::{
     AgentEvent, AgentRuntime, AnyComponent, AnyComponentError, CompactionResult, CompactionService,
     Component, ComponentContext, ComponentDescriptor, ComponentFactory, ComponentRegistry,
     ComponentState, Control, EmitRequest, EventKind, ExtensionError, ExtensionPoint, Extensions,
-    FileSessionDataStore, FileSnapshotStore, InvocationError, InvocationEvent, InvocationHandle,
-    InvocationSession, MemorySessionDataStore, ModelRouter, RegistryError, RunId, RunOutput,
-    RunRequest, RunStatus, RuntimeError, RuntimeEventBridge, RuntimeEventBridgeError,
-    RuntimeEventBridgeHandle, RuntimeEventEnvelope, RuntimeEventId, RuntimeEventStore,
-    RuntimeEventStoreError, RuntimeInvocation, RuntimePolicy, RuntimeRoom, RuntimeStreamAdapter,
-    RuntimeStreamError, RuntimeSubscription, RuntimeSubscriptionError, RuntimeSubscriptionHub,
-    SessionDataError, SessionDataStore, ShutdownToken, Snapshot, SnapshotStore, TypedAnyComponent,
-    TypedFactory,
+    FactoryError, FactoryFn, FactoryRegistry, FileSessionDataStore, FileSnapshotStore,
+    InvocationError, InvocationEvent, InvocationHandle, InvocationSession, MemorySessionDataStore,
+    ModelRouter, RegistryError, RunId, RunOutput, RunRequest, RunStatus, RuntimeError,
+    RuntimeEventBridge, RuntimeEventBridgeError, RuntimeEventBridgeHandle, RuntimeEventEnvelope,
+    RuntimeEventId, RuntimeEventStore, RuntimeEventStoreError, RuntimeInvocation, RuntimePolicy,
+    RuntimeRoom, RuntimeStreamAdapter, RuntimeStreamError, RuntimeSubscription,
+    RuntimeSubscriptionError, RuntimeSubscriptionHub, SessionDataError, SessionDataStore,
+    ShutdownToken, Snapshot, SnapshotStore, TypedAnyComponent, TypedFactory,
 };
 pub use crate::tool_output::{ToolOutputConfig, TruncationResult};
 

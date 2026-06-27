@@ -17,6 +17,7 @@ pub mod event;
 pub mod event_store;
 pub mod extension;
 pub mod extensions;
+pub mod factory_registry;
 pub mod input;
 pub mod invocation;
 pub mod job;
@@ -58,6 +59,7 @@ pub use event_store::{
 };
 pub use extension::{ExtensionError, ExtensionPoint};
 pub use extensions::Extensions;
+pub use factory_registry::{FactoryError, FactoryFn, FactoryRegistry};
 pub use input::{
     InputAdmission, InputAdmissionConfig, InputEvent, InputId, InputRecord, InputState,
 };
