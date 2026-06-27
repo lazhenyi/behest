@@ -5,7 +5,7 @@
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::pb::{
+use crate::transport::grpc::pb::{
     GetCircuitBreakerRequest, GetCircuitBreakerResponse, GetCompactionConfigRequest,
     GetCompactionConfigResponse, UpdateCompactionConfigRequest, UpdateCompactionConfigResponse,
     compaction_service_server::CompactionService,

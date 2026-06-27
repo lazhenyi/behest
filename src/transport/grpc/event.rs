@@ -116,7 +116,9 @@ pub fn to_proto(event: &AgentEvent, sequence: u64, run_id: &str) -> PbAgentEvent
         sequence,
         run_id: run_id.to_owned(),
         event: Some(event_kind),
-        timestamp: Some(crate::grpc::to_prost_timestamp(chrono::Utc::now())),
+        timestamp: Some(crate::transport::grpc::to_prost_timestamp(
+            chrono::Utc::now(),
+        )),
         trace_id,
         span_id,
     }

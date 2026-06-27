@@ -6,7 +6,7 @@
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::pb::{
+use crate::transport::grpc::pb::{
     GetProviderRequest, GetProviderResponse, ListModelsRequest, ListModelsResponse,
     ListProvidersRequest, ListProvidersResponse, ModelEntry, ProviderInfo,
     model_service_server::ModelService, provider_service_server::ProviderService,

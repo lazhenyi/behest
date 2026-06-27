@@ -28,6 +28,7 @@ use crate::error::{Error, Result};
 use crate::provider::ProviderId;
 use crate::runtime::{AgentRuntime, ContextPipeline, RuntimePolicy, RuntimeStore, ToolRuntime};
 
+pub mod component;
 pub mod loader;
 pub mod provider;
 pub mod runtime;
@@ -42,6 +43,7 @@ pub mod rag;
 #[cfg(feature = "queue")]
 pub mod queue;
 
+pub use component::{ComponentConfig, ComponentFile, TransportConfig};
 pub use loader::ConfigLoader;
 pub use provider::{ProviderConfig, ProviderType};
 pub use runtime::{RuntimeConfig, RuntimePolicyConfig};
@@ -89,6 +91,18 @@ pub struct AgentConfig {
     #[cfg(feature = "server")]
     #[serde(default)]
     pub grpc: GrpcConfig,
+
+    /// Declarative component declarations for the composable runtime
+    /// model. Populated by `[[component]]` config sections and consumed
+    /// by `ComponentRegistry`.
+    #[serde(default)]
+    pub components: Vec<ComponentConfig>,
+
+    /// Declarative transport declarations for the composable runtime
+    /// model. Populated by `[[transport]]` config sections and
+    /// consumed by the future `TransportHub`.
+    #[serde(default)]
+    pub transports: Vec<TransportConfig>,
 }
 
 impl AgentConfig {
@@ -267,6 +281,37 @@ impl AgentConfigBuilder {
     pub fn with_stores(mut self, stores: StoreConfig) -> Self {
         self.config.stores = stores;
         self
+    }
+
+    /// Append a component declaration to the configuration.
+    #[must_use]
+    pub fn with_component(mut self, component: ComponentConfig) -> Self {
+        self.config.components.push(component);
+        self
+    }
+
+    /// Append a transport declaration to the configuration.
+    #[must_use]
+    pub fn with_transport(mut self, transport: TransportConfig) -> Self {
+        self.config.transports.push(transport);
+        self
+    }
+
+    /// Load `[[component]]` and `[[transport]]` sections from a TOML
+    /// string and append them to the configuration.
+    ///
+    /// # Errors
+    /// Returns the underlying TOML parse error if the input is invalid.
+    pub fn with_component_toml(mut self, toml_text: &str) -> Result<Self> {
+        let file = ComponentFile::from_toml(toml_text)
+            .map_err(|e| Error::Config(format!("component toml parse error: {e}")))?;
+        for c in file.component {
+            self.config.components.push(c);
+        }
+        for t in file.transport {
+            self.config.transports.push(t);
+        }
+        Ok(self)
     }
 
     /// Sets the RAG configuration (highest priority).

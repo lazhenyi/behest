@@ -5,7 +5,7 @@
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::pb::{
+use crate::transport::grpc::pb::{
     ContentPart, CreateSessionRequest, CreateSessionResponse, DeleteSessionRequest,
     DeleteSessionResponse, GetSessionRequest, GetSessionResponse, ImageContent, JsonContent,
     ListMessagesRequest, ListMessagesResponse, ListSessionsRequest, ListSessionsResponse, Message,
@@ -188,8 +188,8 @@ fn session_to_proto(s: &crate::store::Session) -> Session {
         model: Some(ModelName {
             value: s.model.as_str().to_owned(),
         }),
-        created_at: Some(crate::grpc::to_prost_timestamp(s.created_at)),
-        updated_at: Some(crate::grpc::to_prost_timestamp(s.updated_at)),
+        created_at: Some(crate::transport::grpc::to_prost_timestamp(s.created_at)),
+        updated_at: Some(crate::transport::grpc::to_prost_timestamp(s.updated_at)),
         metadata: s.metadata.to_string(),
     }
 }

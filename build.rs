@@ -9,20 +9,20 @@ fn main() {
             .file_descriptor_set_path("agent_descriptor_set.bin")
             .compile_protos(
                 &[
-                    "src/grpc/proto/agent/v1/common.proto",
-                    "src/grpc/proto/agent/v1/provider.proto",
-                    "src/grpc/proto/agent/v1/session.proto",
-                    "src/grpc/proto/agent/v1/run.proto",
-                    "src/grpc/proto/agent/v1/tool.proto",
-                    "src/grpc/proto/agent/v1/usage.proto",
-                    "src/grpc/proto/agent/v1/embedding.proto",
-                    "src/grpc/proto/agent/v1/artifact.proto",
-                    "src/grpc/proto/agent/v1/agent.proto",
-                    "src/grpc/proto/agent/v1/context.proto",
-                    "src/grpc/proto/agent/v1/admin.proto",
-                    "src/grpc/proto/agent/v1/chat.proto",
+                    "src/transport/grpc/proto/agent/v1/common.proto",
+                    "src/transport/grpc/proto/agent/v1/provider.proto",
+                    "src/transport/grpc/proto/agent/v1/session.proto",
+                    "src/transport/grpc/proto/agent/v1/run.proto",
+                    "src/transport/grpc/proto/agent/v1/tool.proto",
+                    "src/transport/grpc/proto/agent/v1/usage.proto",
+                    "src/transport/grpc/proto/agent/v1/embedding.proto",
+                    "src/transport/grpc/proto/agent/v1/artifact.proto",
+                    "src/transport/grpc/proto/agent/v1/agent.proto",
+                    "src/transport/grpc/proto/agent/v1/context.proto",
+                    "src/transport/grpc/proto/agent/v1/admin.proto",
+                    "src/transport/grpc/proto/agent/v1/chat.proto",
                 ],
-                &["src/grpc/proto"],
+                &["src/transport/grpc/proto"],
             )
             .expect("failed to compile protos");
     }

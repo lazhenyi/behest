@@ -11,13 +11,13 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
-use crate::grpc::pb::{
+use crate::provider::{ChatRequest, ModelName, ProviderId};
+use crate::transport::grpc::pb::{
     ChatStreamEvent as PbChatStreamEvent, ChatStreamFinished, ChatTextDelta,
     ChatToolCallArgumentsDelta, ChatToolCallCompleted, ChatToolCallStarted,
     chat_stream_event::Event as ChatEventKind,
 };
-use crate::grpc::state::GrpcState;
-use crate::provider::{ChatRequest, ModelName, ProviderId};
+use crate::transport::grpc::state::GrpcState;
 
 use super::pb::chat_service_server::ChatService;
 use super::pb::{ChatStreamStarted, RawChatRequest};

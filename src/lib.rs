@@ -27,6 +27,7 @@ pub mod agent;
 pub mod config;
 pub mod context;
 pub mod error;
+pub mod health;
 pub mod prelude;
 pub mod provider;
 pub mod runtime;
@@ -43,18 +44,22 @@ pub mod rag;
 pub mod queue;
 
 #[cfg(feature = "server")]
-pub mod grpc;
+pub mod transport;
 
 pub use crate::error::{ContextError, Error, ProviderError, Result, StorageError, ToolError};
+pub use crate::health::HealthStatus;
 pub use crate::runtime::{
-    AgentEvent, AgentRuntime, CompactionResult, CompactionService, Control, EmitRequest, EventKind,
+    AgentEvent, AgentRuntime, AnyComponent, AnyComponentError, CompactionResult, CompactionService,
+    Component, ComponentContext, ComponentDescriptor, ComponentFactory, ComponentRegistry,
+    ComponentState, Control, EmitRequest, EventKind, ExtensionError, ExtensionPoint, Extensions,
     FileSessionDataStore, FileSnapshotStore, InvocationError, InvocationEvent, InvocationHandle,
-    InvocationSession, MemorySessionDataStore, ModelRouter, RunId, RunOutput, RunRequest,
-    RunStatus, RuntimeError, RuntimeEventBridge, RuntimeEventBridgeError, RuntimeEventBridgeHandle,
-    RuntimeEventEnvelope, RuntimeEventId, RuntimeEventStore, RuntimeEventStoreError,
-    RuntimeInvocation, RuntimePolicy, RuntimeRoom, RuntimeStreamAdapter, RuntimeStreamError,
-    RuntimeSubscription, RuntimeSubscriptionError, RuntimeSubscriptionHub, SessionDataError,
-    SessionDataStore, Snapshot, SnapshotStore,
+    InvocationSession, MemorySessionDataStore, ModelRouter, RegistryError, RunId, RunOutput,
+    RunRequest, RunStatus, RuntimeError, RuntimeEventBridge, RuntimeEventBridgeError,
+    RuntimeEventBridgeHandle, RuntimeEventEnvelope, RuntimeEventId, RuntimeEventStore,
+    RuntimeEventStoreError, RuntimeInvocation, RuntimePolicy, RuntimeRoom, RuntimeStreamAdapter,
+    RuntimeStreamError, RuntimeSubscription, RuntimeSubscriptionError, RuntimeSubscriptionHub,
+    SessionDataError, SessionDataStore, ShutdownToken, Snapshot, SnapshotStore, TypedAnyComponent,
+    TypedFactory,
 };
 pub use crate::tool_output::{ToolOutputConfig, TruncationResult};
 

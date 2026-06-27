@@ -7,12 +7,12 @@
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::grpc::pb::{
+use crate::runtime::RunId;
+use crate::transport::grpc::pb::{
     DeleteSnapshotRequest, DeleteSnapshotResponse, GetSnapshotRequest, GetSnapshotResponse,
     ListSnapshotsRequest, ListSnapshotsResponse, SnapshotInfo,
     snapshot_service_server::SnapshotService,
 };
-use crate::runtime::RunId;
 
 use std::sync::Arc;
 
@@ -112,7 +112,7 @@ fn parse_run_id(s: &str) -> Result<RunId, Status> {
 }
 
 fn snapshot_to_proto(snapshot: &crate::runtime::Snapshot) -> SnapshotInfo {
-    use crate::grpc::pb::RunStatus as PbRunStatus;
+    use crate::transport::grpc::pb::RunStatus as PbRunStatus;
 
     let status = match snapshot.status {
         crate::runtime::RunStatus::Pending => PbRunStatus::Pending,
@@ -131,11 +131,13 @@ fn snapshot_to_proto(snapshot: &crate::runtime::Snapshot) -> SnapshotInfo {
         session_id: snapshot.session_id.to_string(),
         status: status as i32,
         iteration: u32::try_from(snapshot.iteration).unwrap_or(u32::MAX),
-        total_usage: Some(crate::grpc::pb::TokenUsage {
+        total_usage: Some(crate::transport::grpc::pb::TokenUsage {
             input_tokens: snapshot.total_usage.input_tokens,
             output_tokens: snapshot.total_usage.output_tokens,
             total_tokens: snapshot.total_usage.total_tokens,
         }),
-        timestamp: Some(crate::grpc::to_prost_timestamp(snapshot.timestamp)),
+        timestamp: Some(crate::transport::grpc::to_prost_timestamp(
+            snapshot.timestamp,
+        )),
     }
 }

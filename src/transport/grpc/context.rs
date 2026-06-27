@@ -6,7 +6,7 @@
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::grpc::pb::{
+use crate::transport::grpc::pb::{
     BuildContextRequest, BuildContextResponse, ListContextAdaptersRequest,
     ListContextAdaptersResponse, context_service_server::ContextService,
 };
@@ -51,10 +51,10 @@ impl ContextService for GrpcContextService {
             .await
             .map_err(|e| super::runtime_error_to_status(&e))?;
 
-        let messages: Vec<crate::grpc::pb::Message> = output
+        let messages: Vec<crate::transport::grpc::pb::Message> = output
             .messages()
             .iter()
-            .map(crate::grpc::session::message_to_proto)
+            .map(crate::transport::grpc::session::message_to_proto)
             .collect();
 
         Ok(Response::new(BuildContextResponse { messages }))

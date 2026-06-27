@@ -8,16 +8,22 @@
 pub mod accumulator;
 pub mod agent;
 pub mod compaction;
+pub mod component;
+pub mod component_factory;
 pub mod context;
 pub mod doom_loop;
 pub mod error;
 pub mod event;
 pub mod event_store;
+pub mod extension;
+pub mod extensions;
 pub mod input;
 pub mod invocation;
 pub mod job;
+pub mod lifecycle;
 pub mod memory;
 pub mod policy;
+pub mod registry;
 pub mod router;
 pub mod run;
 mod run_loop;
@@ -36,6 +42,11 @@ pub mod session_data_store;
 
 pub use agent::{AgentRuntime, RunOutput};
 pub use compaction::{CompactionResult, CompactionService};
+pub use component::{AnyComponent, AnyComponentError, Component, ComponentContext};
+pub use component_factory::{
+    ChatProviderAny, ChatProviderComponent, ChatProviderFactory, EmbeddingProviderAny,
+    EmbeddingProviderComponent, EmbeddingProviderFactory, EmptyConfig, WrapperError,
+};
 pub use context::ContextPipeline;
 pub use doom_loop::{DoomLoopConfig, DoomLoopDetector, DoomLoopType, ToolCallFingerprint};
 pub use error::RuntimeError;
@@ -44,6 +55,8 @@ pub use event_store::{
     DynRuntimeEventStore, FailingRuntimeEventStore, MemoryRuntimeEventStore, RuntimeEventStore,
     RuntimeEventStoreError,
 };
+pub use extension::{ExtensionError, ExtensionPoint};
+pub use extensions::Extensions;
 pub use input::{
     InputAdmission, InputAdmissionConfig, InputEvent, InputId, InputRecord, InputState,
 };
@@ -53,7 +66,12 @@ pub use invocation::{
     SessionDataError, SessionDataStore,
 };
 pub use job::{BackgroundJob, BackgroundJobPool, JobConditions, JobPriority, JobType};
+pub use lifecycle::ShutdownToken;
 pub use policy::{CompactionConfig, RuntimePolicy};
+pub use registry::{
+    ComponentDescriptor, ComponentFactory, ComponentRegistry, ComponentState, RegistryError,
+    TypedAnyComponent, TypedFactory,
+};
 pub use router::ModelRouter;
 pub use run::{RunId, RunRequest, RunStatus};
 pub use session_gate::{SessionGate, SessionGuard};

@@ -8,13 +8,13 @@
 use std::sync::Arc;
 
 use behest::config::AgentConfigBuilder;
-use behest::grpc::admin::GrpcAdminService;
-use behest::grpc::pb::{
+use behest::transport::grpc::admin::GrpcAdminService;
+use behest::transport::grpc::pb::{
     GetCompactionStatusRequest, GetJobPoolStatusRequest, GetRuntimeStatusRequest,
     admin_service_server::AdminService,
 };
-use behest::grpc::run::RunTaskRegistry;
-use behest::grpc::state::GrpcState;
+use behest::transport::grpc::run::RunTaskRegistry;
+use behest::transport::grpc::state::GrpcState;
 use tonic::Request;
 
 async fn setup() -> Arc<GrpcState> {

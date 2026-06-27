@@ -7,7 +7,7 @@
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::grpc::pb::{
+use crate::transport::grpc::pb::{
     AgentEvent as PbAgentEvent, CancelRunRequest, CancelRunResponse, CreateRunRequest,
     CreateRunResponse, GetRunOutputRequest, GetRunOutputResponse, GetRunRequest, GetRunResponse,
     ListRunsRequest, ListRunsResponse, RunOutput as PbRunOutput, RunRecord as PbRunRecord,
@@ -15,11 +15,11 @@ use crate::grpc::pb::{
     run_service_server::RunService,
 };
 
-use crate::grpc::event::to_proto;
 use crate::provider::{ModelName, ProviderId};
 use crate::runtime::RunId;
 use crate::runtime::RunRequest;
 use crate::runtime::run::{RunRecord, RunStatus};
+use crate::transport::grpc::event::to_proto;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -418,7 +418,7 @@ impl RunService for GrpcRunService {
         }
 
         let finish_reason = state.last_finish.as_ref().map_or(
-            crate::grpc::pb::FinishReason::Unspecified as i32,
+            crate::transport::grpc::pb::FinishReason::Unspecified as i32,
             super::event::finish_reason_to_proto,
         );
 
@@ -579,15 +579,15 @@ fn run_record_to_proto(r: &RunRecord) -> PbRunRecord {
         id: r.id.to_string(),
         session_id: r.session_id.to_string(),
         status: run_status_to_pb(r.status).into(),
-        provider: Some(crate::grpc::pb::ProviderId {
+        provider: Some(crate::transport::grpc::pb::ProviderId {
             value: r.provider.to_string(),
         }),
-        model: Some(crate::grpc::pb::ModelName {
+        model: Some(crate::transport::grpc::pb::ModelName {
             value: r.model.as_str().to_owned(),
         }),
         metadata: r.metadata.to_string(),
-        created_at: Some(crate::grpc::to_prost_timestamp(r.created_at)),
-        updated_at: Some(crate::grpc::to_prost_timestamp(r.updated_at)),
+        created_at: Some(crate::transport::grpc::to_prost_timestamp(r.created_at)),
+        updated_at: Some(crate::transport::grpc::to_prost_timestamp(r.updated_at)),
     }
 }
 

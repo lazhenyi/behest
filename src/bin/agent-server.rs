@@ -19,9 +19,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use behest::config::AgentConfigBuilder;
-use behest::grpc::auth::AuthInterceptor;
-use behest::grpc::state::GrpcState;
-use behest::grpc::{
+use behest::transport::grpc::auth::AuthInterceptor;
+use behest::transport::grpc::state::GrpcState;
+use behest::transport::grpc::{
     admin::GrpcAdminService,
     agent_grpc::GrpcAgentService,
     artifact::GrpcArtifactService,
@@ -125,7 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
     health_reporter
-        .set_serving::<behest::grpc::pb::provider_service_server::ProviderServiceServer<
+        .set_serving::<behest::transport::grpc::pb::provider_service_server::ProviderServiceServer<
             GrpcProviderService,
         >>()
         .await;

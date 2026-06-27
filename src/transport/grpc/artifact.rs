@@ -6,7 +6,7 @@
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::grpc::pb::{
+use crate::transport::grpc::pb::{
     Artifact as PbArtifact, DeleteArtifactRequest, DeleteArtifactResponse,
     DeleteArtifactsBySessionRequest, DeleteArtifactsBySessionResponse, GetArtifactRequest,
     GetArtifactResponse, ListArtifactsRequest, ListArtifactsResponse, PutArtifactRequest,
@@ -185,6 +185,8 @@ fn artifact_to_proto(artifact: crate::store::Artifact) -> PbArtifact {
         content_type: artifact.content_type,
         data: artifact.data,
         metadata: artifact.metadata.to_string(),
-        created_at: Some(crate::grpc::to_prost_timestamp(artifact.created_at)),
+        created_at: Some(crate::transport::grpc::to_prost_timestamp(
+            artifact.created_at,
+        )),
     }
 }

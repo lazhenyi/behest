@@ -5,7 +5,7 @@
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::pb::{
+use crate::transport::grpc::pb::{
     GetToolRequest, GetToolResponse, InvokeToolRequest, InvokeToolResponse, ListToolsRequest,
     ListToolsResponse, RegisterToolRequest, RegisterToolResponse, ToolInfo, UnregisterToolRequest,
     UnregisterToolResponse, tool_service_server::ToolService,

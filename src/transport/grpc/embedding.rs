@@ -6,7 +6,7 @@
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 
-use crate::grpc::pb::{
+use crate::transport::grpc::pb::{
     DeleteEmbeddingRequest, DeleteEmbeddingResponse, DeleteEmbeddingsBySessionRequest,
     DeleteEmbeddingsBySessionResponse, EmbeddingRecord as PbEmbeddingRecord,
     ScoredEmbedding as PbScoredEmbedding, SearchEmbeddingsRequest, SearchEmbeddingsResponse,
@@ -165,6 +165,8 @@ fn embedding_record_to_proto(record: crate::store::EmbeddingRecord) -> PbEmbeddi
         model: record.model,
         vector: record.vector,
         metadata: record.metadata.to_string(),
-        created_at: Some(crate::grpc::to_prost_timestamp(record.created_at)),
+        created_at: Some(crate::transport::grpc::to_prost_timestamp(
+            record.created_at,
+        )),
     }
 }

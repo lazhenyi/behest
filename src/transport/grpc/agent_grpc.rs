@@ -6,14 +6,14 @@
 use tonic::{Request, Response, Status};
 
 use crate::agent::{AgentDefinition, AgentMode, PermissionEffect, PermissionRule};
-use crate::grpc::pb::{
+use crate::provider::ModelName;
+use crate::transport::grpc::pb::{
     AgentDefinition as PbAgentDefinition, AgentMode as PbAgentMode, GetAgentRequest,
     GetAgentResponse, ListAgentsRequest, ListAgentsResponse,
     PermissionEffect as PbPermissionEffect, PermissionRule as PbPermissionRule,
     RegisterAgentRequest, RegisterAgentResponse, SetDefaultAgentRequest, SetDefaultAgentResponse,
     agent_service_server::AgentService,
 };
-use crate::provider::ModelName;
 
 use std::sync::Arc;
 
@@ -123,13 +123,15 @@ fn agent_definition_from_proto(pb: PbAgentDefinition) -> Result<AgentDefinition,
                 p.effect
                     .and_then(|e| e.effect)
                     .map_or(PermissionEffect::Ask, |e| match e {
-                        crate::grpc::pb::permission_effect::Effect::Allow(_) => {
+                        crate::transport::grpc::pb::permission_effect::Effect::Allow(_) => {
                             PermissionEffect::Allow
                         }
-                        crate::grpc::pb::permission_effect::Effect::Deny(_) => {
+                        crate::transport::grpc::pb::permission_effect::Effect::Deny(_) => {
                             PermissionEffect::Deny
                         }
-                        crate::grpc::pb::permission_effect::Effect::Ask(_) => PermissionEffect::Ask,
+                        crate::transport::grpc::pb::permission_effect::Effect::Ask(_) => {
+                            PermissionEffect::Ask
+                        }
                     });
 
             PermissionRule {
@@ -176,13 +178,19 @@ fn agent_definition_to_proto(agent: &AgentDefinition) -> PbAgentDefinition {
         .map(|p| {
             let effect = match p.effect {
                 PermissionEffect::Allow => Some(PbPermissionEffect {
-                    effect: Some(crate::grpc::pb::permission_effect::Effect::Allow(true)),
+                    effect: Some(
+                        crate::transport::grpc::pb::permission_effect::Effect::Allow(true),
+                    ),
                 }),
                 PermissionEffect::Deny => Some(PbPermissionEffect {
-                    effect: Some(crate::grpc::pb::permission_effect::Effect::Deny(true)),
+                    effect: Some(crate::transport::grpc::pb::permission_effect::Effect::Deny(
+                        true,
+                    )),
                 }),
                 PermissionEffect::Ask => Some(PbPermissionEffect {
-                    effect: Some(crate::grpc::pb::permission_effect::Effect::Ask(true)),
+                    effect: Some(crate::transport::grpc::pb::permission_effect::Effect::Ask(
+                        true,
+                    )),
                 }),
             };
 
@@ -194,9 +202,12 @@ fn agent_definition_to_proto(agent: &AgentDefinition) -> PbAgentDefinition {
         })
         .collect();
 
-    let model = agent.model.as_ref().map(|m| crate::grpc::pb::ModelName {
-        value: m.as_str().to_string(),
-    });
+    let model = agent
+        .model
+        .as_ref()
+        .map(|m| crate::transport::grpc::pb::ModelName {
+            value: m.as_str().to_string(),
+        });
 
     let max_steps = agent
         .max_steps

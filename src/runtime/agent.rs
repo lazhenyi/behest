@@ -21,6 +21,7 @@ use super::context::ContextPipeline;
 use super::doom_loop::DoomLoopDetector;
 use super::error::{RuntimeError, RuntimeResult};
 use super::event::{AgentEvent, RunStarted};
+use super::extensions::Extensions;
 use super::input::{InputAdmission, InputRecord};
 use super::job::BackgroundJobPool;
 use super::policy::RuntimePolicy;
@@ -52,6 +53,11 @@ pub struct AgentRuntime {
     pub(super) event_publisher: Option<Arc<dyn EventPublisher>>,
     pub(super) background_jobs: Option<Arc<BackgroundJobPool>>,
     snapshot_store: Option<Arc<dyn SnapshotStore>>,
+    /// Composable, hot-pluggable facade over every pluggable runtime
+    /// element. Constructed empty by [`AgentRuntime::new`] and
+    /// populated as the operator configures the runtime via
+    /// `with_*` setters.
+    pub(super) extensions: Arc<Extensions>,
 }
 
 impl AgentRuntime {
@@ -86,6 +92,7 @@ impl AgentRuntime {
             event_publisher: None,
             background_jobs: None,
             snapshot_store: None,
+            extensions: Arc::new(Extensions::new()),
         }
     }
 
@@ -111,6 +118,11 @@ impl AgentRuntime {
         if let Some(ref jobs) = self.background_jobs {
             jobs.set_event_publisher(Arc::clone(&publisher));
         }
+        // Mirror into the Extensions facade for unified access.
+        let _ = self
+            .extensions
+            .event_publishers
+            .register_or_replace("default", Arc::clone(&publisher));
         self.event_publisher = Some(publisher);
         self
     }
@@ -121,8 +133,23 @@ impl AgentRuntime {
     /// turn, allowing crashed runs to be resumed via [`resume`](Self::resume).
     #[must_use]
     pub fn with_snapshot_store(mut self, snapshot_store: Arc<dyn SnapshotStore>) -> Self {
+        let _ = self
+            .extensions
+            .snapshot_stores
+            .register_or_replace("default", Arc::clone(&snapshot_store));
         self.snapshot_store = Some(snapshot_store);
         self
+    }
+
+    /// Returns the composable [`Extensions`] facade.
+    ///
+    /// Use this to register, replace, or look up providers, tools,
+    /// context adapters, stores, and other pluggable elements by name.
+    /// The facade is shared with the runtime's internal references, so
+    /// registering here is equivalent to using the `with_*` setters.
+    #[must_use]
+    pub fn extensions(&self) -> &Arc<Extensions> {
+        &self.extensions
     }
 
     /// Returns a reference to the background job pool, if configured.

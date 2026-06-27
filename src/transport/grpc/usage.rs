@@ -5,7 +5,7 @@
 
 use tonic::{Request, Response, Status};
 
-use crate::grpc::pb::{
+use crate::transport::grpc::pb::{
     GetMetricsRequest, GetMetricsResponse, GetPrometheusMetricsRequest,
     GetPrometheusMetricsResponse, GetUsageRequest, GetUsageResponse, UsageRecord as PbUsageRecord,
     metrics_service_server::MetricsService, usage_service_server::UsageService,
@@ -84,7 +84,7 @@ impl UsageService for GrpcUsageService {
                     output_tokens: r.output_tokens,
                     total_tokens: r.total_tokens,
                 }),
-                recorded_at: Some(crate::grpc::to_prost_timestamp(r.created_at)),
+                recorded_at: Some(crate::transport::grpc::to_prost_timestamp(r.created_at)),
             })
             .collect();
 
