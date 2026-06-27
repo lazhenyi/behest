@@ -8,6 +8,7 @@ use crate::provider::{
     EmbeddingResponse, ProviderId, ProviderResult,
 };
 use crate::runtime::ExtensionPoint;
+use crate::runtime::extensions::Extensions;
 
 /// In-memory registry for chat and embedding providers keyed by [`ProviderId`].
 #[derive(Clone, Default)]
@@ -76,6 +77,28 @@ impl ProviderRegistry {
     /// Returns registered chat provider identifiers.
     pub fn chat_ids(&self) -> Vec<ProviderId> {
         self.chat.names().into_iter().map(ProviderId::new).collect()
+    }
+
+    /// Creates a `ProviderRegistry` from an [`Extensions`] facade by
+    /// cloning its chat and embedding extension points.
+    #[must_use]
+    pub fn from_extensions(exts: &Extensions) -> Self {
+        Self {
+            chat: exts.chat_providers.clone(),
+            embeddings: exts.embedding_providers.clone(),
+        }
+    }
+
+    /// Returns the chat provider extension point.
+    #[must_use]
+    pub fn chat_extensions(&self) -> &ExtensionPoint<dyn ChatProvider> {
+        &self.chat
+    }
+
+    /// Returns the embedding provider extension point.
+    #[must_use]
+    pub fn embedding_extensions(&self) -> &ExtensionPoint<dyn EmbeddingProvider> {
+        &self.embeddings
     }
 
     /// Returns registered embedding provider identifiers.

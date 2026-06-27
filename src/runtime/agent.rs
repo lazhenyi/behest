@@ -31,6 +31,7 @@ use super::snapshot::{Snapshot, SnapshotStore};
 use super::store::{RunStore, RuntimeStore};
 use super::tool::ToolRuntime;
 use super::turn::{TurnState, TurnTransition};
+use crate::tool::ToolRegistry;
 use crate::tool_scope::ScopeGuard;
 
 /// Streaming-first agent runtime kernel.
@@ -61,20 +62,22 @@ pub struct AgentRuntime {
 }
 
 impl AgentRuntime {
-    /// Creates a new agent runtime with the given provider registry, context
-    /// pipeline, tool runtime, store, and policy.
+    /// Creates a new agent runtime from an [`Extensions`] facade and a
+    /// [`RuntimePolicy`].
     ///
-    /// The runtime initializes a compaction service, input admission
-    /// pipeline, session gate, and a broadcast channel for run events
-    /// (capacity 256).
+    /// Internally constructs a [`ProviderRegistry`](crate::provider::ProviderRegistry),
+    /// [`RuntimeStore`], [`ContextPipeline`], and [`ToolRuntime`] from the
+    /// extensions or their defaults. Use
+    /// [`with_tool_registry`](Self::with_tool_registry)
+    /// to populate the tool runtime, and the `with_*` setters for
+    /// optional components (background jobs, event publisher, snapshot
+    /// store).
     #[must_use]
-    pub fn new(
-        providers: crate::provider::ProviderRegistry,
-        context: ContextPipeline,
-        tools: ToolRuntime,
-        store: Arc<RuntimeStore>,
-        policy: RuntimePolicy,
-    ) -> Self {
+    pub fn new(extensions: Arc<Extensions>, policy: RuntimePolicy) -> Self {
+        let providers = crate::provider::ProviderRegistry::from_extensions(&extensions);
+        let store = Arc::new(RuntimeStore::from_extensions(&extensions));
+        let context = ContextPipeline::new();
+        let tools = ToolRuntime::new(ToolRegistry::new(), policy.clone());
         let (event_tx, _) = broadcast::channel(256);
         let compaction = CompactionService::new(providers.clone(), policy.compaction.clone());
         let input_admission = InputAdmission::new(policy.input_admission.clone());
@@ -92,8 +95,15 @@ impl AgentRuntime {
             event_publisher: None,
             background_jobs: None,
             snapshot_store: None,
-            extensions: Arc::new(Extensions::new()),
+            extensions,
         }
+    }
+
+    /// Replaces the tool runtime with one backed by the given registry.
+    #[must_use]
+    pub fn with_tool_registry(mut self, registry: ToolRegistry) -> Self {
+        self.tools = ToolRuntime::new(registry, self.policy.clone());
+        self
     }
 
     /// Injects a background job pool for event persistence and publishing.
@@ -651,23 +661,23 @@ mod tests {
     }
 
     fn make_runtime(provider: MockProvider, tools: ToolRegistry) -> AgentRuntime {
-        let mut registry = crate::provider::ProviderRegistry::new();
-        registry.register_chat(provider);
+        let exts = Extensions::new();
+        exts.chat_providers
+            .register_or_replace("mock", Arc::new(provider));
 
         let sessions = MemorySessionStore::new();
         let executions = MemoryExecutionStore::new();
         let runs = MemoryRunStore::new();
-        let store = Arc::new(RuntimeStore::new(
-            Box::new(sessions),
-            Box::new(executions),
-            Box::new(runs),
-        ));
+        exts.session_stores
+            .register_or_replace("default", Arc::new(sessions));
+        exts.execution_stores
+            .register_or_replace("default", Arc::new(executions));
+        exts.run_stores
+            .register_or_replace("default", Arc::new(runs));
 
         let policy = RuntimePolicy::new().with_max_iterations(5);
-        let tool_runtime = ToolRuntime::new(tools, policy.clone());
-        let context = ContextPipeline::new();
 
-        AgentRuntime::new(registry, context, tool_runtime, store, policy)
+        AgentRuntime::new(Arc::new(exts), policy).with_tool_registry(tools)
     }
 
     #[tokio::test]
@@ -953,18 +963,20 @@ mod tests {
         tools: ToolRegistry,
         policy: RuntimePolicy,
     ) -> AgentRuntime {
-        let mut registry = crate::provider::ProviderRegistry::new();
-        registry.register_chat(provider);
+        let exts = Extensions::new();
+        exts.chat_providers
+            .register_or_replace("mock", Arc::new(provider));
+
         let sessions = MemorySessionStore::new();
         let executions = MemoryExecutionStore::new();
         let runs = MemoryRunStore::new();
-        let store = Arc::new(RuntimeStore::new(
-            Box::new(sessions),
-            Box::new(executions),
-            Box::new(runs),
-        ));
-        let tool_runtime = ToolRuntime::new(tools, policy.clone());
-        let context = ContextPipeline::new();
-        AgentRuntime::new(registry, context, tool_runtime, store, policy)
+        exts.session_stores
+            .register_or_replace("default", Arc::new(sessions));
+        exts.execution_stores
+            .register_or_replace("default", Arc::new(executions));
+        exts.run_stores
+            .register_or_replace("default", Arc::new(runs));
+
+        AgentRuntime::new(Arc::new(exts), policy).with_tool_registry(tools)
     }
 }

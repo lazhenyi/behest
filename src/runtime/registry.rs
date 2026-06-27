@@ -252,6 +252,18 @@ pub struct TypedAnyComponent<C: Component> {
     instance: Arc<C>,
 }
 
+impl<C: Component> TypedAnyComponent<C> {
+    /// Wraps a component instance into a type-erased [`AnyComponent`].
+    #[must_use]
+    pub fn new(instance: C) -> Self {
+        Self {
+            name: C::NAME.to_owned(),
+            kind: C::NAME,
+            instance: Arc::new(instance),
+        }
+    }
+}
+
 #[async_trait]
 impl<C: Component> AnyComponent for TypedAnyComponent<C> {
     fn name(&self) -> &'static str {

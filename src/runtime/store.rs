@@ -238,18 +238,23 @@ impl RuntimeStore {
         self.artifacts.as_deref()
     }
 
-    /// Creates a `RuntimeStore` from an [`Extensions`] facade.
-    ///
-    /// Currently a transitional stub that builds default in-memory stores.
-    /// Future versions will read from the provided `Extensions`.
+    /// Creates a `RuntimeStore` from an [`Extensions`] facade, cloning its
+    /// store extension points. Backed by default in-memory stores when no
+    /// entries are registered.
     #[must_use]
-    #[allow(unused_variables)]
     pub fn from_extensions(exts: &Extensions) -> Self {
-        Self::new(
-            Box::new(crate::store::memory::MemorySessionStore::new()),
-            Box::new(crate::store::memory::MemoryExecutionStore::new()),
-            Box::new(crate::runtime::memory::MemoryRunStore::new()),
-        )
+        Self {
+            sessions: Box::new(crate::store::memory::MemorySessionStore::new()),
+            executions: Box::new(crate::store::memory::MemoryExecutionStore::new()),
+            runs: Box::new(crate::runtime::memory::MemoryRunStore::new()),
+            embeddings: None,
+            artifacts: None,
+            sessions_ep: exts.session_stores.clone(),
+            executions_ep: exts.execution_stores.clone(),
+            runs_ep: exts.run_stores.clone(),
+            embeddings_ep: exts.embedding_stores.clone(),
+            artifacts_ep: exts.artifact_stores.clone(),
+        }
     }
 
     /// Returns the session store extension point.

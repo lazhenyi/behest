@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::provider::ProviderId;
-use crate::runtime::{AgentRuntime, ContextPipeline, RuntimePolicy, RuntimeStore, ToolRuntime};
+use crate::runtime::{AgentRuntime, ContextPipeline, RuntimePolicy, RuntimeStore};
 
 pub mod component;
 pub mod loader;
@@ -444,7 +444,22 @@ impl AgentConfigBuilder {
         let sessions = build_session_store(&config.stores).await?;
         let executions = build_execution_store(&config.stores).await?;
         let runs = crate::runtime::memory::MemoryRunStore::new();
-        let store = std::sync::Arc::new(RuntimeStore::new(sessions, executions, Box::new(runs)));
+
+        // Build Extensions from components, then construct runtime from it.
+        let mut exts = crate::runtime::extensions::Extensions::new();
+
+        exts.session_stores
+            .register_or_replace("default", std::sync::Arc::from(sessions));
+        exts.execution_stores
+            .register_or_replace("default", std::sync::Arc::from(executions));
+        exts.run_stores
+            .register_or_replace("default", std::sync::Arc::new(runs));
+
+        // Copy providers from registry into Extensions.
+        exts.chat_providers = registry.chat_extensions().clone();
+        exts.embedding_providers = registry.embedding_extensions().clone();
+
+        let _store = std::sync::Arc::new(RuntimeStore::from_extensions(&exts));
 
         #[allow(unused_mut)]
         let mut context =
@@ -474,11 +489,8 @@ impl AgentConfigBuilder {
             context.register_arc(std::sync::Arc::new(adapter));
         }
 
-        let tool_registry = crate::tool::ToolRegistry::new();
-        let tool_runtime = ToolRuntime::new(tool_registry, policy.clone());
-
         #[allow(unused_mut)]
-        let mut runtime = AgentRuntime::new(registry, context, tool_runtime, store, policy);
+        let mut runtime = AgentRuntime::new(std::sync::Arc::new(exts), policy);
 
         #[cfg(feature = "queue")]
         if let Some(ref queue_config) = config.queue {
