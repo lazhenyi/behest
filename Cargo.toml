@@ -1,6 +1,6 @@
 [package]
 name = "behest"
-version = "0.3.3"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.85"
 resolver = "3"
@@ -220,7 +220,6 @@ dotenvy = "0.15"
 config = { version = "0.15", default-features = false, features = ["toml", "json", "yaml"] }
 
 indexmap = { version = "2", features = ["serde"] }
-petgraph = "0.8"
 bytes = "1"
 base64 = "0.22"
 

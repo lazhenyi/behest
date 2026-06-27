@@ -9,7 +9,7 @@
 [![CI](https://github.com/lazhenyi/behest/actions/workflows/ci.yml/badge.svg)](https://github.com/lazhenyi/behest/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
-**English** · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [Français](README.fr.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Italiano](README.it.md)
+**English** · [简体中文](README.zh-CN.md)
 
 </div>
 
@@ -56,7 +56,6 @@ The name `behest` deliberately avoids inflated metaphors like "brain / cognition
 | Agent runtime | context building, model calls, tool loop, session persistence, event emission |
 | Runtime invocation | `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, transport-neutral emit/on facade |
 | Runtime stream | `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub`, replay + live fanout |
-| Reasoning graph | `ReasoningGraph`, `ReasoningOperator`, `ControlKind`, DAG-based reasoning strategies |
 | Runtime safety | session gate, runtime policy, input admission, doom-loop detection, tool output truncation |
 | Storage | memory stores, Redis, SQLx, MongoDB, SurrealDB, object storage, Qdrant embeddings |
 | Context and RAG | context adapters, static/function adapters, optional RAG adapter |

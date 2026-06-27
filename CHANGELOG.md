@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-06-27
+
+### Removed
+
+- `reasoning` module removed entirely: `ReasoningGraph`, `ReasoningOperator`, 27
+  built-in operators, and the `execute_graph` scheduler. The module was an
+  unmaintained IR with no integration into the runtime, no caller in examples or
+  tests, and its operators were highly duplicated (each ~80 lines of the same
+  prompt-and-parse shape). Removed to keep the crate honest about its scope.
+  This is a breaking change to the public API (`behest::reasoning`).
+- Multi-language README: removed `fr`, `it`, `ja`, `ko`, and `zh-TW`
+  translations. Kept English (`README.md`) and Simplified Chinese
+  (`README.zh-CN.md`).
+- `examples/reasoning_graph.rs` removed alongside the module.
+
 ## [0.3.3] — 2026-06-26
 
 ### Added
