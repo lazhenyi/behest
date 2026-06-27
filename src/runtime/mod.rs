@@ -24,6 +24,7 @@ pub mod lifecycle;
 pub mod memory;
 pub mod policy;
 pub mod registry;
+pub mod replace;
 pub mod router;
 pub mod run;
 mod run_loop;
@@ -72,6 +73,7 @@ pub use registry::{
     ComponentDescriptor, ComponentFactory, ComponentRegistry, ComponentState, RegistryError,
     TypedAnyComponent, TypedFactory,
 };
+pub use replace::{DEFAULT_DRAIN_TIMEOUT, ReplaceError, ReplaceState, ReplaceToken};
 pub use router::ModelRouter;
 pub use run::{RunId, RunRequest, RunStatus};
 pub use session_gate::{SessionGate, SessionGuard};

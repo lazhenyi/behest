@@ -37,8 +37,11 @@
 #![allow(clippy::pedantic)]
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 use thiserror::Error;
+
+use super::replace::{DEFAULT_DRAIN_TIMEOUT, ReplaceError, ReplaceToken};
 
 /// Errors raised by [`ExtensionPoint`] operations.
 #[derive(Debug, Error)]
@@ -68,6 +71,9 @@ pub enum ExtensionError {
     /// Internal lock acquisition failed.
     #[error("extension registry lock poisoned")]
     LockPoisoned,
+    /// Drain-aware replace protocol error.
+    #[error("replace failed: {0}")]
+    Replace(#[from] ReplaceError),
 }
 
 /// Typed, name-indexed collection of `Arc<T>`.
@@ -141,6 +147,49 @@ impl<T: ?Sized> ExtensionPoint<T> {
                 entries
             })
             .unwrap_or_default()
+    }
+
+    /// Begin a drain-aware replace.
+    ///
+    /// Returns a [`ReplaceToken`] that the caller must hand to
+    /// [`ExtensionPoint::complete_replace`] together with the new
+    /// value. The token commits before the previous `Arc<T>` is removed
+    /// from the map, which lets the caller cancel a pending replace
+    /// before the swap becomes visible.
+    ///
+    /// This call only checks that `name` is currently registered; it
+    /// does not write anything. If the name is removed between
+    /// `begin_replace` and `complete_replace`, the latter returns
+    /// [`ExtensionError::NotFound`].
+    ///
+    /// # Errors
+    /// - [`ExtensionError::NotFound`] if the name is not registered.
+    pub fn begin_replace(&self, name: &str) -> Result<ReplaceToken, ExtensionError> {
+        self.begin_replace_with_timeout(name, DEFAULT_DRAIN_TIMEOUT)
+    }
+
+    /// Begin a drain-aware replace with a custom drain timeout.
+    ///
+    /// Behaves like [`ExtensionPoint::begin_replace`] but uses
+    /// `timeout` as the maximum wait for in-flight `Arc<T>` holders to
+    /// release the previous value. When the deadline elapses, the
+    /// previous value is still swapped out (force swap) and a
+    /// `tracing::warn!` is emitted.
+    ///
+    /// # Errors
+    /// - [`ExtensionError::NotFound`] if the name is not registered.
+    pub fn begin_replace_with_timeout(
+        &self,
+        name: &str,
+        timeout: Duration,
+    ) -> Result<ReplaceToken, ExtensionError> {
+        let map = self.read()?;
+        if !map.contains_key(name) {
+            return Err(ExtensionError::NotFound {
+                name: name.to_string(),
+            });
+        }
+        Ok(ReplaceToken::new(timeout))
     }
 
     fn read(
@@ -260,11 +309,81 @@ impl<T: ?Sized + Send + Sync + 'static> ExtensionPoint<T> {
             .ok()
             .and_then(|m| m.get(name).map(Arc::strong_count))
     }
+
+    /// Complete a drain-aware replace previously initiated by
+    /// [`ExtensionPoint::begin_replace`].
+    ///
+    /// The protocol is:
+    ///
+    /// 1. The token is committed (`Pending -> Committed`). If the
+    ///    token was already finalized, the call returns
+    ///    [`ExtensionError::Replace`] without touching the map.
+    /// 2. The previous `Arc<T>` is removed from the map under the
+    ///    write lock, then the lock is released.
+    /// 3. The function polls `Arc::strong_count` of the previous
+    ///    value outside the lock, sleeping up to the token's timeout
+    ///    for in-flight holders to drop their references. Once the
+    ///    strong count falls to one (only the local `old` reference
+    ///    remains) the wait completes early.
+    /// 4. The new `Arc<T>` is written under the write lock. When the
+    ///    deadline elapses before drain, the swap still happens (force
+    ///    swap) and a `tracing::warn!` is emitted.
+    ///
+    /// Returns the previous `Arc<T>` so callers can run teardown
+    /// hooks on the old instance.
+    ///
+    /// # Errors
+    /// - [`ExtensionError::Replace`] if the token was already
+    ///   committed, aborted, or the wait was otherwise rejected.
+    /// - [`ExtensionError::NotFound`] if the name was removed between
+    ///   `begin_replace` and this call.
+    pub async fn complete_replace(
+        self: Arc<Self>,
+        name: &str,
+        new: Arc<T>,
+        token: ReplaceToken,
+    ) -> Result<Arc<T>, ExtensionError> {
+        token.try_commit()?;
+
+        let old = {
+            let mut map = self.write()?;
+            map.remove(name).ok_or_else(|| ExtensionError::NotFound {
+                name: name.to_string(),
+            })?
+        };
+
+        let deadline = Instant::now() + token.timeout();
+        loop {
+            if Arc::strong_count(&old) <= 1 {
+                break;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                tracing::warn!(
+                    name = %name,
+                    strong_count = Arc::strong_count(&old),
+                    timeout = ?token.timeout(),
+                    "extension replace drain deadline exceeded; forcing swap"
+                );
+                break;
+            }
+            let sleep_for = (deadline - now).min(Duration::from_millis(10));
+            tokio::time::sleep(sleep_for).await;
+        }
+
+        {
+            let mut map = self.write()?;
+            map.insert(name.to_string(), new);
+        }
+
+        Ok(old)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::replace::{ReplaceError, ReplaceState};
 
     #[test]
     fn register_and_get_round_trip() {
@@ -406,5 +525,149 @@ mod tests {
         drop(h1);
         drop(h2);
         assert_eq!(ep.strong_count("a"), Some(1));
+    }
+
+    #[tokio::test]
+    async fn replace_drains_in_flight_arcs() {
+        let ep: ExtensionPoint<String> = ExtensionPoint::new();
+        ep.register("a", Arc::new("v1".to_string()))
+            .unwrap_or_else(|e| panic!("{e}"));
+
+        let inflight = ep.get("a").unwrap_or_else(|| panic!("expected Some"));
+        assert_eq!(Arc::strong_count(&inflight), 2);
+
+        let ep_arc: Arc<ExtensionPoint<String>> = Arc::new(ep);
+        let ep_for_complete = ep_arc.clone();
+        let token = ep_arc.begin_replace("a").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(token.state(), ReplaceState::Pending);
+
+        let handle = tokio::spawn(async move {
+            ep_for_complete
+                .complete_replace("a", Arc::new("v2".to_string()), token)
+                .await
+        });
+
+        for _ in 0..32 {
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            !handle.is_finished(),
+            "complete_replace should still be draining while in-flight Arc is held"
+        );
+
+        drop(inflight);
+
+        let join_result =
+            tokio::time::timeout(std::time::Duration::from_secs(2), handle)
+                .await
+                .unwrap_or_else(|_| panic!("complete_replace should not hang after in-flight Arc is dropped"));
+        let prev = match join_result {
+            Ok(r) => r,
+            Err(e) => panic!("task should not panic: {e}"),
+        };
+        let prev = match prev {
+            Ok(v) => v,
+            Err(e) => panic!("complete_replace should succeed: {e}"),
+        };
+        assert_eq!(*prev, "v1");
+        assert_eq!(
+            ep_arc.get("a").map(|s| (*s).clone()),
+            Some("v2".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn replace_force_swaps_after_deadline() {
+        let ep: ExtensionPoint<String> = ExtensionPoint::new();
+        ep.register("a", Arc::new("v1".to_string()))
+            .unwrap_or_else(|e| panic!("{e}"));
+
+        let inflight = ep.get("a").unwrap_or_else(|| panic!("expected Some"));
+
+        let ep_arc: Arc<ExtensionPoint<String>> = Arc::new(ep);
+        let ep_for_complete = ep_arc.clone();
+        let token = ep_arc
+            .begin_replace_with_timeout("a", std::time::Duration::from_millis(100))
+            .unwrap_or_else(|e| panic!("{e}"));
+
+        let handle = tokio::spawn(async move {
+            ep_for_complete
+                .complete_replace("a", Arc::new("v2".to_string()), token)
+                .await
+        });
+
+        let join_result =
+            tokio::time::timeout(std::time::Duration::from_secs(2), handle)
+                .await
+                .unwrap_or_else(|_| {
+                    panic!("complete_replace should complete after deadline even with in-flight Arc")
+                });
+        let prev = match join_result {
+            Ok(r) => r,
+            Err(e) => panic!("task should not panic: {e}"),
+        };
+        let prev = match prev {
+            Ok(v) => v,
+            Err(e) => panic!("complete_replace should succeed: {e}"),
+        };
+        assert_eq!(*prev, "v1");
+        assert_eq!(
+            ep_arc.get("a").map(|s| (*s).clone()),
+            Some("v2".to_string())
+        );
+        // The pre-replace in-flight Arc still observes v1 after the force swap.
+        assert_eq!(*inflight, "v1");
+        drop(inflight);
+    }
+
+    #[tokio::test]
+    async fn begin_replace_rejects_missing_name() {
+        let ep: ExtensionPoint<String> = ExtensionPoint::new();
+        let err = match ep.begin_replace("missing") {
+            Ok(_) => panic!("expected Err, got Ok"),
+            Err(e) => e,
+        };
+        assert!(matches!(err, ExtensionError::NotFound { .. }));
+    }
+
+    #[tokio::test]
+    async fn complete_replace_rejects_already_committed_token() {
+        let ep: ExtensionPoint<String> = ExtensionPoint::new();
+        ep.register("a", Arc::new("v1".to_string()))
+            .unwrap_or_else(|e| panic!("{e}"));
+
+        let ep_arc: Arc<ExtensionPoint<String>> = Arc::new(ep);
+        let token = ep_arc.begin_replace("a").unwrap_or_else(|e| panic!("{e}"));
+
+        // First call commits the token and writes the new value.
+        let prev = ep_arc
+            .clone()
+            .complete_replace("a", Arc::new("v2".to_string()), token.clone())
+            .await
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(*prev, "v1");
+        assert_eq!(
+            ep_arc.get("a").map(|s| (*s).clone()),
+            Some("v2".to_string())
+        );
+
+        // Second call with the same (now Committed) token must be rejected.
+        let err = match ep_arc
+            .clone()
+            .complete_replace("a", Arc::new("v3".to_string()), token)
+            .await
+        {
+            Ok(_) => panic!("expected Err, got Ok"),
+            Err(e) => e,
+        };
+        assert!(matches!(
+            err,
+            ExtensionError::Replace(ReplaceError::AlreadyCommitted)
+        ));
+        // And the entry was not overwritten.
+        assert_eq!(
+            ep_arc.get("a").map(|s| (*s).clone()),
+            Some("v2".to_string())
+        );
     }
 }
