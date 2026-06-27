@@ -1,8 +1,8 @@
 //! Drain-aware replace protocol primitives for
 //! [`ExtensionPoint`](super::extension::ExtensionPoint).
 //!
-//! [`ReplaceToken`] is a one-shot, three-state handle
-//! (`Pending` / `Committed` / `Aborted`) handed out by
+//! [`ReplaceToken`] is a one-shot, two-state handle
+//! (`Pending` / `Committed`) handed out by
 //! [`ExtensionPoint::begin_replace`](super::extension::ExtensionPoint::begin_replace).
 //! A paired
 //! [`ExtensionPoint::complete_replace`](super::extension::ExtensionPoint::complete_replace)
@@ -16,7 +16,7 @@
 
 #![allow(clippy::pedantic)]
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use thiserror::Error;
@@ -26,32 +26,22 @@ use thiserror::Error;
 /// when no explicit deadline is supplied.
 pub const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 
-const STATE_PENDING: u8 = 0;
-const STATE_COMMITTED: u8 = 1;
-const STATE_ABORTED: u8 = 2;
-
 /// State of a [`ReplaceToken`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ReplaceState {
-    /// The token has been handed out but neither committed nor aborted.
+    /// The token has been handed out but not yet committed.
     Pending,
     /// The token was committed by a successful `complete_replace` call.
     Committed,
-    /// The token was aborted; the paired `complete_replace` call will
-    /// not write the new value.
-    Aborted,
 }
 
 impl ReplaceState {
-    fn from_u8(value: u8) -> Self {
-        match value {
-            STATE_PENDING => Self::Pending,
-            STATE_COMMITTED => Self::Committed,
-            STATE_ABORTED => Self::Aborted,
-            // Future state values fall back to Aborted for forward
-            // compatibility.
-            _ => Self::Aborted,
+    fn from_bool(committed: bool) -> Self {
+        if committed {
+            Self::Committed
+        } else {
+            Self::Pending
         }
     }
 }
@@ -63,10 +53,6 @@ pub enum ReplaceError {
     /// `complete_replace` was called more than once with the same token.
     #[error("replace token was already committed")]
     AlreadyCommitted,
-    /// The token was aborted before `complete_replace` was able to
-    /// commit it.
-    #[error("replace was aborted before completion")]
-    Aborted,
 }
 
 /// One-shot, shared-state handle for a drain-aware replace operation.
@@ -79,7 +65,7 @@ pub enum ReplaceError {
 /// state and see the same transitions.
 #[derive(Debug, Clone)]
 pub struct ReplaceToken {
-    state: Arc<AtomicU8>,
+    state: Arc<AtomicBool>,
     timeout: Duration,
 }
 
@@ -88,7 +74,7 @@ impl ReplaceToken {
     #[must_use]
     pub fn new(timeout: Duration) -> Self {
         Self {
-            state: Arc::new(AtomicU8::new(STATE_PENDING)),
+            state: Arc::new(AtomicBool::new(false)),
             timeout,
         }
     }
@@ -96,7 +82,7 @@ impl ReplaceToken {
     /// Current state of the token.
     #[must_use]
     pub fn state(&self) -> ReplaceState {
-        ReplaceState::from_u8(self.state.load(Ordering::SeqCst))
+        ReplaceState::from_bool(self.state.load(Ordering::SeqCst))
     }
 
     /// Drain timeout configured at construction time.
@@ -109,11 +95,10 @@ impl ReplaceToken {
     /// that corresponds to the prior state if the transition cannot be
     /// made.
     pub(crate) fn try_commit(&self) -> Result<(), ReplaceError> {
-        let prior = self.state.swap(STATE_COMMITTED, Ordering::SeqCst);
-        match ReplaceState::from_u8(prior) {
-            ReplaceState::Pending => Ok(()),
-            ReplaceState::Committed => Err(ReplaceError::AlreadyCommitted),
-            ReplaceState::Aborted => Err(ReplaceError::Aborted),
+        if self.state.swap(true, Ordering::SeqCst) {
+            Err(ReplaceError::AlreadyCommitted)
+        } else {
+            Ok(())
         }
     }
 }

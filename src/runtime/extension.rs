@@ -318,16 +318,17 @@ impl<T: ?Sized + Send + Sync + 'static> ExtensionPoint<T> {
     /// 1. The token is committed (`Pending -> Committed`). If the
     ///    token was already finalized, the call returns
     ///    [`ExtensionError::Replace`] without touching the map.
-    /// 2. The previous `Arc<T>` is removed from the map under the
-    ///    write lock, then the lock is released.
+    /// 2. Under the write lock, the previous `Arc<T>` is removed and
+    ///    the new `Arc<T>` is inserted atomically. The write lock is
+    ///    then released, so concurrent [`ExtensionPoint::get`] calls
+    ///    never return `None` during the drain phase.
     /// 3. The function polls `Arc::strong_count` of the previous
     ///    value outside the lock, sleeping up to the token's timeout
     ///    for in-flight holders to drop their references. Once the
     ///    strong count falls to one (only the local `old` reference
     ///    remains) the wait completes early.
-    /// 4. The new `Arc<T>` is written under the write lock. When the
-    ///    deadline elapses before drain, the swap still happens (force
-    ///    swap) and a `tracing::warn!` is emitted.
+    /// 4. When the deadline elapses before drain, the swap still
+    ///    happened (force swap) and a `tracing::warn!` is emitted.
     ///
     /// Returns the previous `Arc<T>` so callers can run teardown
     /// hooks on the old instance.
@@ -347,9 +348,11 @@ impl<T: ?Sized + Send + Sync + 'static> ExtensionPoint<T> {
 
         let old = {
             let mut map = self.write()?;
-            map.remove(name).ok_or_else(|| ExtensionError::NotFound {
+            let old = map.remove(name).ok_or_else(|| ExtensionError::NotFound {
                 name: name.to_string(),
-            })?
+            })?;
+            map.insert(name.to_string(), new);
+            old
         };
 
         let deadline = Instant::now() + token.timeout();
@@ -369,11 +372,6 @@ impl<T: ?Sized + Send + Sync + 'static> ExtensionPoint<T> {
             }
             let sleep_for = (deadline - now).min(Duration::from_millis(10));
             tokio::time::sleep(sleep_for).await;
-        }
-
-        {
-            let mut map = self.write()?;
-            map.insert(name.to_string(), new);
         }
 
         Ok(old)
@@ -557,10 +555,11 @@ mod tests {
 
         drop(inflight);
 
-        let join_result =
-            tokio::time::timeout(std::time::Duration::from_secs(2), handle)
-                .await
-                .unwrap_or_else(|_| panic!("complete_replace should not hang after in-flight Arc is dropped"));
+        let join_result = tokio::time::timeout(std::time::Duration::from_secs(2), handle)
+            .await
+            .unwrap_or_else(|_| {
+                panic!("complete_replace should not hang after in-flight Arc is dropped")
+            });
         let prev = match join_result {
             Ok(r) => r,
             Err(e) => panic!("task should not panic: {e}"),
@@ -596,12 +595,11 @@ mod tests {
                 .await
         });
 
-        let join_result =
-            tokio::time::timeout(std::time::Duration::from_secs(2), handle)
-                .await
-                .unwrap_or_else(|_| {
-                    panic!("complete_replace should complete after deadline even with in-flight Arc")
-                });
+        let join_result = tokio::time::timeout(std::time::Duration::from_secs(2), handle)
+            .await
+            .unwrap_or_else(|_| {
+                panic!("complete_replace should complete after deadline even with in-flight Arc")
+            });
         let prev = match join_result {
             Ok(r) => r,
             Err(e) => panic!("task should not panic: {e}"),
