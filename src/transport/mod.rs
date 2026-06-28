@@ -40,7 +40,13 @@ pub mod hub;
 #[cfg(feature = "server")]
 pub mod grpc;
 
+#[cfg(feature = "server")]
+pub mod grpc_transport;
+
 pub use hub::TransportHub;
+
+#[cfg(feature = "server")]
+pub use grpc_transport::GrpcTransport;
 
 /// Errors raised by transport operations.
 #[derive(Debug, Error)]

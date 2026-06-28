@@ -151,6 +151,61 @@ impl TransportHub {
         Ok(())
     }
 
+    /// Start every registered transport and wait for all of them to
+    /// finish. Each transport's `serve` future is spawned onto the
+    /// tokio runtime. The returned future resolves when all spawned
+    /// tasks have completed (i.e. after the shutdown token fires and
+    /// every transport has drained).
+    ///
+    /// This is the blocking counterpart of [`TransportHub::start_all`]:
+    /// it is intended for use in `ManagedRuntime::serve` or in the
+    /// `main` function of a binary that wants to block until all
+    /// transports have shut down.
+    ///
+    /// # Errors
+    /// - [`TransportError::LockPoisoned`] if the internal lock was
+    ///   poisoned.
+    /// - [`TransportError::Serve`] if any transport returns an error
+    ///   from `serve`. The first error is returned; remaining tasks
+    ///   are still joined.
+    pub async fn serve_all(&self, shutdown: ShutdownToken) -> Result<(), TransportError> {
+        let entries: Vec<(String, Arc<dyn AnyTransport>)> = {
+            let map = self
+                .inner
+                .transports
+                .read()
+                .map_err(|_| TransportError::LockPoisoned)?;
+            map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        };
+
+        let mut handles = Vec::with_capacity(entries.len());
+        for (name, any) in entries {
+            let child = shutdown.child();
+            let any2 = any.clone();
+            let name2 = name.clone();
+            let handle = tokio::spawn(async move {
+                let result = any2.serve(child).await;
+                (name2, result)
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all transport tasks to complete.
+        let mut first_error: Option<TransportError> = None;
+        for handle in handles {
+            if let Ok((name, Err(e))) = handle.await {
+                if first_error.is_none() {
+                    first_error = Some(TransportError::Serve {
+                        name,
+                        message: e.to_string(),
+                    });
+                }
+            }
+        }
+
+        first_error.map_or(Ok(()), Err)
+    }
+
     /// Probe every registered transport and collect their health
     /// status. Probes run concurrently.
     pub async fn health(&self) -> HashMap<String, HealthStatus> {
@@ -162,12 +217,21 @@ impl TransportHub {
                 .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
                 .unwrap_or_default()
         };
-        let mut out = HashMap::new();
-        for (name, any) in entries {
-            let h = any.health().await;
-            out.insert(name, h);
+        if entries.is_empty() {
+            return HashMap::new();
         }
-        out
+
+        // Fan out probes concurrently for lower overall latency.
+        let futures: Vec<_> = entries
+            .into_iter()
+            .map(|(name, any)| async move {
+                let h = any.health().await;
+                (name, h)
+            })
+            .collect();
+
+        let results = futures_util::future::join_all(futures).await;
+        results.into_iter().collect()
     }
 }
 
