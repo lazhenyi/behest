@@ -5,12 +5,77 @@
 //! adapters (Socket.IO, gRPC, SSE, ...) build on top of these types; the core
 //! runtime stays free of transport concerns.
 //!
+//! # emit / on semantics
+//!
+//! [`emit`](RuntimeInvocation::emit) starts a run — it builds an
+//! [`EmitRequest`], converts it to a [`RunRequest`], and hands it to
+//! [`AgentRuntime::run`]. Returns [`RunOutput`] when the run completes.
+//!
+//! [`on`](RuntimeInvocation::on) subscribes to the runtime's event bus.
+//! Every event from _any_ run managed by the same [`AgentRuntime`] is
+//! received; the [`EventKind`] filter discards non-matching events before
+//! the handler fires. Handlers run on independently spawned tasks so a
+//! slow handler does not block event delivery for other subscribers.
+//!
+//! ## Event ordering
+//!
+//! A typical agent run produces events in this order:
+//!
+//! ```text
+//! RunStarted
+//!   → ContextBuilt
+//!   → ModelStarted → TextDelta* → ToolCallStarted? → ToolCallDelta* →
+//!     ToolCallCompleted? → ToolExecutionStarted? → ToolExecutionFinished?
+//!   → AssistantMessageCommitted → UsageRecorded
+//!   → (loop: ContextBuilt → …)
+//!   → RunCompleted | RunFailed | RunCancelled
+//! ```
+//!
+//! Every event carries a [`run_id`](AgentEvent::run_id) so handlers can
+//! correlate events belonging to the same run.
+//!
+//! ## Event delivery guarantees
+//!
+//! - **At-least-once**: events are delivered via a [`tokio::sync::broadcast`]
+//!   channel. Lagging receivers miss events (signaled via
+//!   [`tokio::sync::broadcast::error::RecvError::Lagged`]), which is
+//!   silently skipped — the receiver misses those events.
+//! - **No backpressure**: `emit` does not wait for `on` handlers to
+//!   complete. The runtime publishes events to the broadcast channel
+//!   and proceeds immediately.
+//! - **Ordered per-run**: events from a single run are always published
+//!   in order. Events from concurrent runs may interleave.
+//! - **Handler concurrency**: if [`Control::set_concurrency_limit`] is set,
+//!   a semaphore gates how many handler tasks may run concurrently.
+//!   Without a limit, every matching event spawns an unbounded task.
+//!
+//! ## Handler lifecycle
+//!
+//! [`on`](RuntimeInvocation::on) returns an [`InvocationHandle`]. The
+//! underlying listener task runs until:
+//!
+//! - The [`InvocationHandle`] is dropped (aborts the task), or
+//! - The broadcast channel is closed (all [`AgentRuntime`] senders dropped).
+//!
+//! Handler tasks already dispatched before the listener stops run to
+//! completion.
+//!
+//! ## Cancellation
+//!
+//! Cancellation is cooperative. [`Control::cancel`] sets a flag.
+//! [`emit`](RuntimeInvocation::emit) checks the flag before invoking the
+//! request closure and before calling [`AgentRuntime::run`]; the listener
+//! loop inside [`on`](RuntimeInvocation::on) checks it before every event
+//! dispatch. The underlying runtime does not yet support hard cancellation
+//! of an in-flight model call.
+//!
 //! # Core surface
 //!
 //! - [`EmitRequest`] builds a run request and hands it to [`AgentRuntime::run`].
 //! - [`RuntimeInvocation::on`] subscribes to the runtime event bus and dispatches
 //!   matching events to user handlers on independent tasks.
-//! - [`Control`] carries cooperative cancellation/timeout/concurrency state.
+//! - [`Control`] carries cooperative cancellation/timeout/concurrency state,
+//!   plus a type-erased extension map for injecting shared data into handlers.
 //! - [`InvocationHandle`] aborts its listener on drop.
 //!
 //! # Transport-adapter surface
@@ -560,113 +625,29 @@ impl EventKind {
 
     /// Returns `true` when `event` matches this kind.
     #[must_use]
-    #[allow(clippy::too_many_lines)]
     pub fn matches(self, event: &InvocationEvent) -> bool {
+        match event {
+            InvocationEvent::Agent(e) => self.matches_agent(e),
+            InvocationEvent::Chat(e) => self.matches_chat(e),
+        }
+    }
+
+    /// Returns `true` when `event` matches this kind's chat variant.
+    #[must_use]
+    fn matches_chat(self, event: &ChatStreamEvent) -> bool {
         match self {
             Self::Any => true,
-            Self::RunStarted => matches!(event, InvocationEvent::Agent(AgentEvent::RunStarted(_))),
-            Self::ContextBuilt => {
-                matches!(event, InvocationEvent::Agent(AgentEvent::ContextBuilt(_)))
-            }
-            Self::ModelStarted => {
-                matches!(event, InvocationEvent::Agent(AgentEvent::ModelStarted(_)))
-            }
-            Self::TextDelta => matches!(event, InvocationEvent::Agent(AgentEvent::TextDelta(_))),
-            Self::ToolCallStarted => {
-                matches!(
-                    event,
-                    InvocationEvent::Agent(AgentEvent::ToolCallStarted(_))
-                )
-            }
-            Self::ToolCallDelta => {
-                matches!(event, InvocationEvent::Agent(AgentEvent::ToolCallDelta(_)))
-            }
-            Self::ToolCallCompleted => {
-                matches!(
-                    event,
-                    InvocationEvent::Agent(AgentEvent::ToolCallCompleted(_))
-                )
-            }
-            Self::ToolExecutionStarted => {
-                matches!(
-                    event,
-                    InvocationEvent::Agent(AgentEvent::ToolExecutionStarted(_))
-                )
-            }
-            Self::ToolExecutionFinished => {
-                matches!(
-                    event,
-                    InvocationEvent::Agent(AgentEvent::ToolExecutionFinished(_))
-                )
-            }
-            Self::AssistantMessageCommitted => {
-                matches!(
-                    event,
-                    InvocationEvent::Agent(AgentEvent::AssistantMessageCommitted(_))
-                )
-            }
-            Self::ToolMessageCommitted => {
-                matches!(
-                    event,
-                    InvocationEvent::Agent(AgentEvent::ToolMessageCommitted(_))
-                )
-            }
-            Self::UsageRecorded => {
-                matches!(event, InvocationEvent::Agent(AgentEvent::UsageRecorded(_)))
-            }
-            Self::RunCompleted => {
-                matches!(event, InvocationEvent::Agent(AgentEvent::RunCompleted(_)))
-            }
-            Self::RunFailed => matches!(event, InvocationEvent::Agent(AgentEvent::RunFailed(_))),
-            Self::RunCancelled => {
-                matches!(event, InvocationEvent::Agent(AgentEvent::RunCancelled(_)))
-            }
-            Self::DoomLoopDetected => {
-                matches!(
-                    event,
-                    InvocationEvent::Agent(AgentEvent::DoomLoopDetected(_))
-                )
-            }
-            Self::CompactionCircuitOpened => {
-                matches!(
-                    event,
-                    InvocationEvent::Agent(AgentEvent::CompactionCircuitOpened(_))
-                )
-            }
-            Self::ChatStarted => matches!(
-                event,
-                InvocationEvent::Chat(ChatStreamEvent::Started { .. })
-            ),
-            Self::ChatTextDelta => {
-                matches!(
-                    event,
-                    InvocationEvent::Chat(ChatStreamEvent::TextDelta { .. })
-                )
-            }
-            Self::ChatToolCallStarted => {
-                matches!(
-                    event,
-                    InvocationEvent::Chat(ChatStreamEvent::ToolCallStarted { .. })
-                )
-            }
+            Self::ChatStarted => matches!(event, ChatStreamEvent::Started { .. }),
+            Self::ChatTextDelta => matches!(event, ChatStreamEvent::TextDelta { .. }),
+            Self::ChatToolCallStarted => matches!(event, ChatStreamEvent::ToolCallStarted { .. }),
             Self::ChatToolCallArgumentsDelta => {
-                matches!(
-                    event,
-                    InvocationEvent::Chat(ChatStreamEvent::ToolCallArgumentsDelta { .. })
-                )
+                matches!(event, ChatStreamEvent::ToolCallArgumentsDelta { .. })
             }
             Self::ChatToolCallCompleted => {
-                matches!(
-                    event,
-                    InvocationEvent::Chat(ChatStreamEvent::ToolCallCompleted { .. })
-                )
+                matches!(event, ChatStreamEvent::ToolCallCompleted { .. })
             }
-            Self::ChatFinished => {
-                matches!(
-                    event,
-                    InvocationEvent::Chat(ChatStreamEvent::Finished { .. })
-                )
-            }
+            Self::ChatFinished => matches!(event, ChatStreamEvent::Finished { .. }),
+            _ => false,
         }
     }
 }
