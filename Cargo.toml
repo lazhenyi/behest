@@ -31,11 +31,6 @@ include = [
 name = "behest"
 path = "src/lib.rs"
 
-[[bin]]
-name = "agent-server"
-path = "src/bin/agent-server.rs"
-required-features = ["server"]
-
 [features]
 default = ["tls-rustls"]
 
@@ -165,8 +160,6 @@ tantivy = [
 ]
 object_store = ["dep:object_store", "object_store/aws"]
 
-server = ["dep:tonic", "dep:prost", "dep:prost-types", "dep:tokio-stream", "dep:tonic-health", "dep:tonic-reflection", "tonic-build", "tonic/tls-ring"]
-
 [dependencies]
 object_store = { version = "0.13.2", optional = true }
 tokio = { version = "1.52", default-features = false, features = [
@@ -238,13 +231,6 @@ tantivy = { version = "0.26", optional = true }
 
 actix-web = { version = "4", optional = true, features = ["macros"] }
 
-tonic = { version = "0.13", optional = true, features = ["transport"] }
-tonic-health = { version = "0.13", optional = true }
-tonic-reflection = { version = "0.13", optional = true }
-prost = { version = "0.13", optional = true }
-prost-types = { version = "0.13", optional = true }
-tokio-stream = { version = "0.1", optional = true, features = ["sync"] }
-
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3"
@@ -253,9 +239,6 @@ insta = { version = "1", features = ["json"] }
 proptest = "1"
 wiremock = "0.6"
 tracing-test = "0.2"
-
-[build-dependencies]
-tonic-build = { version = "0.13", optional = true }
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]
