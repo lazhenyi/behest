@@ -113,167 +113,146 @@ impl From<ProviderError> for ComponentError {
 }
 
 // ---------------------------------------------------------------------------
-// Provider components
+// Provider components — macro-generated because they share identical shape
 // ---------------------------------------------------------------------------
 
-/// Component wrapper for [`OpenAiChatAdapter`].
-#[cfg(feature = "openai")]
-pub struct OpenAiChatComponent {
-    inner: Arc<dyn ChatProvider>,
+/// Generates a [`Component`] wrapper for a provider adapter.
+macro_rules! provider_component {
+    (
+        $(#[$outer:meta])*
+        $vis:vis struct $Name:ident {
+            inner: Arc<$InnerTrait:ty>,
+        },
+        const NAME: &'static str = $name:literal;
+        adapter = $Adapter:ty;
+    ) => {
+        $(#[$outer])*
+        $vis struct $Name {
+            inner: Arc<$InnerTrait>,
+        }
+
+        #[async_trait]
+        impl Component for $Name {
+            const NAME: &'static str = $name;
+            type Config = ProviderHttpComponentConfig;
+            type Error = ComponentError;
+
+            async fn init(cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
+                let http = cfg.clone().into_provider_http_config();
+                let adapter = <$Adapter>::new(http)?;
+                Ok(Self {
+                    inner: Arc::new(adapter),
+                })
+            }
+        }
+    };
 }
 
 #[cfg(feature = "openai")]
-#[async_trait]
-impl Component for OpenAiChatComponent {
+provider_component! {
+    /// Component wrapper for [`OpenAiChatAdapter`].
+    pub struct OpenAiChatComponent {
+        inner: Arc<dyn ChatProvider>,
+    },
     const NAME: &'static str = "provider.openai.chat";
-    type Config = ProviderHttpComponentConfig;
-    type Error = ComponentError;
-
-    async fn init(cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
-        let http = cfg.clone().into_provider_http_config();
-        let adapter = OpenAiChatAdapter::new(http)?;
-        Ok(Self {
-            inner: Arc::new(adapter),
-        })
-    }
-}
-
-/// Component wrapper for [`AnthropicChatAdapter`].
-#[cfg(feature = "anthropic")]
-pub struct AnthropicChatComponent {
-    inner: Arc<dyn ChatProvider>,
+    adapter = OpenAiChatAdapter;
 }
 
 #[cfg(feature = "anthropic")]
-#[async_trait]
-impl Component for AnthropicChatComponent {
+provider_component! {
+    /// Component wrapper for [`AnthropicChatAdapter`].
+    pub struct AnthropicChatComponent {
+        inner: Arc<dyn ChatProvider>,
+    },
     const NAME: &'static str = "provider.anthropic.chat";
-    type Config = ProviderHttpComponentConfig;
-    type Error = ComponentError;
-
-    async fn init(cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
-        let http = cfg.clone().into_provider_http_config();
-        let adapter = AnthropicChatAdapter::new(http)?;
-        Ok(Self {
-            inner: Arc::new(adapter),
-        })
-    }
-}
-
-/// Component wrapper for [`OpenAiEmbeddingAdapter`].
-#[cfg(feature = "openai")]
-pub struct OpenAiEmbeddingComponent {
-    inner: Arc<dyn EmbeddingProvider>,
+    adapter = AnthropicChatAdapter;
 }
 
 #[cfg(feature = "openai")]
-#[async_trait]
-impl Component for OpenAiEmbeddingComponent {
+provider_component! {
+    /// Component wrapper for [`OpenAiEmbeddingAdapter`].
+    pub struct OpenAiEmbeddingComponent {
+        inner: Arc<dyn EmbeddingProvider>,
+    },
     const NAME: &'static str = "provider.openai.embedding";
-    type Config = ProviderHttpComponentConfig;
-    type Error = ComponentError;
-
-    async fn init(cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
-        let http = cfg.clone().into_provider_http_config();
-        let adapter = OpenAiEmbeddingAdapter::new(http)?;
-        Ok(Self {
-            inner: Arc::new(adapter),
-        })
-    }
+    adapter = OpenAiEmbeddingAdapter;
 }
 
 // ---------------------------------------------------------------------------
-// Memory store components
+// Memory store components — macro-generated because they share identical shape
 // ---------------------------------------------------------------------------
 
-/// Component wrapper for [`MemorySessionStore`].
-pub struct MemorySessionStoreComponent {
-    inner: Arc<MemorySessionStore>,
+/// Generates a [`Component`] wrapper for a memory-store implementation.
+///
+/// Each generated type has:
+/// - A struct wrapping `Arc<StoreType>`
+/// - A `Component` impl with `Config = serde_json::Value` and a no-op `init`
+macro_rules! memory_store_component {
+    (
+        $(#[$outer:meta])*
+        $vis:vis struct $Name:ident {
+            inner: Arc<$Store:ty>,
+        },
+        const NAME: &'static str = $name:literal;
+    ) => {
+        $(#[$outer])*
+        $vis struct $Name {
+            inner: Arc<$Store>,
+        }
+
+        #[async_trait]
+        impl Component for $Name {
+            const NAME: &'static str = $name;
+            type Config = serde_json::Value;
+            type Error = ComponentError;
+
+            async fn init(_cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
+                Ok(Self {
+                    inner: Arc::new(<$Store>::new()),
+                })
+            }
+        }
+    };
 }
 
-#[async_trait]
-impl Component for MemorySessionStoreComponent {
+memory_store_component! {
+    /// Component wrapper for [`MemorySessionStore`].
+    pub struct MemorySessionStoreComponent {
+        inner: Arc<MemorySessionStore>,
+    },
     const NAME: &'static str = "store.session.memory";
-    type Config = serde_json::Value;
-    type Error = ComponentError;
-
-    async fn init(_cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
-        Ok(Self {
-            inner: Arc::new(MemorySessionStore::new()),
-        })
-    }
 }
 
-/// Component wrapper for [`MemoryExecutionStore`].
-pub struct MemoryExecutionStoreComponent {
-    inner: Arc<MemoryExecutionStore>,
-}
-
-#[async_trait]
-impl Component for MemoryExecutionStoreComponent {
+memory_store_component! {
+    /// Component wrapper for [`MemoryExecutionStore`].
+    pub struct MemoryExecutionStoreComponent {
+        inner: Arc<MemoryExecutionStore>,
+    },
     const NAME: &'static str = "store.execution.memory";
-    type Config = serde_json::Value;
-    type Error = ComponentError;
-
-    async fn init(_cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
-        Ok(Self {
-            inner: Arc::new(MemoryExecutionStore::new()),
-        })
-    }
 }
 
-/// Component wrapper for [`MemoryRunStore`].
-pub struct MemoryRunStoreComponent {
-    inner: Arc<MemoryRunStore>,
-}
-
-#[async_trait]
-impl Component for MemoryRunStoreComponent {
+memory_store_component! {
+    /// Component wrapper for [`MemoryRunStore`].
+    pub struct MemoryRunStoreComponent {
+        inner: Arc<MemoryRunStore>,
+    },
     const NAME: &'static str = "store.run.memory";
-    type Config = serde_json::Value;
-    type Error = ComponentError;
-
-    async fn init(_cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
-        Ok(Self {
-            inner: Arc::new(MemoryRunStore::new()),
-        })
-    }
 }
 
-/// Component wrapper for [`MemoryEmbeddingStore`].
-pub struct MemoryEmbeddingStoreComponent {
-    inner: Arc<MemoryEmbeddingStore>,
-}
-
-#[async_trait]
-impl Component for MemoryEmbeddingStoreComponent {
+memory_store_component! {
+    /// Component wrapper for [`MemoryEmbeddingStore`].
+    pub struct MemoryEmbeddingStoreComponent {
+        inner: Arc<MemoryEmbeddingStore>,
+    },
     const NAME: &'static str = "store.embedding.memory";
-    type Config = serde_json::Value;
-    type Error = ComponentError;
-
-    async fn init(_cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
-        Ok(Self {
-            inner: Arc::new(MemoryEmbeddingStore::new()),
-        })
-    }
 }
 
-/// Component wrapper for [`MemoryArtifactStore`].
-pub struct MemoryArtifactStoreComponent {
-    inner: Arc<MemoryArtifactStore>,
-}
-
-#[async_trait]
-impl Component for MemoryArtifactStoreComponent {
+memory_store_component! {
+    /// Component wrapper for [`MemoryArtifactStore`].
+    pub struct MemoryArtifactStoreComponent {
+        inner: Arc<MemoryArtifactStore>,
+    },
     const NAME: &'static str = "store.artifact.memory";
-    type Config = serde_json::Value;
-    type Error = ComponentError;
-
-    async fn init(_cfg: &Self::Config, _ctx: &ComponentContext) -> Result<Self, Self::Error> {
-        Ok(Self {
-            inner: Arc::new(MemoryArtifactStore::new()),
-        })
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -330,73 +309,38 @@ impl Component for ContextPipelineComponent {
 /// - `"provider.anthropic.chat"`
 /// - `"provider.openai.embedding"`
 #[must_use]
-pub fn register_providers(registry: FactoryRegistry) -> FactoryRegistry {
-    let registry = {
-        #[cfg(feature = "openai")]
-        {
-            registry
-                .register("provider.openai.chat", |cfg, _ctx| {
+pub fn register_providers(mut registry: FactoryRegistry) -> FactoryRegistry {
+    macro_rules! register {
+        ($kind:literal, $Comp:ident, $Adapter:ty) => {
+            registry = registry.register($kind, |cfg, _ctx| {
                     let v: ProviderHttpComponentConfig =
                         serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
-                            kind: "provider.openai.chat".into(),
+                            kind: $kind.into(),
                             source: e,
                         })?;
                     let http = v.into_provider_http_config();
-                    let adapter = OpenAiChatAdapter::new(http).map_err(|e| {
-                        FactoryError::FactoryFailed("provider.openai.chat".into(), e.to_string())
+                    let adapter = <$Adapter>::new(http).map_err(|e| {
+                        FactoryError::FactoryFailed($kind.into(), e.to_string())
                     })?;
-                    let comp = OpenAiChatComponent {
+                    let comp = $Comp {
                         inner: Arc::new(adapter),
                     };
                     Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-                })
-                .register("provider.openai.embedding", |cfg, _ctx| {
-                    let v: ProviderHttpComponentConfig =
-                        serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
-                            kind: "provider.openai.embedding".into(),
-                            source: e,
-                        })?;
-                    let http = v.into_provider_http_config();
-                    let adapter = OpenAiEmbeddingAdapter::new(http).map_err(|e| {
-                        FactoryError::FactoryFailed(
-                            "provider.openai.embedding".into(),
-                            e.to_string(),
-                        )
-                    })?;
-                    let comp = OpenAiEmbeddingComponent {
-                        inner: Arc::new(adapter),
-                    };
-                    Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-                })
-        }
-        #[cfg(not(feature = "openai"))]
-        {
-            registry
-        }
-    };
+                });
+        };
+    }
 
+    #[cfg(feature = "openai")]
+    {
+        register!("provider.openai.chat", OpenAiChatComponent, OpenAiChatAdapter);
+        register!("provider.openai.embedding", OpenAiEmbeddingComponent, OpenAiEmbeddingAdapter);
+    }
     #[cfg(feature = "anthropic")]
     {
-        registry.register("provider.anthropic.chat", |cfg, _ctx| {
-            let v: ProviderHttpComponentConfig =
-                serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
-                    kind: "provider.anthropic.chat".into(),
-                    source: e,
-                })?;
-            let http = v.into_provider_http_config();
-            let adapter = AnthropicChatAdapter::new(http).map_err(|e| {
-                FactoryError::FactoryFailed("provider.anthropic.chat".into(), e.to_string())
-            })?;
-            let comp = AnthropicChatComponent {
-                inner: Arc::new(adapter),
-            };
-            Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-        })
+        register!("provider.anthropic.chat", AnthropicChatComponent, AnthropicChatAdapter);
     }
-    #[cfg(not(feature = "anthropic"))]
-    {
-        registry
-    }
+
+    registry
 }
 
 /// Registers all memory-store factory invokers into a [`FactoryRegistry`].
@@ -408,43 +352,24 @@ pub fn register_providers(registry: FactoryRegistry) -> FactoryRegistry {
 /// - `"store.embedding.memory"`
 /// - `"store.artifact.memory"`
 #[must_use]
-pub fn register_memory_stores(registry: FactoryRegistry) -> FactoryRegistry {
+pub fn register_memory_stores(mut registry: FactoryRegistry) -> FactoryRegistry {
+    macro_rules! register {
+        ($kind:literal, $Comp:ident, $Store:ty) => {
+            registry = registry.register($kind, |cfg, ctx| {
+                let _ = (cfg, &ctx);
+                let comp = $Comp {
+                    inner: Arc::new(<$Store>::new()),
+                };
+                Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
+            });
+        };
+    }
+    register!("store.session.memory", MemorySessionStoreComponent, MemorySessionStore);
+    register!("store.execution.memory", MemoryExecutionStoreComponent, MemoryExecutionStore);
+    register!("store.run.memory", MemoryRunStoreComponent, MemoryRunStore);
+    register!("store.embedding.memory", MemoryEmbeddingStoreComponent, MemoryEmbeddingStore);
+    register!("store.artifact.memory", MemoryArtifactStoreComponent, MemoryArtifactStore);
     registry
-        .register("store.session.memory", |cfg, ctx| {
-            let _ = (cfg, &ctx);
-            let comp = MemorySessionStoreComponent {
-                inner: Arc::new(MemorySessionStore::new()),
-            };
-            Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-        })
-        .register("store.execution.memory", |cfg, ctx| {
-            let _ = (cfg, &ctx);
-            let comp = MemoryExecutionStoreComponent {
-                inner: Arc::new(MemoryExecutionStore::new()),
-            };
-            Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-        })
-        .register("store.run.memory", |cfg, ctx| {
-            let _ = (cfg, &ctx);
-            let comp = MemoryRunStoreComponent {
-                inner: Arc::new(MemoryRunStore::new()),
-            };
-            Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-        })
-        .register("store.embedding.memory", |cfg, ctx| {
-            let _ = (cfg, &ctx);
-            let comp = MemoryEmbeddingStoreComponent {
-                inner: Arc::new(MemoryEmbeddingStore::new()),
-            };
-            Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-        })
-        .register("store.artifact.memory", |cfg, ctx| {
-            let _ = (cfg, &ctx);
-            let comp = MemoryArtifactStoreComponent {
-                inner: Arc::new(MemoryArtifactStore::new()),
-            };
-            Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-        })
 }
 
 /// Registers the context-pipeline factory invoker into a [`FactoryRegistry`].
@@ -536,48 +461,20 @@ mod tests {
     }
 
     #[test]
-    fn memory_session_store_invocation() {
-        let reg = default_factory_registry();
-        let comp = reg
-            .invoke("store.session.memory", serde_json::json!({}), &ctx())
-            .expect("invoke should succeed");
-        assert_eq!(comp.name(), "store.session.memory");
-    }
-
-    #[test]
-    fn memory_execution_store_invocation() {
-        let reg = default_factory_registry();
-        let comp = reg
-            .invoke("store.execution.memory", serde_json::json!({}), &ctx())
-            .expect("invoke should succeed");
-        assert_eq!(comp.name(), "store.execution.memory");
-    }
-
-    #[test]
-    fn memory_run_store_invocation() {
-        let reg = default_factory_registry();
-        let comp = reg
-            .invoke("store.run.memory", serde_json::json!({}), &ctx())
-            .expect("invoke should succeed");
-        assert_eq!(comp.name(), "store.run.memory");
-    }
-
-    #[test]
-    fn memory_embedding_store_invocation() {
-        let reg = default_factory_registry();
-        let comp = reg
-            .invoke("store.embedding.memory", serde_json::json!({}), &ctx())
-            .expect("invoke should succeed");
-        assert_eq!(comp.name(), "store.embedding.memory");
-    }
-
-    #[test]
-    fn memory_artifact_store_invocation() {
-        let reg = default_factory_registry();
-        let comp = reg
-            .invoke("store.artifact.memory", serde_json::json!({}), &ctx())
-            .expect("invoke should succeed");
-        assert_eq!(comp.name(), "store.artifact.memory");
+    fn memory_store_invocations() {
+        for kind in &[
+            "store.session.memory",
+            "store.execution.memory",
+            "store.run.memory",
+            "store.embedding.memory",
+            "store.artifact.memory",
+        ] {
+            let reg = default_factory_registry();
+            let comp = reg
+                .invoke(kind, serde_json::json!({}), &ctx())
+                .expect("invoke should succeed");
+            assert_eq!(comp.name(), *kind);
+        }
     }
 
     #[tokio::test]
