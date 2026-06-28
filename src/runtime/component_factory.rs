@@ -230,6 +230,34 @@ impl AnyComponent for ChatProviderAny {
         let inner = self.inner.clone();
         Box::pin(async move { inner.health().await })
     }
+
+    fn pre_replace(&self) -> BoxFuture<'_, Result<(), AnyComponentError>> {
+        let name = self.inner.name.clone();
+        let inner = self.inner.clone();
+        Box::pin(async move {
+            inner
+                .pre_replace_hook()
+                .await
+                .map_err(|e| AnyComponentError::Component {
+                    name,
+                    message: e.to_string(),
+                })
+        })
+    }
+
+    fn post_replace(&self) -> BoxFuture<'_, Result<(), AnyComponentError>> {
+        let name = self.inner.name.clone();
+        let inner = self.inner.clone();
+        Box::pin(async move {
+            inner
+                .post_replace_hook()
+                .await
+                .map_err(|e| AnyComponentError::Component {
+                    name,
+                    message: e.to_string(),
+                })
+        })
+    }
 }
 
 /// [`AnyComponent`] adapter for [`EmbeddingProviderComponent`].
@@ -286,6 +314,34 @@ impl AnyComponent for EmbeddingProviderAny {
     fn health(&self) -> BoxFuture<'_, crate::health::HealthStatus> {
         let inner = self.inner.clone();
         Box::pin(async move { inner.health().await })
+    }
+
+    fn pre_replace(&self) -> BoxFuture<'_, Result<(), AnyComponentError>> {
+        let name = self.inner.name.clone();
+        let inner = self.inner.clone();
+        Box::pin(async move {
+            inner
+                .pre_replace_hook()
+                .await
+                .map_err(|e| AnyComponentError::Component {
+                    name,
+                    message: e.to_string(),
+                })
+        })
+    }
+
+    fn post_replace(&self) -> BoxFuture<'_, Result<(), AnyComponentError>> {
+        let name = self.inner.name.clone();
+        let inner = self.inner.clone();
+        Box::pin(async move {
+            inner
+                .post_replace_hook()
+                .await
+                .map_err(|e| AnyComponentError::Component {
+                    name,
+                    message: e.to_string(),
+                })
+        })
     }
 }
 

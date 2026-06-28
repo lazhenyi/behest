@@ -153,6 +153,31 @@ pub trait Component: Send + Sync + 'static {
     fn depends_on() -> &'static [&'static str] {
         &[]
     }
+
+    /// Called before this component is replaced by a new instance.
+    ///
+    /// Default is a no-op. Override to reject new traffic, flush
+    /// buffers, or signal upstream systems that this instance is
+    /// about to be swapped out.
+    ///
+    /// The component is still running when this hook fires; in-flight
+    /// references held by other tasks remain valid.
+    async fn pre_replace_hook(&self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    /// Called after this component has been replaced by a new instance.
+    ///
+    /// Default is a no-op. Override to clean up resources that were
+    /// not released during `stop`, or to notify upstream systems that
+    /// the replacement is complete.
+    ///
+    /// At this point, new traffic is routed to the replacement
+    /// instance. The old instance may still be held by tasks that
+    /// obtained an `Arc` before the swap.
+    async fn post_replace_hook(&self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 /// Object-safe view of a [`Component`] instance, used by the registry to
@@ -174,6 +199,14 @@ pub trait AnyComponent: Send + Sync + 'static {
 
     /// Health probe. See [`Component::health`].
     fn health(&self) -> futures_util::future::BoxFuture<'_, HealthStatus>;
+
+    /// Called before this component is replaced. See
+    /// [`Component::pre_replace_hook`].
+    fn pre_replace(&self) -> futures_util::future::BoxFuture<'_, Result<(), AnyComponentError>>;
+
+    /// Called after this component has been replaced. See
+    /// [`Component::post_replace_hook`].
+    fn post_replace(&self) -> futures_util::future::BoxFuture<'_, Result<(), AnyComponentError>>;
 }
 
 /// Type-erased error from a boxed [`AnyComponent`]. The original typed

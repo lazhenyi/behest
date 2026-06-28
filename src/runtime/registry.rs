@@ -108,6 +108,14 @@ pub enum RegistryError {
         /// Human-readable error.
         message: String,
     },
+    /// A reload (hot-swap) operation failed.
+    #[error("reload failed for component `{name}`: {message}")]
+    Reload {
+        /// Name of the component being reloaded.
+        name: String,
+        /// Human-readable error.
+        message: String,
+    },
     /// Internal lock acquisition failed.
     #[error("component registry lock poisoned")]
     LockPoisoned,
@@ -305,6 +313,34 @@ impl<C: Component> AnyComponent for TypedAnyComponent<C> {
     fn health(&self) -> BoxFuture<'_, HealthStatus> {
         let instance = self.instance.clone();
         Box::pin(async move { instance.health().await })
+    }
+
+    fn pre_replace(&self) -> BoxFuture<'_, Result<(), AnyComponentError>> {
+        let name = self.name.clone();
+        let instance = self.instance.clone();
+        Box::pin(async move {
+            instance
+                .pre_replace_hook()
+                .await
+                .map_err(|e| AnyComponentError::Component {
+                    name,
+                    message: e.to_string(),
+                })
+        })
+    }
+
+    fn post_replace(&self) -> BoxFuture<'_, Result<(), AnyComponentError>> {
+        let name = self.name.clone();
+        let instance = self.instance.clone();
+        Box::pin(async move {
+            instance
+                .post_replace_hook()
+                .await
+                .map_err(|e| AnyComponentError::Component {
+                    name,
+                    message: e.to_string(),
+                })
+        })
     }
 }
 
@@ -696,6 +732,98 @@ impl ComponentRegistry {
             self.set_state(&name, ComponentState::Stopped);
         }
         first_error.map_or(Ok(()), Err)
+    }
+
+    /// Atomically replace a running component with a new instance,
+    /// following the drain-aware hot-swap protocol.
+    ///
+    /// The protocol proceeds in five steps:
+    ///
+    /// 1. Verify the named component is in [`ComponentState::Running`].
+    /// 2. Call [`AnyComponent::pre_replace`] on the old instance, giving
+    ///    it a chance to reject new traffic or flush buffers.
+    /// 3. Call [`AnyComponent::start`] on the new instance. If this
+    ///    fails, the old instance remains in place.
+    /// 4. Swap the instance in the registry map. Existing `Arc` clones
+    ///    held by other tasks remain valid and keep the old instance
+    ///    alive until they are dropped (natural drain).
+    /// 5. Call [`AnyComponent::post_replace`] on the old instance
+    ///    (best-effort; errors are reported but do not roll back).
+    ///
+    /// Returns the old [`AnyComponent`] so the caller may await
+    /// explicit drain or call `stop` when appropriate.
+    ///
+    /// # Errors
+    /// - [`RegistryError::NotFound`] if no component with `name`
+    ///   exists.
+    /// - [`RegistryError::Reload`] if the component is not in
+    ///   `Running` state, or if `pre_replace` / `start` fails.
+    pub async fn replace_instance(
+        &self,
+        name: &str,
+        new_instance: Box<dyn AnyComponent>,
+    ) -> Result<Arc<dyn AnyComponent>, RegistryError> {
+        // 1. Retrieve old instance and verify state.
+        let old_instance = {
+            let instances = self
+                .inner
+                .instances
+                .read()
+                .map_err(|_| RegistryError::LockPoisoned)?;
+            instances
+                .get(name)
+                .cloned()
+                .ok_or_else(|| RegistryError::NotFound {
+                    name: name.to_string(),
+                })?
+        };
+
+        if !matches!(self.state_of(name), Some(ComponentState::Running)) {
+            return Err(RegistryError::Reload {
+                name: name.to_string(),
+                message: "component is not in Running state".to_string(),
+            });
+        }
+
+        // 2. Pre-replace hook on old instance.
+        if let Err(e) = old_instance.pre_replace().await {
+            return Err(RegistryError::Reload {
+                name: name.to_string(),
+                message: format!("pre_replace hook failed: {e}"),
+            });
+        }
+
+        // 3. Start the new instance. On failure, old instance
+        //    remains untouched.
+        if let Err(e) = new_instance.start().await {
+            return Err(RegistryError::Reload {
+                name: name.to_string(),
+                message: format!("new instance start failed: {e}"),
+            });
+        }
+
+        // 4. Atomic swap.
+        let new_arc: Arc<dyn AnyComponent> = new_instance.into();
+        {
+            let mut instances = self
+                .inner
+                .instances
+                .write()
+                .map_err(|_| RegistryError::LockPoisoned)?;
+            instances.insert(name.to_string(), new_arc);
+        }
+        self.set_state(name, ComponentState::Running);
+
+        // 5. Post-replace hook on old instance (best-effort).
+        if let Err(e) = old_instance.post_replace().await {
+            tracing::warn!(
+                component = name,
+                error = %e,
+                "post_replace hook failed (best-effort; continuing)"
+            );
+        }
+
+        Ok(old_instance)
     }
 
     /// Aggregate health of every initialized component. Calls

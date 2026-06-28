@@ -13,6 +13,7 @@ pub mod component_factory;
 pub mod components;
 pub mod context;
 pub mod doom_loop;
+pub mod drain;
 pub mod error;
 pub mod event;
 pub mod event_store;
@@ -23,6 +24,7 @@ pub mod input;
 pub mod invocation;
 pub mod job;
 pub mod lifecycle;
+pub mod managed;
 pub mod memory;
 pub mod policy;
 pub mod registry;
@@ -59,6 +61,7 @@ pub use components::{
 };
 pub use context::ContextPipeline;
 pub use doom_loop::{DoomLoopConfig, DoomLoopDetector, DoomLoopType, ToolCallFingerprint};
+pub use drain::{DrainGuard, DrainResult};
 pub use error::RuntimeError;
 pub use event::AgentEvent;
 pub use event_store::{
@@ -78,6 +81,7 @@ pub use invocation::{
 };
 pub use job::{BackgroundJob, BackgroundJobPool, JobConditions, JobPriority, JobType};
 pub use lifecycle::ShutdownToken;
+pub use managed::{ManagedError, ManagedRuntime};
 pub use policy::{CompactionConfig, RuntimePolicy};
 pub use registry::{
     ComponentDescriptor, ComponentFactory, ComponentRegistry, ComponentState, RegistryError,

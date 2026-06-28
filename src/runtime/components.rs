@@ -4,8 +4,8 @@
 //! stores, and adapters from JSON configuration.
 //!
 //! Each wrapper type implements [`Component`] so it can be registered
-//! either directly via [`TypedFactory`](super::registry::TypedFactory)
-//! or through a [`FactoryRegistry`](super::factory_registry::FactoryRegistry)
+//! either directly via `TypedFactory`
+//! or through a [`FactoryRegistry`]
 //! using the convenience `register_*` functions or
 //! [`default_factory_registry`].
 
