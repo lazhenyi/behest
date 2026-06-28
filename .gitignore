@@ -28,3 +28,5 @@ package.json
 skills-lock.json
 scripts
 templates.codegraph/
+.codegraph/
+docs/
