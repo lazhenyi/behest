@@ -12,6 +12,10 @@ service AdminService {
   rpc GetCompactionStatus(GetCompactionStatusRequest) returns (GetCompactionStatusResponse);
   // Get background job pool status.
   rpc GetJobPoolStatus(GetJobPoolStatusRequest) returns (GetJobPoolStatusResponse);
+  // Liveness probe: is the process alive?
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  // Readiness probe: is the runtime ready to serve traffic?
+  rpc ReadinessCheck(ReadinessCheckRequest) returns (ReadinessCheckResponse);
 }
 
 message GetRuntimeStatusRequest {}
@@ -53,4 +57,35 @@ message GetJobPoolStatusResponse {
   uint32 pending_jobs = 2;
   // Number of active workers.
   uint32 active_workers = 3;
+}
+
+message HealthCheckRequest {}
+
+// Response to a liveness probe.
+message HealthCheckResponse {
+  // Overall health status: "healthy", "degraded", or "unhealthy".
+  string status = 1;
+  // Per-component health breakdown.
+  map<string, ComponentHealth> components = 2;
+}
+
+message ReadinessCheckRequest {}
+
+// Response to a readiness probe.
+message ReadinessCheckResponse {
+  // Whether the runtime is ready to serve traffic.
+  // True when every component is operational (healthy or degraded).
+  bool ready = 1;
+  // Overall health status label.
+  string status = 2;
+  // Per-component health breakdown.
+  map<string, ComponentHealth> components = 3;
+}
+
+// Health status of a single component or transport.
+message ComponentHealth {
+  // Status label: "healthy", "degraded", or "unhealthy".
+  string status = 1;
+  // Human-readable reason (empty for healthy).
+  string reason = 2;
 }
