@@ -1,10 +1,10 @@
-//! Health status primitives shared by every Component and Transport.
+//! Health status primitives shared by every Component.
 //!
 //! [`HealthStatus`] is intentionally minimal: a tri-state (healthy / degraded /
 //! unhealthy), each carrying a free-form JSON detail payload. The intent is to
-//! expose a uniform shape across providers, stores, transports and the agent
+//! expose a uniform shape across providers, stores, and the agent
 //! runtime itself, so external orchestrators (k8s probes, load balancers, the
-//! future `behestctl` CLI) can introspect the system without coupling to
+//! `behestctl` CLI) can introspect the system without coupling to
 //! internal types.
 
 #![allow(clippy::pedantic)]
@@ -14,7 +14,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-/// Tri-state health classification of a component or transport.
+/// Tri-state health classification of a component.
 ///
 /// All variants carry an optional JSON detail payload for observability. The
 /// payload is intentionally not typed — components are free to attach

@@ -2,15 +2,29 @@
 //! [`AgentRuntime`], [`ComponentRegistry`], and
 //! [`ShutdownToken`] into a single lifecycle.
 //!
-//! The managed runtime provides:
+//! The managed runtime is the **assembly entry point** for operators who
+//! want to compose a runtime from pluggable parts. It gives you a
+//! dependency-ordered lifecycle, typed component lookup, aggregated
+//! health, and hot-reload — the machinery for "this agent is built from
+//! these providers, these tools, and these stores."
+//!
+//! If you don't need the DI container or lifecycle orchestration, you can
+//! use [`AgentRuntime`] directly with [`Extensions`] and wrap it in
+//! [`super::invocation::RuntimeInvocation`] for the emit/on call surface.
+//! `ManagedRuntime` is for when you _do_ want coordinated startup, teardown,
+//! and the ability to swap components at runtime.
+//!
+//! # What it provides
 //!
 //! - **Coordinated lifecycle**: `init_all → start_all → serve → stop_all`
 //!   with a single root shutdown token.
+//! - **Dependency ordering**: components declare `depends_on`; the registry
+//!   topologically sorts and initializes in order.
 //! - **Typed component access**: [`ManagedRuntime::component::<T>`]
 //!   downcasts into the underlying [`ComponentRegistry`].
-//! - **Aggregated health**: [`ManagedRuntime::health`] combines
-//!   component-level and (when available) transport-level probes.
-//! - **Hot-reload entry point**: [`ManagedRuntime::reload`] replaces
+//! - **Aggregated health**: [`ManagedRuntime::health`] collects
+//!   component-level health probes.
+//! - **Hot-reload**: [`ManagedRuntime::reload`] replaces
 //!   a running component via the drain-aware protocol.
 
 #![allow(clippy::pedantic)]
@@ -25,9 +39,6 @@ use crate::runtime::component::{AnyComponent, Component};
 use crate::runtime::extensions::Extensions;
 use crate::runtime::lifecycle::ShutdownToken;
 use crate::runtime::registry::{ComponentRegistry, RegistryError, TypedAnyComponent};
-
-#[cfg(feature = "server")]
-use crate::transport::hub::TransportHub;
 
 /// Errors from [`ManagedRuntime`] operations.
 #[derive(Debug, Error)]
@@ -49,16 +60,10 @@ pub enum ManagedError {
         /// Human-readable error description.
         message: String,
     },
-
-    /// A transport-level error.
-    #[cfg(feature = "server")]
-    #[error("transport error: {0}")]
-    Transport(#[from] crate::transport::TransportError),
 }
 
 /// Unified container orchestrating [`AgentRuntime`],
-/// [`ComponentRegistry`], an optional [`TransportHub`],
-/// and a root [`ShutdownToken`].
+/// [`ComponentRegistry`], and a root [`ShutdownToken`].
 ///
 /// Construct via
 /// [`AgentConfigBuilder::build_managed`](crate::config::AgentConfigBuilder::build_managed)
@@ -78,8 +83,6 @@ pub enum ManagedError {
 pub struct ManagedRuntime {
     runtime: AgentRuntime,
     registry: ComponentRegistry,
-    #[cfg(feature = "server")]
-    hub: TransportHub,
     shutdown: ShutdownToken,
 }
 
@@ -94,14 +97,11 @@ impl ManagedRuntime {
     pub fn new(
         runtime: AgentRuntime,
         registry: ComponentRegistry,
-        #[cfg(feature = "server")] hub: TransportHub,
         shutdown: ShutdownToken,
     ) -> Self {
         Self {
             runtime,
             registry,
-            #[cfg(feature = "server")]
-            hub,
             shutdown,
         }
     }
@@ -116,13 +116,6 @@ impl ManagedRuntime {
     #[must_use]
     pub fn registry(&self) -> &ComponentRegistry {
         &self.registry
-    }
-
-    /// Borrow the [`TransportHub`] (server feature only).
-    #[cfg(feature = "server")]
-    #[must_use]
-    pub fn hub(&self) -> &TransportHub {
-        &self.hub
     }
 
     /// Clone the root [`ShutdownToken`].
@@ -152,49 +145,24 @@ impl ManagedRuntime {
 
     /// Serve until the root shutdown token fires.
     ///
-    /// When the `server` feature is enabled, this also starts all
-    /// registered transports via [`TransportHub::start_all`].
-    /// Transports are stopped via their child shutdown tokens when
-    /// the root token fires; components are stopped in reverse
-    /// dependency order afterward.
-    ///
-    /// For a blocking alternative that waits for all transports to
-    /// complete, use [`TransportHub::serve_all`].
+    /// Components are stopped in reverse dependency order after the
+    /// shutdown signal is received.
     ///
     /// # Errors
-    /// Returns the first error from transport start or component
-    /// stop.
+    /// Returns the first error from component stop.
     pub async fn serve(&self) -> Result<(), ManagedError> {
-        #[cfg(feature = "server")]
-        {
-            self.hub.start_all(self.shutdown.child()).await?;
-        }
-
         // Wait for shutdown signal.
         self.shutdown.wait().await;
 
-        // Ordered shutdown: transports first (via child tokens),
-        // then components in reverse dependency order.
+        // Ordered shutdown: components in reverse dependency order.
         self.registry.stop_all().await?;
         Ok(())
     }
 
     /// Aggregate health of every initialized component.
-    ///
-    /// When the `server` feature is enabled, transport health is
-    /// merged into the same map under the transport's name.
     #[must_use]
     pub async fn health(&self) -> std::collections::HashMap<String, HealthStatus> {
-        #[allow(unused_mut)]
-        let mut map = self.registry.health().await;
-
-        #[cfg(feature = "server")]
-        {
-            let transport_health = self.hub.health().await;
-            map.extend(transport_health);
-        }
-
-        map
+        self.registry.health().await
     }
 
     /// Returns `true` if every component reports healthy.
@@ -204,7 +172,7 @@ impl ManagedRuntime {
         map.values().all(|s| s.is_healthy())
     }
 
-    /// Aggregate all component and transport health into a single
+    /// Aggregate all component health into a single
     /// [`HealthStatus`] using worst-case semantics.
     ///
     /// Returns `Unhealthy` if any component is unhealthy, `Degraded`
@@ -308,11 +276,9 @@ impl ManagedRuntime {
 
 impl std::fmt::Debug for ManagedRuntime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut d = f.debug_struct("ManagedRuntime");
-        d.field("components", &self.registry.len());
-        #[cfg(feature = "server")]
-        d.field("transports", &self.hub.len());
-        d.finish()
+        f.debug_struct("ManagedRuntime")
+            .field("components", &self.registry.len())
+            .finish()
     }
 }
 
@@ -355,13 +321,7 @@ mod tests {
         let runtime = AgentRuntime::new(exts, policy);
         let registry = ComponentRegistry::new();
         let shutdown = ShutdownToken::new();
-        ManagedRuntime::new(
-            runtime,
-            registry,
-            #[cfg(feature = "server")]
-            TransportHub::new(),
-            shutdown,
-        )
+        ManagedRuntime::new(runtime, registry, shutdown)
     }
 
     #[tokio::test]
@@ -396,13 +356,8 @@ mod tests {
         registry.init_all().await.expect("init should succeed");
         registry.start_all().await.expect("start should succeed");
 
-        let managed = ManagedRuntime::new(
-            runtime,
-            registry,
-            #[cfg(feature = "server")]
-            TransportHub::new(),
-            ShutdownToken::new(),
-        );
+        let managed =
+            ManagedRuntime::new(runtime, registry, ShutdownToken::new());
         let comp: Arc<TestComp> = managed
             .component::<TestComp>("test")
             .expect("lookup should succeed");
@@ -429,13 +384,8 @@ mod tests {
         registry.init_all().await.expect("init should succeed");
         registry.start_all().await.expect("start should succeed");
 
-        let managed = ManagedRuntime::new(
-            runtime,
-            registry,
-            #[cfg(feature = "server")]
-            TransportHub::new(),
-            ShutdownToken::new(),
-        );
+        let managed =
+            ManagedRuntime::new(runtime, registry, ShutdownToken::new());
         let map = managed.health().await;
         assert_eq!(map.len(), 1);
         assert!(map.get("c1").map(|s| s.is_healthy()).unwrap_or(false));
@@ -459,13 +409,7 @@ mod tests {
             .expect("register should succeed");
         registry.init_all().await.expect("init should succeed");
         registry.start_all().await.expect("start should succeed");
-        ManagedRuntime::new(
-            runtime,
-            registry,
-            #[cfg(feature = "server")]
-            TransportHub::new(),
-            ShutdownToken::new(),
-        )
+        ManagedRuntime::new(runtime, registry, ShutdownToken::new())
     }
 
     #[tokio::test]

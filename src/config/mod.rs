@@ -39,23 +39,17 @@ pub mod provider;
 pub mod runtime;
 pub mod store;
 
-#[cfg(feature = "server")]
-pub mod grpc;
-
 #[cfg(feature = "rag")]
 pub mod rag;
 
 #[cfg(feature = "queue")]
 pub mod queue;
 
-pub use component::{ComponentConfig, ComponentFile, TransportConfig};
+pub use component::{ComponentConfig, ComponentFile};
 pub use loader::ConfigLoader;
 pub use provider::{ProviderConfig, ProviderType};
 pub use runtime::{RuntimeConfig, RuntimePolicyConfig};
 pub use store::{StoreBackend, StoreConfig};
-
-#[cfg(feature = "server")]
-pub use grpc::GrpcConfig;
 
 #[cfg(feature = "rag")]
 pub use rag::RagConfig;
@@ -64,7 +58,7 @@ pub use rag::RagConfig;
 pub use queue::{QueueBackend, QueueConfig};
 
 /// Top-level agent configuration combining runtime, providers, stores,
-/// and optional RAG, queue, and gRPC sub-configurations.
+/// and optional RAG and queue sub-configurations.
 ///
 /// Serialisable and deserialisable via `serde`, enabling file-based
 /// and environment-variable-based loading.
@@ -92,22 +86,11 @@ pub struct AgentConfig {
     #[serde(default)]
     pub queue: Option<QueueConfig>,
 
-    /// gRPC server configuration.
-    #[cfg(feature = "server")]
-    #[serde(default)]
-    pub grpc: GrpcConfig,
-
     /// Declarative component declarations for the composable runtime
     /// model. Populated by `[[component]]` config sections and consumed
     /// by `ComponentRegistry`.
     #[serde(default)]
     pub components: Vec<ComponentConfig>,
-
-    /// Declarative transport declarations for the composable runtime
-    /// model. Populated by `[[transport]]` config sections and
-    /// consumed by the future `TransportHub`.
-    #[serde(default)]
-    pub transports: Vec<TransportConfig>,
 }
 
 impl AgentConfig {
@@ -295,15 +278,8 @@ impl AgentConfigBuilder {
         self
     }
 
-    /// Append a transport declaration to the configuration.
-    #[must_use]
-    pub fn with_transport(mut self, transport: TransportConfig) -> Self {
-        self.config.transports.push(transport);
-        self
-    }
-
-    /// Load `[[component]]` and `[[transport]]` sections from a TOML
-    /// string and append them to the configuration.
+    /// Load `[[component]]` sections from a TOML string and append
+    /// them to the configuration.
     ///
     /// # Errors
     /// Returns the underlying TOML parse error if the input is invalid.
@@ -312,9 +288,6 @@ impl AgentConfigBuilder {
             .map_err(|e| Error::Config(format!("component toml parse error: {e}")))?;
         for c in file.component {
             self.config.components.push(c);
-        }
-        for t in file.transport {
-            self.config.transports.push(t);
         }
         Ok(self)
     }
@@ -688,16 +661,7 @@ impl AgentConfigBuilder {
             runtime = runtime.with_event_publisher(std::sync::Arc::from(publisher));
         }
 
-        #[cfg(feature = "server")]
-        let hub = crate::transport::hub::TransportHub::new();
-
-        Ok(ManagedRuntime::new(
-            runtime,
-            registry,
-            #[cfg(feature = "server")]
-            hub,
-            shutdown,
-        ))
+        Ok(ManagedRuntime::new(runtime, registry, shutdown))
     }
 }
 

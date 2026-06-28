@@ -13,7 +13,6 @@ pub mod component_factory;
 pub mod components;
 pub mod context;
 pub mod doom_loop;
-pub mod drain;
 pub mod error;
 pub mod event;
 pub mod event_store;
@@ -22,13 +21,11 @@ pub mod extensions;
 pub mod factory_registry;
 pub mod input;
 pub mod invocation;
-pub mod job;
 pub mod lifecycle;
 pub mod managed;
 pub mod memory;
 pub mod policy;
 pub mod registry;
-pub mod replace;
 pub mod router;
 pub mod run;
 mod run_loop;
@@ -66,7 +63,6 @@ pub use components::{OpenAiChatComponent, OpenAiEmbeddingComponent};
 pub use components::AnthropicChatComponent;
 pub use context::ContextPipeline;
 pub use doom_loop::{DoomLoopConfig, DoomLoopDetector, DoomLoopType, ToolCallFingerprint};
-pub use drain::{DrainGuard, DrainResult};
 pub use error::RuntimeError;
 pub use event::AgentEvent;
 pub use event_store::{
@@ -84,7 +80,6 @@ pub use invocation::{
     InvocationHandle, InvocationSession, MemorySessionDataStore, RuntimeInvocation,
     SessionDataError, SessionDataStore,
 };
-pub use job::{BackgroundJob, BackgroundJobPool, JobConditions, JobPriority, JobType};
 pub use lifecycle::ShutdownToken;
 pub use managed::{ManagedError, ManagedRuntime};
 pub use policy::{CompactionConfig, RuntimePolicy};
@@ -92,7 +87,6 @@ pub use registry::{
     ComponentDescriptor, ComponentFactory, ComponentRegistry, ComponentState, RegistryError,
     TypedAnyComponent, TypedFactory,
 };
-pub use replace::{DEFAULT_DRAIN_TIMEOUT, ReplaceError, ReplaceState, ReplaceToken};
 pub use router::ModelRouter;
 pub use run::{RunId, RunRequest, RunStatus};
 pub use session_gate::{SessionGate, SessionGuard};
