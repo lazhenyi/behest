@@ -66,16 +66,7 @@ impl OpenAiEmbeddingAdapter {
     }
 
     fn wrap_transport(&self, source: reqwest::Error) -> ProviderError {
-        if source.is_timeout() {
-            ProviderError::Timeout {
-                provider: self.id.clone(),
-            }
-        } else {
-            ProviderError::Transport {
-                provider: self.id.clone(),
-                source,
-            }
-        }
+        crate::adapt::http::wrap_transport(&self.id, source)
     }
 }
 

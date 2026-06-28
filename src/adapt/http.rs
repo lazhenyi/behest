@@ -105,3 +105,18 @@ fn truncate_body(body: &str) -> String {
     }
     format!("{}...", &body[..end])
 }
+
+/// Maps a transport error to a [`ProviderError`], distinguishing timeouts
+/// from other transport failures.
+pub(crate) fn wrap_transport(provider: &ProviderId, source: reqwest::Error) -> ProviderError {
+    if source.is_timeout() {
+        ProviderError::Timeout {
+            provider: provider.clone(),
+        }
+    } else {
+        ProviderError::Transport {
+            provider: provider.clone(),
+            source,
+        }
+    }
+}
