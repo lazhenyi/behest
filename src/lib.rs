@@ -49,17 +49,22 @@ pub mod transport;
 pub use crate::error::{ContextError, Error, ProviderError, Result, StorageError, ToolError};
 pub use crate::health::HealthStatus;
 pub use crate::runtime::{
-    AgentEvent, AgentRuntime, AnyComponent, AnyComponentError, CompactionResult, CompactionService,
-    Component, ComponentContext, ComponentDescriptor, ComponentFactory, ComponentRegistry,
-    ComponentState, Control, EmitRequest, EventKind, ExtensionError, ExtensionPoint, Extensions,
-    FactoryError, FactoryFn, FactoryRegistry, FileSessionDataStore, FileSnapshotStore,
-    InvocationError, InvocationEvent, InvocationHandle, InvocationSession, MemorySessionDataStore,
-    ModelRouter, RegistryError, RunId, RunOutput, RunRequest, RunStatus, RuntimeError,
-    RuntimeEventBridge, RuntimeEventBridgeError, RuntimeEventBridgeHandle, RuntimeEventEnvelope,
-    RuntimeEventId, RuntimeEventStore, RuntimeEventStoreError, RuntimeInvocation, RuntimePolicy,
-    RuntimeRoom, RuntimeStreamAdapter, RuntimeStreamError, RuntimeSubscription,
-    RuntimeSubscriptionError, RuntimeSubscriptionHub, SessionDataError, SessionDataStore,
-    ShutdownToken, Snapshot, SnapshotStore, TypedAnyComponent, TypedFactory,
+    AgentEvent, AgentRuntime, AnthropicChatComponent, AnyComponent, AnyComponentError,
+    CompactionResult, CompactionService, Component, ComponentContext, ComponentDescriptor,
+    ComponentError, ComponentFactory, ComponentRegistry, ComponentState, ContextPipelineComponent,
+    ContextPipelineConfig, Control, EmitRequest, EventKind, ExtensionError, ExtensionPoint,
+    Extensions, FactoryError, FactoryFn, FactoryRegistry, FileSessionDataStore, FileSnapshotStore,
+    InvocationError, InvocationEvent, InvocationHandle, InvocationSession,
+    MemoryArtifactStoreComponent, MemoryEmbeddingStoreComponent, MemoryExecutionStoreComponent,
+    MemoryRunStoreComponent, MemorySessionDataStore, MemorySessionStoreComponent, ModelRouter,
+    OpenAiChatComponent, OpenAiEmbeddingComponent, ProviderHttpComponentConfig, RegistryError,
+    RunId, RunOutput, RunRequest, RunStatus, RuntimeError, RuntimeEventBridge,
+    RuntimeEventBridgeError, RuntimeEventBridgeHandle, RuntimeEventEnvelope, RuntimeEventId,
+    RuntimeEventStore, RuntimeEventStoreError, RuntimeInvocation, RuntimePolicy, RuntimeRoom,
+    RuntimeStreamAdapter, RuntimeStreamError, RuntimeSubscription, RuntimeSubscriptionError,
+    RuntimeSubscriptionHub, SessionDataError, SessionDataStore, ShutdownToken, Snapshot,
+    SnapshotStore, TypedAnyComponent, TypedFactory, default_factory_registry,
+    register_context_pipeline, register_memory_stores, register_providers,
 };
 pub use crate::tool_output::{ToolOutputConfig, TruncationResult};
 
