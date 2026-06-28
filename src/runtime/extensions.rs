@@ -97,47 +97,17 @@ impl Extensions {
     /// one registered entry.
     #[must_use]
     pub fn populated_categories(&self) -> usize {
+        macro_rules! count {
+            ($n:ident, $($field:ident),+ $(,)?) => {
+                $( if !self.$field.is_empty() { $n += 1; } )+
+            };
+        }
         let mut n = 0;
-        if !self.chat_providers.is_empty() {
-            n += 1;
-        }
-        if !self.embedding_providers.is_empty() {
-            n += 1;
-        }
-        if !self.tools.is_empty() {
-            n += 1;
-        }
-        if !self.context_adapters.is_empty() {
-            n += 1;
-        }
-        if !self.session_stores.is_empty() {
-            n += 1;
-        }
-        if !self.execution_stores.is_empty() {
-            n += 1;
-        }
-        if !self.embedding_stores.is_empty() {
-            n += 1;
-        }
-        if !self.artifact_stores.is_empty() {
-            n += 1;
-        }
-        if !self.run_stores.is_empty() {
-            n += 1;
-        }
+        count!(n, chat_providers, embedding_providers, tools, context_adapters);
+        count!(n, session_stores, execution_stores, embedding_stores, artifact_stores, run_stores);
         #[cfg(feature = "queue")]
-        if !self.event_publishers.is_empty() {
-            n += 1;
-        }
-        if !self.session_data_stores.is_empty() {
-            n += 1;
-        }
-        if !self.runtime_event_stores.is_empty() {
-            n += 1;
-        }
-        if !self.snapshot_stores.is_empty() {
-            n += 1;
-        }
+        if !self.event_publishers.is_empty() { n += 1; }
+        count!(n, session_data_stores, runtime_event_stores, snapshot_stores);
         n
     }
 }
