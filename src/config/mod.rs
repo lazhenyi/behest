@@ -20,12 +20,17 @@
 //! let runtime = config.into_runtime().await?;
 //! ```
 
+#![allow(clippy::too_many_lines)]
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::provider::ProviderId;
+use crate::runtime::lifecycle::ShutdownToken;
+use crate::runtime::managed::ManagedRuntime;
+use crate::runtime::registry::ComponentRegistry;
 use crate::runtime::{AgentRuntime, ContextPipeline, RuntimePolicy, RuntimeStore};
 
 pub mod component;
@@ -500,6 +505,247 @@ impl AgentConfigBuilder {
 
         Ok(runtime)
     }
+
+    /// Builds a fully assembled [`ManagedRuntime`] from the configuration.
+    ///
+    /// This is the composable counterpart to [`build_runtime`](Self::build_runtime).
+    /// It wraps the runtime in a [`ManagedRuntime`] together with a
+    /// [`ComponentRegistry`] and [`ShutdownToken`], enabling coordinated
+    /// lifecycle management and hot-reload.
+    ///
+    /// When `[[component]]` sections are present, they are instantiated
+    /// via the [`FactoryRegistry`](crate::runtime::FactoryRegistry) and
+    /// registered into the [`ComponentRegistry`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when validation fails or any component cannot be
+    /// constructed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let managed = AgentConfig::builder()
+    ///     .with_file("config.toml")?
+    ///     .build_managed().await?;
+    /// managed.serve().await?;
+    /// ```
+    pub async fn build_managed(self) -> Result<ManagedRuntime> {
+        let config = self.build()?;
+        let policy: RuntimePolicy = config.runtime.policy.into();
+        let shutdown = ShutdownToken::new();
+        let registry = ComponentRegistry::with_shutdown(shutdown.clone());
+
+        #[allow(unused_mut)]
+        let mut provider_registry = crate::provider::ProviderRegistry::new();
+
+        // Register providers from [providers] section.
+        for (id, provider_config) in &config.providers {
+            let http_config = provider_config.to_http_config(id.clone());
+            match &provider_config.provider_type {
+                #[cfg(feature = "openai")]
+                Some(ProviderType::OpenAi) => {
+                    let chat_adapter = crate::adapt::openai::OpenAiChatAdapter::new(
+                        http_config.clone(),
+                    )
+                    .map_err(|e| {
+                        Error::Config(format!(
+                            "failed to create OpenAI chat adapter for '{id}': {e}"
+                        ))
+                    })?;
+                    provider_registry.register_chat(chat_adapter);
+
+                    let embed_adapter = crate::adapt::openai::OpenAiEmbeddingAdapter::new(
+                        http_config,
+                    )
+                    .map_err(|e| {
+                        Error::Config(format!(
+                            "failed to create OpenAI embedding adapter for '{id}': {e}"
+                        ))
+                    })?;
+                    provider_registry.register_embedding(embed_adapter);
+                    tracing::info!(%id, "registered OpenAI chat + embedding provider");
+                }
+
+                #[cfg(feature = "anthropic")]
+                Some(ProviderType::Anthropic) => {
+                    let chat_adapter =
+                        crate::adapt::anthropic::AnthropicChatAdapter::new(http_config.clone())
+                            .map_err(|e| {
+                                Error::Config(format!(
+                                    "failed to create Anthropic chat adapter for '{id}': {e}"
+                                ))
+                            })?;
+                    provider_registry.register_chat(chat_adapter);
+                    tracing::info!(%id, "registered Anthropic chat provider");
+                }
+
+                None => {
+                    tracing::info!(%id, base_url = %http_config.base_url, "provider configured without adapter type; manual registration required");
+                }
+
+                #[allow(unreachable_patterns)]
+                _ => {
+                    tracing::debug!(%id, "provider adapter type not available with current feature flags");
+                }
+            }
+        }
+
+        // Build stores from StoreConfig.
+        let sessions = build_session_store(&config.stores).await?;
+        let executions = build_execution_store(&config.stores).await?;
+        let runs = crate::runtime::memory::MemoryRunStore::new();
+
+        // Build Extensions and populate from providers/stores.
+        let mut exts = crate::runtime::extensions::Extensions::new();
+        exts.session_stores
+            .register_or_replace("default", std::sync::Arc::from(sessions));
+        exts.execution_stores
+            .register_or_replace("default", std::sync::Arc::from(executions));
+        exts.run_stores
+            .register_or_replace("default", std::sync::Arc::new(runs));
+        exts.chat_providers = provider_registry.chat_extensions().clone();
+        exts.embedding_providers = provider_registry.embedding_extensions().clone();
+
+        let _store = std::sync::Arc::new(RuntimeStore::from_extensions(&exts));
+
+        #[allow(unused_mut)]
+        let mut context =
+            ContextPipeline::new().with_max_history(config.runtime.max_history_messages);
+
+        #[cfg(feature = "rag")]
+        if let Some(ref rag_config) = config.rag {
+            let provider = provider_registry
+                .embedding(&rag_config.provider_id)
+                .ok_or_else(|| {
+                    Error::Config(format!(
+                        "RAG embedding provider '{}' not found in registry",
+                        rag_config.provider_id
+                    ))
+                })?;
+            let embedding_store: std::sync::Arc<dyn crate::store::EmbeddingStore> =
+                build_embedding_store(&config.stores).await?;
+            let adapter = crate::rag::RagContextAdapter::new(
+                provider,
+                embedding_store,
+                rag_config.model.clone(),
+            )
+            .with_limit(rag_config.limit)
+            .with_template(rag_config.template.clone())
+            .with_metadata_field(rag_config.metadata_field.clone());
+            context.register_arc(std::sync::Arc::new(adapter));
+        }
+
+        // Register [[component]] entries from config into ComponentRegistry
+        // via FactoryRegistry.
+        if !config.components.is_empty() {
+            let factory = crate::runtime::default_factory_registry();
+            let ctx = crate::runtime::ComponentContext::new(shutdown.child());
+            for comp_cfg in &config.components {
+                if factory.contains(&comp_cfg.kind) {
+                    let any = factory
+                        .invoke(&comp_cfg.kind, comp_cfg.config.clone(), &ctx)
+                        .map_err(|e| {
+                            Error::Config(format!("factory for '{}' failed: {e}", comp_cfg.kind))
+                        })?;
+                    let descriptor = crate::runtime::ComponentDescriptor {
+                        name: comp_cfg.name.clone(),
+                        depends_on: comp_cfg.depends_on.clone(),
+                        config: comp_cfg.config.clone(),
+                    };
+                    let oneshot =
+                        OneShotFactory::new(comp_cfg.name.clone(), comp_cfg.kind.clone(), any);
+                    registry
+                        .register_factory(descriptor, Box::new(oneshot))
+                        .map_err(|e| {
+                            Error::Config(format!("component registration failed: {e}"))
+                        })?;
+                } else {
+                    tracing::warn!(
+                        kind = %comp_cfg.kind,
+                        name = %comp_cfg.name,
+                        "no factory registered for component kind; skipping"
+                    );
+                }
+            }
+            // Init and start components registered via [[component]].
+            registry
+                .init_all()
+                .await
+                .map_err(|e| Error::Config(format!("component init failed: {e}")))?;
+            registry
+                .start_all()
+                .await
+                .map_err(|e| Error::Config(format!("component start failed: {e}")))?;
+        }
+
+        #[allow(unused_mut)]
+        let mut runtime = AgentRuntime::new(std::sync::Arc::new(exts), policy);
+
+        #[cfg(feature = "queue")]
+        if let Some(ref queue_config) = config.queue {
+            let publisher = build_event_publisher(queue_config).await?;
+            runtime = runtime.with_event_publisher(std::sync::Arc::from(publisher));
+        }
+
+        #[cfg(feature = "server")]
+        let hub = crate::transport::hub::TransportHub::new();
+
+        Ok(ManagedRuntime::new(
+            runtime,
+            registry,
+            #[cfg(feature = "server")]
+            hub,
+            shutdown,
+        ))
+    }
+}
+
+/// Adapter that wraps a pre-built [`AnyComponent`] into a
+/// [`ComponentFactory`], allowing the [`ComponentRegistry`] to manage
+/// its lifecycle uniformly.
+struct OneShotFactory {
+    name: String,
+    kind: &'static str,
+    instance: Box<dyn crate::runtime::AnyComponent>,
+}
+
+impl OneShotFactory {
+    fn new(name: String, kind: String, instance: Box<dyn crate::runtime::AnyComponent>) -> Self {
+        // Leak the kind string once to satisfy the `'static` bound on
+        // [`ComponentFactory::kind`]. Acceptable for the small, fixed
+        // set of component kinds registered at startup.
+        let kind_static: &'static str = Box::leak(kind.into_boxed_str());
+        Self {
+            name,
+            kind: kind_static,
+            instance,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::runtime::ComponentFactory for OneShotFactory {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn kind(&self) -> &'static str {
+        self.kind
+    }
+
+    fn depends_on(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    async fn build(
+        self: Box<Self>,
+        _config: serde_json::Value,
+        _ctx: &crate::runtime::ComponentContext,
+    ) -> std::result::Result<Box<dyn crate::runtime::AnyComponent>, crate::runtime::RegistryError>
+    {
+        Ok(self.instance)
+    }
 }
 
 #[allow(clippy::too_many_lines, clippy::unused_async)]
@@ -880,7 +1126,7 @@ fn merge_configs(base: AgentConfig, overlay: AgentConfig) -> AgentConfig {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     #[cfg(feature = "rag")]
@@ -961,6 +1207,40 @@ mod tests {
             let config = AgentConfig::default();
             let runtime = config.into_runtime().await.unwrap();
             assert_eq!(runtime.policy().max_iterations, 10);
+        });
+    }
+
+    #[test]
+    fn build_managed_with_defaults_should_succeed() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let managed = AgentConfig::builder()
+                .build_managed()
+                .await
+                .expect("build_managed should succeed");
+            assert_eq!(managed.runtime().policy().max_iterations, 10);
+            assert!(managed.registry().is_empty());
+            assert!(managed.is_healthy().await);
+        });
+    }
+
+    #[test]
+    fn build_managed_with_component_should_register() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let config = AgentConfig::builder()
+                .with_component(
+                    ComponentConfig::new("mem-session", "store.session.memory")
+                        .with_config(serde_json::json!({})),
+                )
+                .build()
+                .expect("build should succeed");
+            let managed = config
+                .into_builder()
+                .build_managed()
+                .await
+                .expect("build_managed should succeed");
+            assert_eq!(managed.registry().len(), 1);
         });
     }
 
