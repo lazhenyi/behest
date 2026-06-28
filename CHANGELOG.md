@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.4.0] — 2026-06-27
 
+### Added
+
+#### Managed runtime
+- `ManagedRuntime`: unified container orchestrating `AgentRuntime`,
+  `ComponentRegistry`, an optional `TransportHub`, and a root
+  `ShutdownToken`. Provides coordinated lifecycle (`init_all → start_all → serve → stop_all`),
+  typed component access, aggregated health, and hot-reload entry point.
+- `AgentConfigBuilder::build_managed()`: one-call construction of a fully
+  configured `ManagedRuntime`.
+
+#### Hot-swap reload protocol
+- `ManagedRuntime::reload`: drain-aware component replacement. Calls
+  `pre_replace_hook` on the old instance, starts the new instance,
+  atomically swaps the registry entry, then calls `post_replace_hook`.
+  Returns the old `Arc<T>` for explicit drain/await.
+- `ManagedRuntime::reload_raw`: type-erased counterpart accepting
+  `Box<dyn AnyComponent>`.
+- `Component::pre_replace_hook` / `Component::post_replace_hook`: optional
+  lifecycle hooks for graceful replacement.
+
+#### Drain helper
+- `DrainGuard<T>`: reference-counted guard for tracking outstanding
+  `Arc<T>` references during hot-swap. Reports drain status when all
+  external references are dropped.
+
+#### Health aggregation & endpoints
+- `HealthStatus::aggregate`: worst-case aggregation over a map of
+  component health statuses (healthy / degraded / unhealthy).
+- `HealthStatus::healthz_response`: builds a JSON `/healthz` response
+  body with overall status and per-component breakdown.
+- `ManagedRuntime::overall_health`, `is_ready`, `healthz_json`:
+  convenience methods for health probes and readiness gates.
+
+#### gRPC transport component
+- `GrpcTransport`: a `Transport` implementation wrapping a tonic gRPC
+  server. Accepts a fully configured tonic `Router` and serves it with
+  graceful shutdown.
+- `TransportHub::serve_all`: blocking counterpart of `start_all` that
+  waits for all transports to complete before returning.
+- `TransportHub::health`: concurrent health probes across all registered
+  transports.
+
+#### Admin gRPC extensions
+- `HealthCheck` and `ReadinessCheck` RPCs in `admin.proto` for external
+  health and readiness probing.
+
+#### Examples & tests
+- `examples/managed_runtime.rs`: demonstrates `ManagedRuntime` lifecycle
+  with health inspection and graceful shutdown.
+- `examples/hot_swap.rs`: demonstrates hot-swap reload via
+  `ManagedRuntime::reload` with drain-aware reference tracking.
+- `tests/managed_runtime.rs`: integration tests for `ManagedRuntime`
+  lifecycle, health aggregation, reload, and `healthz_json`.
+
 ### Removed
 
 - `reasoning` module removed entirely: `ReasoningGraph`, `ReasoningOperator`, 27
