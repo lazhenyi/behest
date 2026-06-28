@@ -23,7 +23,6 @@ use super::error::{RuntimeError, RuntimeResult};
 use super::event::{AgentEvent, RunStarted};
 use super::extensions::Extensions;
 use super::input::{InputAdmission, InputRecord};
-use super::job::BackgroundJobPool;
 use super::policy::RuntimePolicy;
 use super::run::{RunId, RunRecord, RunRequest, RunStatus};
 use super::session_gate::SessionGate;
@@ -37,9 +36,8 @@ use crate::tool_scope::ScopeGuard;
 /// Streaming-first agent runtime kernel.
 ///
 /// Ties together provider registry, context pipeline, tool runtime,
-/// compaction service, persistent stores, background job pool, snapshot
-/// recovery, session gating, and input admission into a complete agent
-/// execution loop.
+/// compaction service, persistent stores, snapshot recovery, session
+/// gating, and input admission into a complete agent execution loop.
 pub struct AgentRuntime {
     providers: crate::provider::ProviderRegistry,
     pub(super) context: ContextPipeline,
@@ -52,7 +50,6 @@ pub struct AgentRuntime {
     pub(super) event_tx: broadcast::Sender<AgentEvent>,
     #[cfg(feature = "queue")]
     pub(super) event_publisher: Option<Arc<dyn EventPublisher>>,
-    pub(super) background_jobs: Option<Arc<BackgroundJobPool>>,
     snapshot_store: Option<Arc<dyn SnapshotStore>>,
     /// Composable, hot-pluggable facade over every pluggable runtime
     /// element. Constructed empty by [`AgentRuntime::new`] and
@@ -70,8 +67,7 @@ impl AgentRuntime {
     /// extensions or their defaults. Use
     /// [`with_tool_registry`](Self::with_tool_registry)
     /// to populate the tool runtime, and the `with_*` setters for
-    /// optional components (background jobs, event publisher, snapshot
-    /// store).
+    /// optional components (event publisher, snapshot store).
     #[must_use]
     pub fn new(extensions: Arc<Extensions>, policy: RuntimePolicy) -> Self {
         let providers = crate::provider::ProviderRegistry::from_extensions(&extensions);
@@ -93,7 +89,6 @@ impl AgentRuntime {
             event_tx,
             #[cfg(feature = "queue")]
             event_publisher: None,
-            background_jobs: None,
             snapshot_store: None,
             extensions,
         }
@@ -106,28 +101,14 @@ impl AgentRuntime {
         self
     }
 
-    /// Injects a background job pool for event persistence and publishing.
-    ///
-    /// Callers are responsible for calling [`BackgroundJobPool::start`]
-    /// on the pool before passing it in. The pool is used by `emit`
-    /// to persist events and optionally forward them to an external publisher.
-    #[must_use]
-    pub fn with_background_jobs(mut self, pool: Arc<BackgroundJobPool>) -> Self {
-        self.background_jobs = Some(pool);
-        self
-    }
-
     /// Sets an external event publisher for the agent runtime.
     ///
     /// When set, every [`AgentEvent`] emitted during a run will also be
     /// published to the configured [`EventPublisher`] via fire-and-forget.
-    /// Requires the `queue` feature and a configured background job pool.
+    /// Requires the `queue` feature.
     #[cfg(feature = "queue")]
     #[must_use]
     pub fn with_event_publisher(mut self, publisher: Arc<dyn EventPublisher>) -> Self {
-        if let Some(ref jobs) = self.background_jobs {
-            jobs.set_event_publisher(Arc::clone(&publisher));
-        }
         // Mirror into the Extensions facade for unified access.
         let _ = self
             .extensions
@@ -160,14 +141,6 @@ impl AgentRuntime {
     #[must_use]
     pub fn extensions(&self) -> &Arc<Extensions> {
         &self.extensions
-    }
-
-    /// Returns a reference to the background job pool, if configured.
-    ///
-    /// Returns `None` if no pool was injected via [`with_background_jobs`](Self::with_background_jobs).
-    #[must_use]
-    pub fn background_jobs(&self) -> Option<&Arc<BackgroundJobPool>> {
-        self.background_jobs.as_ref()
     }
 
     /// Returns the session gate used to serialize concurrent runs per session.
@@ -492,40 +465,6 @@ impl AgentRuntime {
     pub(super) fn emit(&self, event: &AgentEvent) {
         if let Err(e) = self.event_tx.send(event.clone()) {
             warn!(lag = ?e, "event channel full, consumer too slow — event dropped");
-        }
-
-        if let Some(ref jobs) = self.background_jobs {
-            let jobs = Arc::clone(jobs);
-            let event = event.clone();
-            tokio::spawn(async move {
-                jobs.schedule(
-                    super::job::JobPriority::Normal,
-                    super::job::JobType::PersistEvent {
-                        run_id: event.run_id(),
-                        event: event.clone(),
-                    },
-                    super::job::JobConditions::default(),
-                )
-                .await;
-            });
-        }
-
-        #[cfg(feature = "queue")]
-        if self.event_publisher.is_some() {
-            if let Some(ref jobs) = self.background_jobs {
-                let jobs = Arc::clone(jobs);
-                let event = event.clone();
-                tokio::spawn(async move {
-                    jobs.schedule(
-                        super::job::JobPriority::High,
-                        super::job::JobType::PublishExternalEvent {
-                            event: event.clone(),
-                        },
-                        super::job::JobConditions::default(),
-                    )
-                    .await;
-                });
-            }
         }
     }
 
