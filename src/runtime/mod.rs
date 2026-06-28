@@ -10,6 +10,7 @@ pub mod agent;
 pub mod compaction;
 pub mod component;
 pub mod component_factory;
+pub mod components;
 pub mod context;
 pub mod doom_loop;
 pub mod error;
@@ -48,6 +49,13 @@ pub use component::{AnyComponent, AnyComponentError, Component, ComponentContext
 pub use component_factory::{
     ChatProviderAny, ChatProviderComponent, ChatProviderFactory, EmbeddingProviderAny,
     EmbeddingProviderComponent, EmbeddingProviderFactory, EmptyConfig, WrapperError,
+};
+pub use components::{
+    AnthropicChatComponent, ComponentError, ContextPipelineComponent, ContextPipelineConfig,
+    MemoryArtifactStoreComponent, MemoryEmbeddingStoreComponent, MemoryExecutionStoreComponent,
+    MemoryRunStoreComponent, MemorySessionStoreComponent, OpenAiChatComponent,
+    OpenAiEmbeddingComponent, ProviderHttpComponentConfig, default_factory_registry,
+    register_context_pipeline, register_memory_stores, register_providers,
 };
 pub use context::ContextPipeline;
 pub use doom_loop::{DoomLoopConfig, DoomLoopDetector, DoomLoopType, ToolCallFingerprint};
