@@ -54,6 +54,10 @@ The name `behest` deliberately avoids inflated metaphors like "brain / cognition
 | Chat model types | messages, content parts, tool calls, response formats, token usage, finish reasons |
 | Tool runtime | `Tool`, `FunctionTool`, `ExternalTool`, `ToolRegistry`, schema generation, execution dispatch |
 | Agent runtime | context building, model calls, tool loop, session persistence, event emission |
+| Managed runtime | `ManagedRuntime` unified container, coordinated lifecycle, typed component access, hot-reload |
+| Hot-swap reload | drain-aware component replacement with pre/post hooks |
+| Drain helper | `DrainGuard<T>` reference-counted guard for tracking outstanding Arc references |
+| Health aggregation | `HealthStatus::aggregate`, `healthz_response`, readiness gates |
 | Runtime invocation | `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, transport-neutral emit/on facade |
 | Runtime stream | `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub`, replay + live fanout |
 | Runtime safety | session gate, runtime policy, input admission, doom-loop detection, tool output truncation |
@@ -61,6 +65,7 @@ The name `behest` deliberately avoids inflated metaphors like "brain / cognition
 | Context and RAG | context adapters, static/function adapters, optional RAG adapter |
 | Queues | optional event publishing through NATS or Redis Streams |
 | Configuration | builder, file-based config, environment variable loading, secret indirection |
+| gRPC transport | `GrpcTransport` wrapping tonic servers, `TransportHub::serve_all`, concurrent health probes |
 | Server | optional gRPC server binary behind `server` feature |
 | Observability | tracing and optional OpenTelemetry integration |
 
@@ -68,7 +73,7 @@ The name `behest` deliberately avoids inflated metaphors like "brain / cognition
 
 ```toml
 [dependencies]
-behest = "0.2"
+behest = "0.4"
 ```
 
 Create a provider-neutral chat request:
@@ -176,7 +181,27 @@ let output = registry.execute(&call).await?;
 
 ## Runtime model
 
-At the runtime layer, `AgentRuntime` orchestrates the full agent loop:
+At the runtime layer, `AgentRuntime` orchestrates the full agent loop, while `ManagedRuntime` provides a unified container for production deployments:
+
+```rust
+use behest::prelude::*;
+
+let config = AgentConfig::builder()
+    .with_file("behest.toml")?
+    .with_env("BEHEST")?
+    .build()?;
+
+// One-call construction of a fully configured ManagedRuntime.
+let managed = config.build_managed().await?;
+
+// Lifecycle: init → start → serve → stop
+managed.init_all().await?;
+managed.start_all().await?;
+managed.serve().await?; // blocks until shutdown signal
+managed.stop_all().await?;
+```
+
+The runtime loop:
 
 ```text
 RunRequest
@@ -246,7 +271,7 @@ Enable adapters:
 
 ```toml
 [dependencies]
-behest = { version = "0.2", features = ["openai", "anthropic"] }
+behest = { version = "0.4", features = ["openai", "anthropic"] }
 ```
 
 ## Feature flags
@@ -325,7 +350,7 @@ Example with selected features:
 ```toml
 [dependencies]
 behest = {
-    version = "0.2",
+    version = "0.4",
     default-features = false,
     features = ["tls-rustls", "openai", "anthropic", "redis", "queue", "nats"]
 }
