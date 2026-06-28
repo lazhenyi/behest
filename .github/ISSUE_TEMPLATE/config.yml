@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security Report
+    url: mailto:434836402@qq.com
+    about: Report a security vulnerability privately — do not open a public issue.
+  - name: Discussion
+    url: https://github.com/lazhenyi/behest/discussions
+    about: Ask questions or share ideas in the discussion forum.
