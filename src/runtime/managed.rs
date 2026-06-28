@@ -185,6 +185,7 @@ impl ManagedRuntime {
     /// merged into the same map under the transport's name.
     #[must_use]
     pub async fn health(&self) -> std::collections::HashMap<String, HealthStatus> {
+        #[allow(unused_mut)]
         let mut map = self.registry.health().await;
 
         #[cfg(feature = "server")]

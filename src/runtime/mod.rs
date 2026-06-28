@@ -53,12 +53,18 @@ pub use component_factory::{
     EmbeddingProviderComponent, EmbeddingProviderFactory, EmptyConfig, WrapperError,
 };
 pub use components::{
-    AnthropicChatComponent, ComponentError, ContextPipelineComponent, ContextPipelineConfig,
+    ComponentError, ContextPipelineComponent, ContextPipelineConfig,
     MemoryArtifactStoreComponent, MemoryEmbeddingStoreComponent, MemoryExecutionStoreComponent,
-    MemoryRunStoreComponent, MemorySessionStoreComponent, OpenAiChatComponent,
-    OpenAiEmbeddingComponent, ProviderHttpComponentConfig, default_factory_registry,
+    MemoryRunStoreComponent, MemorySessionStoreComponent,
+    ProviderHttpComponentConfig, default_factory_registry,
     register_context_pipeline, register_memory_stores, register_providers,
 };
+
+#[cfg(feature = "openai")]
+pub use components::{OpenAiChatComponent, OpenAiEmbeddingComponent};
+
+#[cfg(feature = "anthropic")]
+pub use components::AnthropicChatComponent;
 pub use context::ContextPipeline;
 pub use doom_loop::{DoomLoopConfig, DoomLoopDetector, DoomLoopType, ToolCallFingerprint};
 pub use drain::{DrainGuard, DrainResult};

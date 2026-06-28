@@ -466,7 +466,7 @@ impl AgentConfigBuilder {
 
         let _store = std::sync::Arc::new(RuntimeStore::from_extensions(&exts));
 
-        #[allow(unused_mut)]
+        #[allow(unused)]
         let mut context =
             ContextPipeline::new().with_max_history(config.runtime.max_history_messages);
 
@@ -609,7 +609,7 @@ impl AgentConfigBuilder {
 
         let _store = std::sync::Arc::new(RuntimeStore::from_extensions(&exts));
 
-        #[allow(unused_mut)]
+        #[allow(unused)]
         let mut context =
             ContextPipeline::new().with_max_history(config.runtime.max_history_messages);
 

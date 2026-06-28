@@ -18,12 +18,19 @@ use serde::{Deserialize, Serialize};
 
 use super::AnyComponent;
 use super::memory::MemoryRunStore;
+#[cfg(feature = "anthropic")]
 use crate::adapt::anthropic::chat::AnthropicChatAdapter;
+#[cfg(feature = "openai")]
 use crate::adapt::openai::chat::OpenAiChatAdapter;
+#[cfg(feature = "openai")]
 use crate::adapt::openai::embed::OpenAiEmbeddingAdapter;
 use crate::error::ProviderError;
 use crate::provider::config::{DEFAULT_CONNECT_TIMEOUT, DEFAULT_TIMEOUT};
-use crate::provider::{ChatProvider, EmbeddingProvider, ProviderHttpConfig, ProviderId};
+#[cfg(any(feature = "openai", feature = "anthropic"))]
+use crate::provider::ChatProvider;
+#[cfg(feature = "openai")]
+use crate::provider::EmbeddingProvider;
+use crate::provider::{ProviderHttpConfig, ProviderId};
 use crate::runtime::component::{Component, ComponentContext};
 use crate::runtime::context::ContextPipeline;
 use crate::runtime::factory_registry::{FactoryError, FactoryRegistry};
@@ -110,10 +117,12 @@ impl From<ProviderError> for ComponentError {
 // ---------------------------------------------------------------------------
 
 /// Component wrapper for [`OpenAiChatAdapter`].
+#[cfg(feature = "openai")]
 pub struct OpenAiChatComponent {
     inner: Arc<dyn ChatProvider>,
 }
 
+#[cfg(feature = "openai")]
 #[async_trait]
 impl Component for OpenAiChatComponent {
     const NAME: &'static str = "provider.openai.chat";
@@ -130,10 +139,12 @@ impl Component for OpenAiChatComponent {
 }
 
 /// Component wrapper for [`AnthropicChatAdapter`].
+#[cfg(feature = "anthropic")]
 pub struct AnthropicChatComponent {
     inner: Arc<dyn ChatProvider>,
 }
 
+#[cfg(feature = "anthropic")]
 #[async_trait]
 impl Component for AnthropicChatComponent {
     const NAME: &'static str = "provider.anthropic.chat";
@@ -150,10 +161,12 @@ impl Component for AnthropicChatComponent {
 }
 
 /// Component wrapper for [`OpenAiEmbeddingAdapter`].
+#[cfg(feature = "openai")]
 pub struct OpenAiEmbeddingComponent {
     inner: Arc<dyn EmbeddingProvider>,
 }
 
+#[cfg(feature = "openai")]
 #[async_trait]
 impl Component for OpenAiEmbeddingComponent {
     const NAME: &'static str = "provider.openai.embedding";
@@ -318,23 +331,53 @@ impl Component for ContextPipelineComponent {
 /// - `"provider.openai.embedding"`
 #[must_use]
 pub fn register_providers(registry: FactoryRegistry) -> FactoryRegistry {
-    registry
-        .register("provider.openai.chat", |cfg, _ctx| {
-            let v: ProviderHttpComponentConfig =
-                serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
-                    kind: "provider.openai.chat".into(),
-                    source: e,
-                })?;
-            let http = v.into_provider_http_config();
-            let adapter = OpenAiChatAdapter::new(http).map_err(|e| {
-                FactoryError::FactoryFailed("provider.openai.chat".into(), e.to_string())
-            })?;
-            let comp = OpenAiChatComponent {
-                inner: Arc::new(adapter),
-            };
-            Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-        })
-        .register("provider.anthropic.chat", |cfg, _ctx| {
+    let registry = {
+        #[cfg(feature = "openai")]
+        {
+            registry
+                .register("provider.openai.chat", |cfg, _ctx| {
+                    let v: ProviderHttpComponentConfig =
+                        serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
+                            kind: "provider.openai.chat".into(),
+                            source: e,
+                        })?;
+                    let http = v.into_provider_http_config();
+                    let adapter = OpenAiChatAdapter::new(http).map_err(|e| {
+                        FactoryError::FactoryFailed("provider.openai.chat".into(), e.to_string())
+                    })?;
+                    let comp = OpenAiChatComponent {
+                        inner: Arc::new(adapter),
+                    };
+                    Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
+                })
+                .register("provider.openai.embedding", |cfg, _ctx| {
+                    let v: ProviderHttpComponentConfig =
+                        serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
+                            kind: "provider.openai.embedding".into(),
+                            source: e,
+                        })?;
+                    let http = v.into_provider_http_config();
+                    let adapter = OpenAiEmbeddingAdapter::new(http).map_err(|e| {
+                        FactoryError::FactoryFailed(
+                            "provider.openai.embedding".into(),
+                            e.to_string(),
+                        )
+                    })?;
+                    let comp = OpenAiEmbeddingComponent {
+                        inner: Arc::new(adapter),
+                    };
+                    Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
+                })
+        }
+        #[cfg(not(feature = "openai"))]
+        {
+            registry
+        }
+    };
+
+    #[cfg(feature = "anthropic")]
+    {
+        registry.register("provider.anthropic.chat", |cfg, _ctx| {
             let v: ProviderHttpComponentConfig =
                 serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
                     kind: "provider.anthropic.chat".into(),
@@ -349,21 +392,11 @@ pub fn register_providers(registry: FactoryRegistry) -> FactoryRegistry {
             };
             Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
         })
-        .register("provider.openai.embedding", |cfg, _ctx| {
-            let v: ProviderHttpComponentConfig =
-                serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
-                    kind: "provider.openai.embedding".into(),
-                    source: e,
-                })?;
-            let http = v.into_provider_http_config();
-            let adapter = OpenAiEmbeddingAdapter::new(http).map_err(|e| {
-                FactoryError::FactoryFailed("provider.openai.embedding".into(), e.to_string())
-            })?;
-            let comp = OpenAiEmbeddingComponent {
-                inner: Arc::new(adapter),
-            };
-            Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-        })
+    }
+    #[cfg(not(feature = "anthropic"))]
+    {
+        registry
+    }
 }
 
 /// Registers all memory-store factory invokers into a [`FactoryRegistry`].
@@ -472,16 +505,27 @@ mod tests {
     fn default_registry_contains_all_kinds() {
         let reg = default_factory_registry();
         let kinds: Vec<&str> = reg.kinds().collect();
-        assert!(kinds.contains(&"provider.openai.chat"));
-        assert!(kinds.contains(&"provider.anthropic.chat"));
-        assert!(kinds.contains(&"provider.openai.embedding"));
         assert!(kinds.contains(&"store.session.memory"));
         assert!(kinds.contains(&"store.execution.memory"));
         assert!(kinds.contains(&"store.run.memory"));
         assert!(kinds.contains(&"store.embedding.memory"));
         assert!(kinds.contains(&"store.artifact.memory"));
         assert!(kinds.contains(&"context.pipeline"));
-        assert_eq!(kinds.len(), 9);
+
+        let expected_providers: usize = 0
+            + if cfg!(feature = "openai") { 2 } else { 0 }
+            + if cfg!(feature = "anthropic") { 1 } else { 0 };
+        assert_eq!(kinds.len(), 6 + expected_providers);
+
+        #[cfg(feature = "openai")]
+        {
+            assert!(kinds.contains(&"provider.openai.chat"));
+            assert!(kinds.contains(&"provider.openai.embedding"));
+        }
+        #[cfg(feature = "anthropic")]
+        {
+            assert!(kinds.contains(&"provider.anthropic.chat"));
+        }
     }
 
     #[test]
@@ -551,6 +595,7 @@ mod tests {
         assert_eq!(comp.name(), "context.pipeline");
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn provider_openai_chat_invocation_succeeds_without_api_key() {
         // Adapter constructors are lazy — they don't validate credentials
@@ -567,6 +612,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[cfg(feature = "openai")]
     #[test]
     fn provider_openai_chat_invocation_fails_with_bad_config() {
         let reg = default_factory_registry();
@@ -590,9 +636,15 @@ mod tests {
     fn register_providers_returns_chained_registry() {
         let reg = FactoryRegistry::new();
         let reg = register_providers(reg);
-        assert!(reg.contains("provider.openai.chat"));
-        assert!(reg.contains("provider.anthropic.chat"));
-        assert!(reg.contains("provider.openai.embedding"));
+        #[cfg(feature = "openai")]
+        {
+            assert!(reg.contains("provider.openai.chat"));
+            assert!(reg.contains("provider.openai.embedding"));
+        }
+        #[cfg(feature = "anthropic")]
+        {
+            assert!(reg.contains("provider.anthropic.chat"));
+        }
     }
 
     #[test]
