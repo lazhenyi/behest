@@ -25,11 +25,11 @@ use crate::adapt::openai::chat::OpenAiChatAdapter;
 #[cfg(feature = "openai")]
 use crate::adapt::openai::embed::OpenAiEmbeddingAdapter;
 use crate::error::ProviderError;
-use crate::provider::config::{DEFAULT_CONNECT_TIMEOUT, DEFAULT_TIMEOUT};
 #[cfg(any(feature = "openai", feature = "anthropic"))]
 use crate::provider::ChatProvider;
 #[cfg(feature = "openai")]
 use crate::provider::EmbeddingProvider;
+use crate::provider::config::{DEFAULT_CONNECT_TIMEOUT, DEFAULT_TIMEOUT};
 use crate::provider::{ProviderHttpConfig, ProviderId};
 use crate::runtime::component::{Component, ComponentContext};
 use crate::runtime::context::ContextPipeline;

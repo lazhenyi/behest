@@ -53,10 +53,9 @@ pub use component_factory::{
     EmbeddingProviderComponent, EmbeddingProviderFactory, EmptyConfig, WrapperError,
 };
 pub use components::{
-    ComponentError, ContextPipelineComponent, ContextPipelineConfig,
-    MemoryArtifactStoreComponent, MemoryEmbeddingStoreComponent, MemoryExecutionStoreComponent,
-    MemoryRunStoreComponent, MemorySessionStoreComponent,
-    ProviderHttpComponentConfig, default_factory_registry,
+    ComponentError, ContextPipelineComponent, ContextPipelineConfig, MemoryArtifactStoreComponent,
+    MemoryEmbeddingStoreComponent, MemoryExecutionStoreComponent, MemoryRunStoreComponent,
+    MemorySessionStoreComponent, ProviderHttpComponentConfig, default_factory_registry,
     register_context_pipeline, register_memory_stores, register_providers,
 };
 
