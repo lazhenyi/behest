@@ -464,8 +464,8 @@ mod tests {
         assert!(kinds.contains(&"store.artifact.memory"));
         assert!(kinds.contains(&"context.pipeline"));
 
-        let expected_providers: usize = usize::from(cfg!(feature = "openai")) * 2
-            + usize::from(cfg!(feature = "anthropic"));
+        let expected_providers: usize =
+            usize::from(cfg!(feature = "openai")) * 2 + usize::from(cfg!(feature = "anthropic"));
         assert_eq!(kinds.len(), 6 + expected_providers);
 
         #[cfg(feature = "openai")]
