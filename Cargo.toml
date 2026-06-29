@@ -208,7 +208,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 secrecy = "0.10"
 dotenvy = "0.15"
 config = { version = "0.15", default-features = false, features = ["toml", "json", "yaml"] }
-toml = { version = "0.8", default-features = false, features = ["parse"] }
+toml = { version = "1.1", default-features = false, features = ["parse"] }
 
 indexmap = { version = "2", features = ["serde"] }
 bytes = "1"
