@@ -40,8 +40,6 @@ use crate::token::estimate_records_tokens;
 
 use super::error::{RuntimeError, RuntimeResult};
 
-// ── Compaction Circuit Breaker ───────────────────────────────────────
-
 /// Circuit breaker that gates compaction calls after repeated failures.
 ///
 /// When consecutive compaction failures reach the configured threshold,
@@ -111,8 +109,6 @@ impl CompactionCircuitBreaker {
         self.consecutive_failures
     }
 }
-
-// ── Compaction Service ───────────────────────────────────────────────
 
 /// Service for LLM-driven conversational context compaction.
 ///
@@ -247,11 +243,9 @@ impl CompactionService {
     ) -> RuntimeResult<CompactionResult> {
         let effective_keep = keep_tokens_override.unwrap_or(self.config.keep_tokens);
 
-        // 1. Select messages to compact vs retain
         let selection = select::select(messages, self.config.tail_turns, effective_keep);
 
         if selection.head.is_empty() {
-            // Nothing to compact
             let dummy_id = Uuid::nil();
             return Ok(CompactionResult {
                 summary_text: String::new(),
@@ -264,7 +258,6 @@ impl CompactionService {
 
         let tail_start_id = selection.tail_start_id.unwrap_or_else(Uuid::nil);
 
-        // 2. Look up previous compaction for incremental summarisation
         let previous_summary = store
             .get_latest_compaction(&session_id)
             .await
@@ -272,15 +265,12 @@ impl CompactionService {
             .and_then(|m| m.compaction_meta)
             .and_then(|meta| meta.summary_text);
 
-        // 3. Build the compaction prompt
         let prompt_text = prompt::build_prompt(&selection.head, previous_summary.as_deref());
 
-        // 4. Call the compaction LLM
         let summary_text = self
             .run_compaction_llm(&*provider, &model, &prompt_text)
             .await?;
 
-        // 5. Persist the compaction user message
         let compaction_user_id = Uuid::now_v7();
         let compaction_user = MessageRecord {
             id: compaction_user_id,
@@ -301,7 +291,6 @@ impl CompactionService {
             .await
             .map_err(RuntimeError::Storage)?;
 
-        // 6. Persist the compaction summary (as an assistant message)
         let summary_message_id = Uuid::now_v7();
         let summary_message = MessageRecord {
             id: summary_message_id,
@@ -324,7 +313,6 @@ impl CompactionService {
             .await
             .map_err(RuntimeError::Storage)?;
 
-        // 7. Calculate tokens saved
         let head_tokens = estimate_records_tokens(&selection.head);
         let summary_tokens = crate::token::estimate_tokens(&summary_text);
 
@@ -467,8 +455,6 @@ mod tests {
         let msg = Message::assistant_text("summary text");
         assert_eq!(extract_text_content(&msg), "summary text");
     }
-
-    // ── Circuit Breaker Tests ──────────────────────────────────────
 
     #[test]
     fn breaker_starts_closed() {

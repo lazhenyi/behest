@@ -104,7 +104,6 @@ impl TurnTransition {
     #[must_use]
     pub fn resolve(state: TurnState, outcome: &TurnOutcome) -> TurnAction {
         match (state, outcome) {
-            // ── CheckingPolicy ──────────────────────────────────────
             (TurnState::CheckingPolicy, TurnOutcome::PolicyExceeded { reason }) => {
                 TurnAction::Fail {
                     reason: reason.clone(),
@@ -114,7 +113,6 @@ impl TurnTransition {
                 next: TurnState::BuildingContext,
             },
 
-            // ── BuildingContext / Compacting ────────────────────────
             (TurnState::BuildingContext | TurnState::Compacting, TurnOutcome::Success)
             | (TurnState::ProcessingResponse, TurnOutcome::OutputTruncated) => {
                 TurnAction::Continue {
@@ -128,7 +126,6 @@ impl TurnTransition {
                 reason: "context build failed".to_string(),
             },
 
-            // ── CallingModel ────────────────────────────────────────
             (TurnState::CallingModel, TurnOutcome::Success) => TurnAction::Continue {
                 next: TurnState::ProcessingResponse,
             },
@@ -137,7 +134,6 @@ impl TurnTransition {
                 reason: "provider error".to_string(),
             },
 
-            // ── ProcessingResponse ──────────────────────────────────
             (
                 TurnState::ProcessingResponse,
                 TurnOutcome::NoToolCalls | TurnOutcome::NotToolCalls { .. },
@@ -146,7 +142,6 @@ impl TurnTransition {
                 next: TurnState::ExecutingTools,
             },
 
-            // ── ExecutingTools ──────────────────────────────────────
             (TurnState::ExecutingTools, TurnOutcome::Success) => TurnAction::Continue {
                 next: TurnState::Persisting,
             },
@@ -154,7 +149,6 @@ impl TurnTransition {
                 reason: "tool execution failed".to_string(),
             },
 
-            // ── Persisting ──────────────────────────────────────────
             (TurnState::Persisting, TurnOutcome::Success) => TurnAction::Continue {
                 next: TurnState::CheckingPolicy,
             },
@@ -162,7 +156,6 @@ impl TurnTransition {
                 reason: "persistence failed".to_string(),
             },
 
-            // ── Fallback: unexpected combinations ────────────────────
             (_, outcome) => TurnAction::Fail {
                 reason: format!("unexpected outcome {outcome:?} in state {state:?}"),
             },
@@ -186,8 +179,6 @@ impl TurnTransition {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ── CheckingPolicy ──────────────────────────────────────────────
 
     #[test]
     fn policy_exceeded_fails() {
@@ -215,8 +206,6 @@ mod tests {
             }
         );
     }
-
-    // ── CallingModel ────────────────────────────────────────────────
 
     #[test]
     fn context_overflow_compacts_and_retries() {
@@ -252,7 +241,6 @@ mod tests {
         );
     }
 
-    // ── Compacting ──────────────────────────────────────────────────
 
     #[test]
     fn compaction_success_returns_to_model() {
@@ -265,7 +253,6 @@ mod tests {
         );
     }
 
-    // ── ProcessingResponse ──────────────────────────────────────────
 
     #[test]
     fn no_tool_calls_breaks_loop() {
@@ -308,7 +295,6 @@ mod tests {
         );
     }
 
-    // ── Persisting to loop ──────────────────────────────────────────
 
     #[test]
     fn persisting_success_returns_to_check() {
@@ -321,7 +307,6 @@ mod tests {
         );
     }
 
-    // ── Status mapping ──────────────────────────────────────────────
 
     #[test]
     fn status_maps_correctly() {

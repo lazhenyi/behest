@@ -763,7 +763,6 @@ impl ComponentRegistry {
         name: &str,
         new_instance: Box<dyn AnyComponent>,
     ) -> Result<Arc<dyn AnyComponent>, RegistryError> {
-        // 1. Retrieve old instance and verify state.
         let old_instance = {
             let instances = self
                 .inner
@@ -785,7 +784,6 @@ impl ComponentRegistry {
             });
         }
 
-        // 2. Pre-replace hook on old instance.
         if let Err(e) = old_instance.pre_replace().await {
             return Err(RegistryError::Reload {
                 name: name.to_string(),
@@ -793,8 +791,6 @@ impl ComponentRegistry {
             });
         }
 
-        // 3. Start the new instance. On failure, old instance
-        //    remains untouched.
         if let Err(e) = new_instance.start().await {
             return Err(RegistryError::Reload {
                 name: name.to_string(),
@@ -802,7 +798,6 @@ impl ComponentRegistry {
             });
         }
 
-        // 4. Atomic swap.
         let new_arc: Arc<dyn AnyComponent> = new_instance.into();
         {
             let mut instances = self
@@ -814,7 +809,6 @@ impl ComponentRegistry {
         }
         self.set_state(name, ComponentState::Running);
 
-        // 5. Post-replace hook on old instance (best-effort).
         if let Err(e) = old_instance.post_replace().await {
             tracing::warn!(
                 component = name,
