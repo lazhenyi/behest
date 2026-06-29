@@ -13,11 +13,14 @@ use crate::store::{MessageRecord, Session, SessionStore, StoreResult};
 ///
 /// Sessions are stored in `HashMap<Uuid, Session>` and messages in
 /// `HashMap<Uuid, Vec<MessageRecord>>`, both protected by `RwLock`.
-/// Data is lost when the process exits. Implements [`SessionStore`].
+/// A reverse index `message_id → session_id` enables O(1) message lookups
+/// in [`update_usage`](SessionStore::update_usage). Data is lost when the
+/// process exits. Implements [`SessionStore`].
 #[derive(Default)]
 pub struct MemorySessionStore {
     sessions: RwLock<HashMap<Uuid, Session>>,
     messages: RwLock<HashMap<Uuid, Vec<MessageRecord>>>,
+    message_index: RwLock<HashMap<Uuid, Uuid>>,
 }
 
 impl MemorySessionStore {
@@ -52,7 +55,13 @@ impl SessionStore for MemorySessionStore {
 
     async fn delete_session(&self, id: &Uuid) -> StoreResult<()> {
         self.sessions.write().await.remove(id);
-        self.messages.write().await.remove(id);
+        // Clean up the reverse message index for all messages in this session.
+        if let Some(records) = self.messages.write().await.remove(id) {
+            let mut index = self.message_index.write().await;
+            for record in &records {
+                index.remove(&record.id);
+            }
+        }
         Ok(())
     }
 
@@ -77,27 +86,30 @@ impl SessionStore for MemorySessionStore {
     async fn append_message(&self, message: MessageRecord) -> StoreResult<MessageRecord> {
         let session_id = message.session_id;
 
-        // Verify session exists
+        // Update session timestamp first (acquire sessions lock, release)
         {
-            let sessions = self.sessions.read().await;
-            if !sessions.contains_key(&session_id) {
-                return Err(crate::error::StorageError::NotFound {
+            let mut sessions = self.sessions.write().await;
+            let session = sessions.get_mut(&session_id).ok_or_else(|| {
+                crate::error::StorageError::NotFound {
                     id: session_id.to_string(),
-                });
-            }
+                }
+            })?;
+            session.updated_at = chrono::Utc::now();
         }
 
-        let mut messages = self.messages.write().await;
-        messages
+        // Append message (acquire messages lock, release)
+        self.messages
+            .write()
+            .await
             .entry(session_id)
             .or_default()
             .push(message.clone());
 
-        // Update session's updated_at timestamp
-        let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(&session_id) {
-            session.updated_at = chrono::Utc::now();
-        }
+        // Maintain the message_id → session_id reverse index for O(1) update_usage.
+        self.message_index
+            .write()
+            .await
+            .insert(message.id, session_id);
 
         Ok(message)
     }
@@ -108,8 +120,19 @@ impl SessionStore for MemorySessionStore {
     }
 
     async fn update_usage(&self, message_id: &Uuid, usage: TokenUsage) -> StoreResult<()> {
+        // O(1) lookup via the message_id → session_id reverse index.
+        let session_id = {
+            let index = self.message_index.read().await;
+            index
+                .get(message_id)
+                .copied()
+                .ok_or_else(|| crate::error::StorageError::NotFound {
+                    id: message_id.to_string(),
+                })?
+        };
+
         let mut messages = self.messages.write().await;
-        for records in messages.values_mut() {
+        if let Some(records) = messages.get_mut(&session_id) {
             for record in records.iter_mut() {
                 if record.id == *message_id {
                     record.usage = Some(usage);
