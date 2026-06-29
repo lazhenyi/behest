@@ -161,7 +161,7 @@ tantivy = [
 object_store = ["dep:object_store", "object_store/aws"]
 
 [dependencies]
-object_store = { version = "0.13.2", optional = true }
+object_store = { version = "0.14.0", optional = true }
 tokio = { version = "1.52", default-features = false, features = [
     "rt",
     "rt-multi-thread",
