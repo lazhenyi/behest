@@ -356,8 +356,7 @@ mod tests {
         registry.init_all().await.expect("init should succeed");
         registry.start_all().await.expect("start should succeed");
 
-        let managed =
-            ManagedRuntime::new(runtime, registry, ShutdownToken::new());
+        let managed = ManagedRuntime::new(runtime, registry, ShutdownToken::new());
         let comp: Arc<TestComp> = managed
             .component::<TestComp>("test")
             .expect("lookup should succeed");
@@ -384,8 +383,7 @@ mod tests {
         registry.init_all().await.expect("init should succeed");
         registry.start_all().await.expect("start should succeed");
 
-        let managed =
-            ManagedRuntime::new(runtime, registry, ShutdownToken::new());
+        let managed = ManagedRuntime::new(runtime, registry, ShutdownToken::new());
         let map = managed.health().await;
         assert_eq!(map.len(), 1);
         assert!(map.get("c1").map(|s| s.is_healthy()).unwrap_or(false));

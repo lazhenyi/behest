@@ -241,7 +241,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn compaction_success_returns_to_model() {
         let action = TurnTransition::resolve(TurnState::Compacting, &TurnOutcome::Success);
@@ -252,7 +251,6 @@ mod tests {
             }
         );
     }
-
 
     #[test]
     fn no_tool_calls_breaks_loop() {
@@ -295,7 +293,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn persisting_success_returns_to_check() {
         let action = TurnTransition::resolve(TurnState::Persisting, &TurnOutcome::Success);
@@ -306,7 +303,6 @@ mod tests {
             }
         );
     }
-
 
     #[test]
     fn status_maps_correctly() {

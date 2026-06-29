@@ -313,31 +313,42 @@ pub fn register_providers(mut registry: FactoryRegistry) -> FactoryRegistry {
     macro_rules! register {
         ($kind:literal, $Comp:ident, $Adapter:ty) => {
             registry = registry.register($kind, |cfg, _ctx| {
-                    let v: ProviderHttpComponentConfig =
-                        serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
-                            kind: $kind.into(),
-                            source: e,
-                        })?;
-                    let http = v.into_provider_http_config();
-                    let adapter = <$Adapter>::new(http).map_err(|e| {
-                        FactoryError::FactoryFailed($kind.into(), e.to_string())
+                let v: ProviderHttpComponentConfig =
+                    serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
+                        kind: $kind.into(),
+                        source: e,
                     })?;
-                    let comp = $Comp {
-                        inner: Arc::new(adapter),
-                    };
-                    Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-                });
+                let http = v.into_provider_http_config();
+                let adapter = <$Adapter>::new(http)
+                    .map_err(|e| FactoryError::FactoryFailed($kind.into(), e.to_string()))?;
+                let comp = $Comp {
+                    inner: Arc::new(adapter),
+                };
+                Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
+            });
         };
     }
 
     #[cfg(feature = "openai")]
     {
-        register!("provider.openai.chat", OpenAiChatComponent, OpenAiChatAdapter);
-        register!("provider.openai.embedding", OpenAiEmbeddingComponent, OpenAiEmbeddingAdapter);
+        register!(
+            "provider.openai.chat",
+            OpenAiChatComponent,
+            OpenAiChatAdapter
+        );
+        register!(
+            "provider.openai.embedding",
+            OpenAiEmbeddingComponent,
+            OpenAiEmbeddingAdapter
+        );
     }
     #[cfg(feature = "anthropic")]
     {
-        register!("provider.anthropic.chat", AnthropicChatComponent, AnthropicChatAdapter);
+        register!(
+            "provider.anthropic.chat",
+            AnthropicChatComponent,
+            AnthropicChatAdapter
+        );
     }
 
     registry
@@ -364,11 +375,27 @@ pub fn register_memory_stores(mut registry: FactoryRegistry) -> FactoryRegistry 
             });
         };
     }
-    register!("store.session.memory", MemorySessionStoreComponent, MemorySessionStore);
-    register!("store.execution.memory", MemoryExecutionStoreComponent, MemoryExecutionStore);
+    register!(
+        "store.session.memory",
+        MemorySessionStoreComponent,
+        MemorySessionStore
+    );
+    register!(
+        "store.execution.memory",
+        MemoryExecutionStoreComponent,
+        MemoryExecutionStore
+    );
     register!("store.run.memory", MemoryRunStoreComponent, MemoryRunStore);
-    register!("store.embedding.memory", MemoryEmbeddingStoreComponent, MemoryEmbeddingStore);
-    register!("store.artifact.memory", MemoryArtifactStoreComponent, MemoryArtifactStore);
+    register!(
+        "store.embedding.memory",
+        MemoryEmbeddingStoreComponent,
+        MemoryEmbeddingStore
+    );
+    register!(
+        "store.artifact.memory",
+        MemoryArtifactStoreComponent,
+        MemoryArtifactStore
+    );
     registry
 }
 
@@ -437,9 +464,8 @@ mod tests {
         assert!(kinds.contains(&"store.artifact.memory"));
         assert!(kinds.contains(&"context.pipeline"));
 
-        let expected_providers: usize = 0
-            + if cfg!(feature = "openai") { 2 } else { 0 }
-            + if cfg!(feature = "anthropic") { 1 } else { 0 };
+        let expected_providers: usize = usize::from(cfg!(feature = "openai")) * 2
+            + usize::from(cfg!(feature = "anthropic"));
         assert_eq!(kinds.len(), 6 + expected_providers);
 
         #[cfg(feature = "openai")]

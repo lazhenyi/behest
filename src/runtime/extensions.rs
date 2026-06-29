@@ -103,11 +103,31 @@ impl Extensions {
             };
         }
         let mut n = 0;
-        count!(n, chat_providers, embedding_providers, tools, context_adapters);
-        count!(n, session_stores, execution_stores, embedding_stores, artifact_stores, run_stores);
+        count!(
+            n,
+            chat_providers,
+            embedding_providers,
+            tools,
+            context_adapters
+        );
+        count!(
+            n,
+            session_stores,
+            execution_stores,
+            embedding_stores,
+            artifact_stores,
+            run_stores
+        );
         #[cfg(feature = "queue")]
-        if !self.event_publishers.is_empty() { n += 1; }
-        count!(n, session_data_stores, runtime_event_stores, snapshot_stores);
+        if !self.event_publishers.is_empty() {
+            n += 1;
+        }
+        count!(
+            n,
+            session_data_stores,
+            runtime_event_stores,
+            snapshot_stores
+        );
         n
     }
 }
