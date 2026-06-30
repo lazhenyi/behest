@@ -28,11 +28,7 @@ async fn main() -> Result<(), behest::Error> {
         status: RunStatus::CallingModel,
         iteration: 1,
         current_state: TurnState::CallingModel,
-        total_usage: TokenUsage {
-            input_tokens: 150,
-            output_tokens: 42,
-            total_tokens: 192,
-        },
+        total_usage: TokenUsage::new(150, 42),
         last_finish: None,
         assistant_message: None,
         assistant_msg_id: None,

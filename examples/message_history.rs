@@ -62,7 +62,7 @@ async fn main() -> Result<(), behest::Error> {
             .content
             .iter()
             .map(|part| match part {
-                ContentPart::Text { text } => text.clone(),
+                ContentPart::Text { text, .. } => text.clone(),
                 _ => "[non-text]".to_string(),
             })
             .collect();

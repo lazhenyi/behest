@@ -50,7 +50,7 @@ async fn main() {
             Message::System { content } | Message::User { content } => content
                 .first()
                 .map(|p| match p {
-                    ContentPart::Text { text } => text.clone(),
+                    ContentPart::Text { text, .. } => text.clone(),
                     _ => String::new(),
                 })
                 .unwrap_or_default(),
