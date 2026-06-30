@@ -525,15 +525,17 @@ pub struct RunOutput {
 mod tests {
     use super::*;
     use crate::provider::{
-        ChatProvider, ChatRequest, ChatResponse, ModelName, ProviderCapabilities, ProviderId,
-        ProviderResult, ToolCall,
+        ChatProvider, ChatRequest, ChatResponse, ChatStream, ChatStreamEvent, ModelName,
+        ProviderCapabilities, ProviderId, ProviderResult, ToolCall,
     };
     use crate::runtime::memory::MemoryRunStore;
     use crate::runtime::snapshot::{FileSnapshotStore, Snapshot};
     use crate::store::memory::{MemoryExecutionStore, MemorySessionStore};
     use crate::tool::{FunctionTool, ToolRegistry};
     use async_trait::async_trait;
+    use futures_util::StreamExt as _;
     use serde_json::json;
+    use std::time::Duration;
 
     struct MockProvider {
         responses: std::sync::Mutex<Vec<ChatResponse>>,
@@ -587,6 +589,38 @@ mod tests {
         }
     }
 
+    struct IdleStreamProvider;
+
+    #[async_trait]
+    impl ChatProvider for IdleStreamProvider {
+        fn id(&self) -> ProviderId {
+            ProviderId::new("mock")
+        }
+
+        fn capabilities(&self) -> ProviderCapabilities {
+            ProviderCapabilities {
+                chat: true,
+                chat_stream: true,
+                ..ProviderCapabilities::empty()
+            }
+        }
+
+        async fn complete(&self, _request: ChatRequest) -> ProviderResult<ChatResponse> {
+            Ok(MockProvider::text_response("fallback"))
+        }
+
+        async fn stream(&self, request: ChatRequest) -> ProviderResult<ChatStream> {
+            let started = ChatStreamEvent::Started {
+                provider: ProviderId::new("mock"),
+                model: request.model,
+            };
+            let stream =
+                futures_util::stream::once(async { Ok(started) }).chain(futures_util::stream::pending());
+
+            Ok(Box::pin(stream))
+        }
+    }
+
     #[async_trait]
     impl ChatProvider for MockProvider {
         fn id(&self) -> ProviderId {
@@ -623,6 +657,28 @@ mod tests {
             .register_or_replace("default", Arc::new(runs));
 
         let policy = RuntimePolicy::new().with_max_iterations(5);
+
+        AgentRuntime::new(Arc::new(exts), policy).with_tool_registry(tools)
+    }
+
+    fn make_runtime_from_provider(
+        provider: Arc<dyn ChatProvider>,
+        tools: ToolRegistry,
+        policy: RuntimePolicy,
+    ) -> AgentRuntime {
+        let exts = Extensions::new();
+        exts.chat_providers
+            .register_or_replace("mock", Arc::clone(&provider));
+
+        let sessions = MemorySessionStore::new();
+        let executions = MemoryExecutionStore::new();
+        let runs = MemoryRunStore::new();
+        exts.session_stores
+            .register_or_replace("default", Arc::new(sessions));
+        exts.execution_stores
+            .register_or_replace("default", Arc::new(executions));
+        exts.run_stores
+            .register_or_replace("default", Arc::new(runs));
 
         AgentRuntime::new(Arc::new(exts), policy).with_tool_registry(tools)
     }
@@ -766,6 +822,29 @@ mod tests {
 
         let output = runtime.run(request).await.unwrap();
         assert_ne!(output.session_id, Uuid::nil());
+    }
+
+    #[tokio::test]
+    async fn run_should_timeout_when_stream_stalls_between_events() {
+        let policy = RuntimePolicy::new()
+            .with_max_iterations(1)
+            .with_provider_timeout(Duration::from_millis(20));
+        let runtime =
+            make_runtime_from_provider(Arc::new(IdleStreamProvider), ToolRegistry::new(), policy);
+
+        let request = RunRequest::new(
+            ProviderId::new("mock"),
+            ModelName::new("test"),
+            "stall stream",
+        );
+        let result = tokio::time::timeout(Duration::from_millis(300), runtime.run(request))
+            .await
+            .expect("runtime should return provider timeout instead of hanging");
+
+        assert!(matches!(
+            result,
+            Err(RuntimeError::Provider(crate::error::ProviderError::Timeout { .. }))
+        ));
     }
 
     #[tokio::test]
