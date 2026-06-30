@@ -11,6 +11,7 @@
 #![deny(missing_docs)]
 #![deny(unreachable_pub)]
 
+pub mod cache;
 pub mod capabilities;
 pub mod embedding;
 pub mod error;

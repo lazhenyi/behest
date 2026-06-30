@@ -19,8 +19,8 @@ pub fn estimate_tokens(text: &str) -> usize {
 #[must_use]
 pub fn estimate_content_part_tokens(part: &ContentPart) -> usize {
     match part {
-        ContentPart::Text { text } => estimate_tokens(text),
-        ContentPart::Json { value } => estimate_tokens(&value.to_string()),
+        ContentPart::Text { text, .. } => estimate_tokens(text),
+        ContentPart::Json { value, .. } => estimate_tokens(&value.to_string()),
         ContentPart::ImageUrl { url, .. } => estimate_tokens(url),
     }
 }

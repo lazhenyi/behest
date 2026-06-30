@@ -3,6 +3,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::cache::CacheControl;
+
 /// JSON-schema-backed tool definition exposed to a chat provider.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSpec {
@@ -12,6 +14,13 @@ pub struct ToolSpec {
     pub description: String,
     /// JSON schema describing accepted arguments.
     pub parameters_schema: Value,
+    /// Optional cache marker applied to this tool's prefix.
+    ///
+    /// When set, providers that support explicit cache markers (Anthropic)
+    /// will cache the tool-definition prefix up to and including this
+    /// tool. Ignored by providers that perform automatic caching.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 impl ToolSpec {
@@ -26,7 +35,15 @@ impl ToolSpec {
             name: name.into(),
             description: description.into(),
             parameters_schema,
+            cache_control: None,
         }
+    }
+
+    /// Returns a copy of this tool spec with the given cache control marker.
+    #[must_use]
+    pub fn with_cache_control(mut self, ctrl: CacheControl) -> Self {
+        self.cache_control = Some(ctrl);
+        self
     }
 }
 
