@@ -1,0 +1,21 @@
+[package]
+name = "behest-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+description = "Core types for the behest agent runtime: messages, errors, tool definitions, and sans-IO run state machine"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono.workspace = true

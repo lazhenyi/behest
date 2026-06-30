@@ -1,263 +1,58 @@
-[package]
-name = "behest"
-version = "0.4.1"
-edition = "2024"
-rust-version = "1.85"
+[workspace]
+members = [
+    "behest-core",
+    "behest-context",
+    "behest-tool",
+    "behest-event",
+    "behest-memory",
+    "behest-approval",
+    "behest-runtime",
+    "behest",
+]
 resolver = "3"
 
-description = "A Rust-native cloud agent runtime with typed tools, pluggable memory, queues, and observability."
-readme = "README.md"
+[workspace.package]
+version = "0.5.0"
+edition = "2024"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/lazhenyi/behest"
 homepage = "https://github.com/lazhenyi/behest"
 documentation = "https://docs.rs/behest"
-
+authors = [
+    "zhenyi <434836402@qq.com>",
+    "Jiaxiang Hu <1849625991@qq.com>"
+]
 keywords = ["agent", "llm", "tool-calling", "runtime", "ai"]
 categories = ["asynchronous", "api-bindings", "development-tools"]
 
-authors = ["zhenyi <434836402@qq.com>"]
-
-include = [
-    "src/**",
-    "examples/**",
-    "benches/**",
-    "tests/**",
-    "Cargo.toml",
-    "README.md",
-    "LICENSE*",
-]
-
-[lib]
-name = "behest"
-path = "src/lib.rs"
-
-[features]
-default = ["tls-rustls"]
-
-full = [
-    "openai",
-    "anthropic",
-    "redis",
-    "redis-cluster",
-    "nats",
-    "sqlx-postgres",
-    "mongodb",
-    "surrealdb",
-    "otel",
-    "rag-all",
-    "queue-all",
-    "object_store",
-]
-
-openai = []
-anthropic = []
-
-storage-all = [
-    "redis",
-    "sqlx-postgres",
-    "sqlx-mysql",
-    "sqlx-sqlite",
-    "mongodb",
-    "surrealdb",
-]
-
-# Core RAG context adapter (no deps, enables src/rag module)
-rag = []
-
-# RAG with all backends
-rag-all = [
-    "rag",
-    "qdrant",
-    "tantivy",
-]
-
-# Core queue event publisher (no deps, enables src/queue module)
-queue = []
-
-# Queue with all backends
-queue-all = [
-    "queue",
-    "nats",
-    "redis",
-]
-
-tls-rustls = [
-    "reqwest/rustls",
-    "redis?/tokio-rustls-comp",
-    "sqlx?/tls-rustls",
-]
-
-tls-native = [
-    "reqwest/default-tls",
-    "redis?/tokio-native-tls-comp",
-    "sqlx?/tls-native-tls",
-]
-
-redis = [
-    "dep:redis",
-    "redis/aio",
-    "redis/tokio-comp",
-    "redis/connection-manager",
-    "redis/streams",
-]
-
-redis-cluster = [
-    "redis",
-    "redis/cluster-async",
-]
-
-nats = [
-    "dep:async-nats",
-]
-
-sqlx = [
-    "dep:sqlx",
-    "sqlx/runtime-tokio",
-    "sqlx/chrono",
-    "sqlx/uuid",
-    "sqlx/json",
-    "sqlx/macros",
-    "sqlx/migrate",
-]
-
-sqlx-postgres = [
-    "sqlx",
-    "sqlx/postgres",
-]
-
-sqlx-mysql = [
-    "sqlx",
-    "sqlx/mysql",
-]
-
-sqlx-sqlite = [
-    "sqlx",
-    "sqlx/sqlite",
-]
-
-mongodb = [
-    "dep:mongodb",
-]
-
-surrealdb = [
-    "dep:surrealdb",
-    "dep:surrealdb-types",
-]
-
-otel = [
-    "dep:opentelemetry",
-    "dep:opentelemetry_sdk",
-    "dep:opentelemetry-otlp",
-    "dep:tracing-opentelemetry",
-]
-
-qdrant = [
-    "dep:qdrant-client",
-]
-
-tantivy = [
-    "dep:tantivy",
-]
-object_store = ["dep:object_store", "object_store/aws"]
-
-[dependencies]
-object_store = { version = "0.13.2", optional = true }
-tokio = { version = "1.52", default-features = false, features = [
-    "rt",
-    "rt-multi-thread",
-    "macros",
-    "sync",
-    "time",
-    "signal",
-] }
-
+[workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0", features = ["preserve_order", "raw_value"] }
-
+serde_json = "1.0"
 thiserror = "2.0"
-
-async-trait = "0.1"
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
-
-reqwest = { version = "0.13", default-features = false, features = [
-    "json",
-    "stream",
-    "http2",
-    "charset",
-    "gzip",
-    "brotli",
-    "zstd",
-    "deflate",
-] }
-
-schemars = { version = "1.2", features = ["derive"] }
-jsonschema = "0.46"
-
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", default-features = false, features = [
-    "std",
-    "fmt",
-    "json",
-    "env-filter",
-    "registry",
-] }
-
+tokio = { version = "1.52", default-features = false }
+tokio-util = { version = "0.7" }
 uuid = { version = "1.18", features = ["v4", "v7", "serde"] }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+async-trait = "0.1"
+tracing = "0.1"
 
-secrecy = "0.10"
-dotenvy = "0.15"
-config = { version = "0.15", default-features = false, features = ["toml", "json", "yaml"] }
-toml = { version = "0.8", default-features = false, features = ["parse"] }
+# Internal crate references
+behest-core = { path = "behest-core" }
+behest-context = { path = "behest-context" }
+behest-tool = { path = "behest-tool" }
+behest-event = { path = "behest-event" }
+behest-memory = { path = "behest-memory" }
+behest-approval = { path = "behest-approval" }
+behest-runtime = { path = "behest-runtime" }
+behest = { path = "behest" }
 
-indexmap = { version = "2", features = ["serde"] }
-bytes = "1"
-base64 = "0.22"
-
-redis = { version = "1.2", default-features = false, optional = true }
-async-nats = { version = "0.49", optional = true }
-sqlx = { version = "0.9", default-features = false, optional = true }
-mongodb = { version = "3.7", optional = true }
-surrealdb = { version = "3.1", optional = true }
-surrealdb-types = { version = "3.1", optional = true }
-
-opentelemetry = { version = "0.32", optional = true }
-opentelemetry_sdk = { version = "0.32", optional = true, features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.32", optional = true, features = ["grpc-tonic"] }
-tracing-opentelemetry = { version = "0.33", optional = true }
-
-qdrant-client = { version = "1.18", optional = true }
-tantivy = { version = "0.26", optional = true }
-
-actix-web = { version = "4", optional = true, features = ["macros"] }
-
-[dev-dependencies]
-tokio-test = "0.4"
-tempfile = "3"
-pretty_assertions = "1"
-insta = { version = "1", features = ["json"] }
-proptest = "1"
-wiremock = "0.6"
-tracing-test = "0.2"
-
-[package.metadata.docs.rs]
-rustdoc-args = ["--cfg", "docsrs"]
-features = ["openai", "anthropic", "redis", "redis-cluster", "nats", "sqlx-postgres", "mongodb", "surrealdb", "otel", "rag-all", "queue-all", "object_store"]
-
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = { level = "deny", priority = 10 }
 unreachable_pub = { level = "deny", priority = 10 }
-rust_2018_idioms = { level = "warn", priority = -1 }
 
-[lints.clippy]
-all = "deny"
-dbg_macro = "deny"
-expect_used = "deny"
-todo = "deny"
-unimplemented = "deny"
+[workspace.lints.clippy]
 unwrap_used = "deny"
+expect_used = "deny"
 pedantic = { level = "warn", priority = -1 }
-doc_markdown = { level = "allow", priority = 1 }
-struct_excessive_bools = { level = "allow", priority = 1 }
-unnecessary_wraps = { level = "allow", priority = 1 }
