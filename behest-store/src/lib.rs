@@ -9,7 +9,7 @@
 //!
 //! Each trait has an in-memory implementation (always available) and
 //! feature-gated backend implementations for SQL databases, MongoDB,
-//! SurrealDB, Redis, Qdrant, and object stores.
+//! Redis, and object stores.
 //!
 //! # Example
 //!
@@ -59,14 +59,8 @@ pub mod sql;
 #[cfg(feature = "mongodb")]
 pub mod mongodb;
 
-#[cfg(feature = "surrealdb")]
-pub mod surrealdb;
-
 #[cfg(feature = "redis")]
 pub mod redis;
-
-#[cfg(feature = "qdrant")]
-pub mod qdrant;
 
 #[cfg(feature = "object_store")]
 pub mod object;
@@ -638,7 +632,7 @@ pub trait SessionStore: Send + Sync {
 /// Persists embedding vectors and supports nearest-neighbor search.
 ///
 /// Implementations use cosine similarity for ranking results (higher score = closer match).
-/// Backends include in-memory HashMap, PostgreSQL with pgvector, and Qdrant.
+/// Backends include in-memory HashMap and PostgreSQL with pgvector.
 #[async_trait]
 pub trait EmbeddingStore: Send + Sync {
     /// Inserts or updates an embedding record.
