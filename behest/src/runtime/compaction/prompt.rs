@@ -104,11 +104,11 @@ fn serialize_messages(messages: &[MessageRecord]) -> String {
 
         for part in &msg.content {
             match part {
-                crate::provider::ContentPart::Text { text } => {
+                crate::provider::ContentPart::Text { text, .. } => {
                     let text = truncate_if_too_long(text, TOOL_OUTPUT_MAX_CHARS);
                     buf.push_str(&text);
                 }
-                crate::provider::ContentPart::Json { value } => {
+                crate::provider::ContentPart::Json { value, .. } => {
                     let json_str = value.to_string();
                     let json_str = truncate_if_too_long(&json_str, TOOL_OUTPUT_MAX_CHARS);
                     buf.push_str(&json_str);

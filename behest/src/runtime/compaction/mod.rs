@@ -392,7 +392,7 @@ fn extract_text_content(message: &Message) -> String {
         | Message::Tool { content, .. } => {
             let mut text = String::new();
             for part in content {
-                if let crate::provider::ContentPart::Text { text: t } = part {
+                if let crate::provider::ContentPart::Text { text: t, .. } = part {
                     text.push_str(t);
                 }
             }

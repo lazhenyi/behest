@@ -1,4 +1,4 @@
-//! Agent runtime kernel.
+//! Runtime facade re-exports.
 //!
 //! This module provides the core runtime engine for executing AI agents
 //! with streaming-first execution, tool calling, session persistence,
@@ -7,6 +7,7 @@
 
 pub mod accumulator;
 pub mod agent;
+pub mod cache_stats;
 pub mod compaction;
 pub mod component;
 pub mod component_factory;
@@ -59,12 +60,13 @@ pub use components::{
 #[cfg(feature = "openai")]
 pub use components::{OpenAiChatComponent, OpenAiEmbeddingComponent};
 
+pub use cache_stats::CacheStats;
 #[cfg(feature = "anthropic")]
 pub use components::AnthropicChatComponent;
 pub use context::ContextPipeline;
 pub use doom_loop::{DoomLoopConfig, DoomLoopDetector, DoomLoopType, ToolCallFingerprint};
 pub use error::RuntimeError;
-pub use event::AgentEvent;
+pub use event::{AgentEvent, CacheMetrics};
 pub use event_store::{
     DynRuntimeEventStore, FailingRuntimeEventStore, MemoryRuntimeEventStore, RuntimeEventStore,
     RuntimeEventStoreError,
@@ -82,7 +84,7 @@ pub use invocation::{
 };
 pub use lifecycle::ShutdownToken;
 pub use managed::{ManagedError, ManagedRuntime};
-pub use policy::{CompactionConfig, RuntimePolicy};
+pub use policy::{CompactionConfig, PromptCacheConfig, RuntimePolicy};
 pub use registry::{
     ComponentDescriptor, ComponentFactory, ComponentRegistry, ComponentState, RegistryError,
     TypedAnyComponent, TypedFactory,
