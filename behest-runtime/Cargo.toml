@@ -11,10 +11,14 @@ authors.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-description = "Async runtime glue connecting sans-IO state machine to real I/O for the behest agent runtime"
+description = "Async runtime kernel for the behest agent runtime"
 
 [lints]
 workspace = true
+
+[features]
+default = []
+redis = ["dep:redis"]
 
 [dependencies]
 behest-core.workspace = true
@@ -24,16 +28,28 @@ behest-event.workspace = true
 behest-memory.workspace = true
 behest-approval.workspace = true
 behest-provider.workspace = true
+behest-store.workspace = true
+behest-adapter-openai.workspace = true
+behest-adapter-anthropic.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
-tokio-util = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "fs", "signal"] }
+tokio-util = { workspace = true, features = ["rt", "time"] }
 async-trait.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 thiserror.workspace = true
 tracing.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+schemars = "1.0"
+jsonschema = "0.46"
+indexmap = { version = "2", features = ["serde"] }
+secrecy = "0.10"
+redis = { version = "0.27", optional = true, default-features = false, features = ["tokio-comp", "aio", "connection-manager"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "rt-multi-thread"] }
 tokio-test = "0.4"
+tempfile = "3"
+
