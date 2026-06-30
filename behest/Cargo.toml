@@ -1,0 +1,316 @@
+[package]
+name = "behest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+description = "A Rust-native cloud agent runtime with typed tools, pluggable memory, queues, and observability."
+readme = "../README.md"
+
+include = [
+    "src/**",
+    "Cargo.toml",
+]
+
+[lib]
+name = "behest"
+path = "src/lib.rs"
+
+[[example]]
+name = "agent_registry"
+path = "../examples/agent_registry.rs"
+
+[[example]]
+name = "config_from_toml"
+path = "../examples/config_from_toml.rs"
+
+[[example]]
+name = "context_pipeline"
+path = "../examples/context_pipeline.rs"
+
+[[example]]
+name = "control_basics"
+path = "../examples/control_basics.rs"
+
+[[example]]
+name = "event_store_replay"
+path = "../examples/event_store_replay.rs"
+
+[[example]]
+name = "event_subscription"
+path = "../examples/event_subscription.rs"
+
+[[example]]
+name = "hello_config"
+path = "../examples/hello_config.rs"
+
+[[example]]
+name = "hot_swap"
+path = "../examples/hot_swap.rs"
+
+[[example]]
+name = "invocation_facade"
+path = "../examples/invocation_facade.rs"
+
+[[example]]
+name = "managed_runtime"
+path = "../examples/managed_runtime.rs"
+
+[[example]]
+name = "message_history"
+path = "../examples/message_history.rs"
+
+[[example]]
+name = "provider_setup"
+path = "../examples/provider_setup.rs"
+
+[[example]]
+name = "real_request"
+path = "../examples/real_request.rs"
+
+[[example]]
+name = "run_streaming"
+path = "../examples/run_streaming.rs"
+
+[[example]]
+name = "session_data_store"
+path = "../examples/session_data_store.rs"
+
+[[example]]
+name = "session_lifecycle"
+path = "../examples/session_lifecycle.rs"
+
+[[example]]
+name = "snapshot_compaction"
+path = "../examples/snapshot_compaction.rs"
+
+[[example]]
+name = "token_estimation"
+path = "../examples/token_estimation.rs"
+
+[[example]]
+name = "tool_execution"
+path = "../examples/tool_execution.rs"
+
+[[example]]
+name = "tool_registry"
+path = "../examples/tool_registry.rs"
+
+[[test]]
+name = "managed_runtime"
+path = "../tests/managed_runtime.rs"
+
+[features]
+default = ["tls-rustls"]
+
+full = [
+    "openai",
+    "anthropic",
+    "redis",
+    "redis-cluster",
+    "nats",
+    "sqlx-postgres",
+    "mongodb",
+    "surrealdb",
+    "otel",
+    "rag-all",
+    "queue-all",
+    "object_store",
+]
+
+openai = []
+anthropic = []
+
+storage-all = [
+    "redis",
+    "sqlx-postgres",
+    "sqlx-mysql",
+    "sqlx-sqlite",
+    "mongodb",
+    "surrealdb",
+]
+
+rag = []
+rag-all = [
+    "rag",
+    "qdrant",
+    "tantivy",
+]
+
+queue = []
+queue-all = [
+    "queue",
+    "nats",
+    "redis",
+]
+
+tls-rustls = [
+    "reqwest/rustls",
+    "redis?/tokio-rustls-comp",
+    "sqlx?/tls-rustls",
+]
+
+tls-native = [
+    "reqwest/default-tls",
+    "redis?/tokio-native-tls-comp",
+    "sqlx?/tls-native-tls",
+]
+
+redis = [
+    "dep:redis",
+    "redis/aio",
+    "redis/tokio-comp",
+    "redis/connection-manager",
+    "redis/streams",
+]
+
+redis-cluster = [
+    "redis",
+    "redis/cluster-async",
+]
+
+nats = [
+    "dep:async-nats",
+]
+
+sqlx = [
+    "dep:sqlx",
+    "sqlx/runtime-tokio",
+    "sqlx/chrono",
+    "sqlx/uuid",
+    "sqlx/json",
+    "sqlx/macros",
+    "sqlx/migrate",
+]
+
+sqlx-postgres = [
+    "sqlx",
+    "sqlx/postgres",
+]
+
+sqlx-mysql = [
+    "sqlx",
+    "sqlx/mysql",
+]
+
+sqlx-sqlite = [
+    "sqlx",
+    "sqlx/sqlite",
+]
+
+mongodb = [
+    "dep:mongodb",
+]
+
+surrealdb = [
+    "dep:surrealdb",
+    "dep:surrealdb-types",
+]
+
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+]
+
+qdrant = [
+    "dep:qdrant-client",
+]
+
+tantivy = [
+    "dep:tantivy",
+]
+object_store = ["dep:object_store", "object_store/aws"]
+
+[dependencies]
+behest-core.workspace = true
+object_store = { version = "0.14.0", optional = true }
+tokio = { workspace = true, features = [
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+    "signal",
+] }
+
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
+
+thiserror.workspace = true
+
+async-trait.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "stream",
+    "http2",
+    "charset",
+    "gzip",
+    "brotli",
+    "zstd",
+    "deflate",
+] }
+
+schemars = { version = "1.2", features = ["derive"] }
+jsonschema = "0.46"
+
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", default-features = false, features = [
+    "std",
+    "fmt",
+    "json",
+    "env-filter",
+    "registry",
+] }
+
+uuid.workspace = true
+chrono.workspace = true
+
+secrecy = "0.10"
+dotenvy = "0.15"
+config = { version = "0.15", default-features = false, features = ["toml", "json", "yaml"] }
+toml = { version = "1.1", default-features = false, features = ["parse"] }
+
+indexmap = { version = "2", features = ["serde"] }
+bytes = "1"
+base64 = "0.22"
+
+redis = { version = "1.3", default-features = false, optional = true }
+async-nats = { version = "0.49", optional = true }
+sqlx = { version = "0.9", default-features = false, optional = true }
+mongodb = { version = "3.7", optional = true }
+surrealdb = { version = "3.1", optional = true }
+surrealdb-types = { version = "3.1", optional = true }
+
+opentelemetry = { version = "0.32", optional = true }
+opentelemetry_sdk = { version = "0.32", optional = true, features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", optional = true, features = ["grpc-tonic"] }
+tracing-opentelemetry = { version = "0.33", optional = true }
+
+qdrant-client = { version = "1.18", optional = true }
+tantivy = { version = "0.26", optional = true }
+
+actix-web = { version = "4.14", optional = true, features = ["macros"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"
+pretty_assertions = "1"
+insta = { version = "1", features = ["json"] }
+proptest = "1"
+wiremock = "0.6"
+tracing-test = "0.2"
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]
+features = ["openai", "anthropic", "redis", "redis-cluster", "nats", "sqlx-postgres", "mongodb", "surrealdb", "otel", "rag-all", "queue-all", "object_store"]
