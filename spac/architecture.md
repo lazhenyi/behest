@@ -73,7 +73,7 @@ Feature 从 facade 向下转发：
 
 - `openai` -> `behest-adapter-openai`
 - `anthropic` -> `behest-adapter-anthropic`
-- `redis` / `sqlx-*` / `mongodb` / `surrealdb` / `qdrant` / `object_store` -> `behest-store`
+- `redis` / `sqlx-*` / `mongodb` / `qdrant` / `object_store` -> `behest-store`
 - `tls-rustls` / `tls-native` -> provider adapters 与 store backends
 
 当前没有 `server` / gRPC feature。文档不得声明不存在的 transport 或 binary。
@@ -107,7 +107,7 @@ Feature 从 facade 向下转发：
 Backends：
 
 - always available: memory
-- feature-gated: Redis, SQLx PostgreSQL/MySQL/SQLite, MongoDB, SurrealDB, Qdrant, object store
+- feature-gated: Redis, SQLx PostgreSQL/MySQL/SQLite, MongoDB, Qdrant, object store
 
 ## Adapter 架构
 

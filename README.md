@@ -61,7 +61,7 @@ The name `behest` deliberately avoids inflated metaphors like "brain / cognition
 | Runtime invocation | `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, transport-neutral emit/on facade |
 | Runtime stream | `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub`, replay + live fanout |
 | Runtime safety | session gate, runtime policy, input admission, doom-loop detection, tool output truncation |
-| Storage | memory stores, Redis, SQLx, MongoDB, SurrealDB, object storage, Qdrant embeddings |
+| Storage | memory stores, Redis, SQLx, MongoDB, object storage, Qdrant embeddings |
 | Context and RAG | context adapters, static/function adapters, optional RAG adapter |
 | Queues | optional event publishing through NATS or Redis Streams |
 | Configuration | builder, file-based config, environment variable loading, secret indirection |
@@ -307,9 +307,8 @@ behest = { version = "0.4", features = ["openai", "anthropic"] }
 | `sqlx-mysql` | SQLx MySQL store support |
 | `sqlx-sqlite` | SQLx SQLite store support |
 | `mongodb` | MongoDB session store support |
-| `surrealdb` | SurrealDB session store support |
 | `object_store` | Object storage support, including AWS S3 |
-| `storage-all` | Redis, PostgreSQL, MySQL, SQLite, MongoDB, and SurrealDB storage features |
+| `storage-all` | Redis, PostgreSQL, MySQL, SQLite, and MongoDB storage features |
 
 **RAG:**
 
@@ -338,7 +337,7 @@ behest = { version = "0.4", features = ["openai", "anthropic"] }
 
 | Feature | Description |
 |---|---|
-| `full` | Opinionated full runtime profile: OpenAI, Anthropic, Redis, Redis Cluster, NATS, PostgreSQL, MongoDB, SurrealDB, OpenTelemetry, all RAG backends, all queue backends, and object storage. It intentionally does not enable `sqlx-mysql` or `sqlx-sqlite`. |
+| `full` | Opinionated full runtime profile: OpenAI, Anthropic, Redis, Redis Cluster, NATS, PostgreSQL, MongoDB, OpenTelemetry, all RAG backends, all queue backends, and object storage. It intentionally does not enable `sqlx-mysql` or `sqlx-sqlite`. |
 
 </details>
 
