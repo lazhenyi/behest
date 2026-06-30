@@ -1,17 +1,20 @@
-//! Event system, EventActions, and Hook trait for the behest agent runtime.
+//! Event types, [`EventActions`], and the [`Hook`] system for the behest
+//! agent runtime.
 //!
 //! This crate provides:
 //!
-//! - [`AgentEvent`]: a unified enum covering the full agent lifecycle
-//! - [`EventActions`]: side-effect declarations that accompany events
-//! - [`Hook`]: single-method observer that returns optional `EventActions`
-//! - [`HookStack`]: ordered dispatch of multiple hooks
+//! - [`AgentEvent`]: the canonical 17-variant event covering the full
+//!   agent lifecycle (moved here from `behest::runtime::event`).
+//! - [`EventActions`]: side-effect declarations that accompany events.
+//! - [`Hook`]: single-method observer that returns `Vec<EventActions>`.
+//! - [`HookStack`]: ordered dispatch of multiple hooks.
 //!
 //! # Design
 //!
 //! Hooks use a single-method pattern (inspired by Rig): one `on_event()`
-//! method receives an [`AgentEvent`] and returns `Vec<EventActions>`. Adding
-//! new event types never requires changing the Hook trait signature.
+//! method receives an [`AgentEvent`] and returns `Vec<EventActions>`.
+//! Adding new event types never requires changing the Hook trait
+//! signature.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -20,209 +23,17 @@
 use std::collections::HashMap;
 
 use behest_context::HookContext;
-use behest_core::id::RunId;
-use behest_core::message::{FinishReason, TokenUsage};
-use behest_core::tool_types::ToolCall;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// A unified event covering the full agent lifecycle.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "type")]
-#[non_exhaustive]
-pub enum AgentEvent {
-    /// A run has started.
-    RunStarted {
-        /// Run identifier.
-        run_id: RunId,
-        /// Session identifier.
-        session_id: String,
-    },
-    /// A run has finished successfully.
-    RunFinished {
-        /// Run identifier.
-        run_id: RunId,
-        /// Why the run finished.
-        reason: FinishReason,
-        /// Total token usage.
-        usage: TokenUsage,
-    },
-    /// A run was aborted due to an error.
-    RunAborted {
-        /// Run identifier.
-        run_id: RunId,
-        /// Error that caused the abort.
-        error: String,
-    },
+mod agent_event;
 
-    /// A model call was initiated.
-    ModelCalled {
-        /// Request identifier.
-        request_id: String,
-        /// Model name.
-        model: String,
-    },
-    /// A text delta was received during streaming.
-    TextDelta {
-        /// Run identifier.
-        run_id: RunId,
-        /// Incremental text chunk.
-        delta: String,
-    },
-    /// A tool call was started.
-    ToolCallStarted {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-        /// Tool name.
-        name: String,
-    },
-    /// A tool call argument delta was received.
-    ToolCallArgumentsDelta {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-        /// Incremental argument chunk.
-        delta: String,
-    },
-    /// A tool call was completed.
-    ToolCallCompleted {
-        /// Run identifier.
-        run_id: RunId,
-        /// Completed tool call.
-        call: ToolCall,
-    },
-    /// A model call completed.
-    ModelCompleted {
-        /// Run identifier.
-        run_id: RunId,
-        /// Token usage for this call.
-        usage: TokenUsage,
-    },
-
-    /// A tool execution started.
-    ToolExecutionStarted {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-        /// Tool name.
-        name: String,
-    },
-    /// A tool reported progress.
-    ToolExecutionProgress {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-        /// Progress status.
-        status: String,
-        /// Progress data.
-        data: Value,
-    },
-    /// A tool execution completed.
-    ToolExecutionCompleted {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-        /// Tool output.
-        output: Value,
-    },
-    /// A tool execution failed.
-    ToolExecutionFailed {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-        /// Error message.
-        error: String,
-    },
-
-    /// Approval was requested for a tool call.
-    ApprovalRequested {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-        /// Tool name.
-        tool_name: String,
-        /// Reason approval is needed.
-        reason: String,
-    },
-    /// Approval was granted.
-    ApprovalGranted {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-    },
-    /// Approval was rejected.
-    ApprovalRejected {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-        /// Optional rejection reason.
-        reason: Option<String>,
-    },
-    /// Approval timed out.
-    ApprovalTimeout {
-        /// Run identifier.
-        run_id: RunId,
-        /// Call identifier.
-        call_id: String,
-    },
-
-    /// Messages were demoted to long-term storage.
-    MemoryDemoted {
-        /// Number of messages demoted.
-        count: usize,
-    },
-    /// Memory was compacted into a summary.
-    MemoryCompacted {
-        /// Original message count.
-        original_count: usize,
-        /// Summary length in characters.
-        summary_length: usize,
-    },
-    /// Memory was restored from long-term storage.
-    MemoryRestored {
-        /// Number of messages restored.
-        count: usize,
-    },
-}
-
-impl AgentEvent {
-    /// Returns the run ID for this event, if applicable.
-    #[must_use]
-    pub fn run_id(&self) -> Option<&RunId> {
-        match self {
-            Self::RunStarted { run_id, .. }
-            | Self::RunFinished { run_id, .. }
-            | Self::RunAborted { run_id, .. }
-            | Self::TextDelta { run_id, .. }
-            | Self::ToolCallStarted { run_id, .. }
-            | Self::ToolCallArgumentsDelta { run_id, .. }
-            | Self::ToolCallCompleted { run_id, .. }
-            | Self::ModelCompleted { run_id, .. }
-            | Self::ToolExecutionStarted { run_id, .. }
-            | Self::ToolExecutionProgress { run_id, .. }
-            | Self::ToolExecutionCompleted { run_id, .. }
-            | Self::ToolExecutionFailed { run_id, .. }
-            | Self::ApprovalRequested { run_id, .. }
-            | Self::ApprovalGranted { run_id, .. }
-            | Self::ApprovalRejected { run_id, .. }
-            | Self::ApprovalTimeout { run_id, .. } => Some(run_id),
-            Self::ModelCalled { .. }
-            | Self::MemoryDemoted { .. }
-            | Self::MemoryCompacted { .. }
-            | Self::MemoryRestored { .. } => None,
-        }
-    }
-}
+pub use agent_event::{
+    AgentEvent, CacheMetrics, CompactionCircuitOpened, ContextBuilt, DoomLoopDetected,
+    MessageCommitted, ModelStarted, RunCancelled, RunCompleted, RunFailed, RunStarted, TextDelta,
+    ToolCallCompleted, ToolCallDelta, ToolCallStarted, ToolExecutionFinished, ToolExecutionResult,
+    ToolExecutionStarted, UsageRecorded,
+};
 
 /// Side-effect declarations associated with an event.
 ///
@@ -383,6 +194,7 @@ impl Default for HookStack {
 mod tests {
     use super::*;
     use behest_context::{AppContext, HookContextImpl};
+    use behest_core::id::RunId;
 
     fn make_ctx() -> HookContextImpl {
         HookContextImpl {
@@ -399,82 +211,64 @@ mod tests {
         }
     }
 
-    struct TestHook {
-        should_persist: bool,
-    }
-
-    impl Hook for TestHook {
-        fn name(&self) -> &str {
-            "test_hook"
-        }
-
-        fn on_event(&self, _event: &AgentEvent, _ctx: &dyn HookContext) -> Vec<EventActions> {
-            if self.should_persist {
-                vec![EventActions {
-                    persist_conversation: true,
-                    ..Default::default()
-                }]
-            } else {
-                vec![]
-            }
-        }
-    }
-
     #[test]
-    fn hook_stack_dispatch() {
-        let mut stack = HookStack::new();
-        stack.push(Box::new(TestHook {
-            should_persist: true,
-        }));
-
-        let event = AgentEvent::RunStarted {
-            run_id: RunId::new(),
-            session_id: "sess-1".to_string(),
-        };
-        let ctx = make_ctx();
-
-        let actions = stack.dispatch(&event, &ctx);
-        assert_eq!(actions.len(), 1);
-        assert!(actions[0].persist_conversation);
-    }
-
-    #[test]
-    fn event_actions_merge_state_deltas() {
-        let a1 = EventActions {
-            state_delta: {
-                let mut m = HashMap::new();
-                m.insert("a".to_string(), Value::String("1".to_string()));
-                m
-            },
-            ..Default::default()
-        };
-        let a2 = EventActions {
-            state_delta: {
-                let mut m = HashMap::new();
-                m.insert("b".to_string(), Value::String("2".to_string()));
-                m
-            },
+    fn event_actions_merge_collects_all_flags() {
+        let a = EventActions {
             persist_conversation: true,
+            compact_memory: true,
             ..Default::default()
         };
-
-        let merged = EventActions::merge(vec![a1, a2]);
-        assert_eq!(merged.state_delta.len(), 2);
+        let b = EventActions {
+            demote_memory: true,
+            ..Default::default()
+        };
+        let merged = EventActions::merge(vec![a, b]);
         assert!(merged.persist_conversation);
+        assert!(merged.compact_memory);
+        assert!(merged.demote_memory);
     }
 
     #[test]
-    fn hook_stack_empty_returns_empty() {
-        let stack = HookStack::new();
-        let event = AgentEvent::RunStarted {
-            run_id: RunId::new(),
-            session_id: "s".to_string(),
-        };
-        let ctx = make_ctx();
-        let actions = stack.dispatch(&event, &ctx);
+    fn hook_stack_dispatches_in_priority_order() {
+        let mut stack = HookStack::new();
+        stack.push(Box::new(HighPriority));
+        stack.push(Box::new(LowPriority));
+        let actions = stack.dispatch(
+            &AgentEvent::RunStarted(RunStarted {
+                run_id: RunId::new(),
+                session_id: uuid::Uuid::new_v4(),
+                provider: behest_core::id::ProviderId::new("p"),
+                model: behest_core::id::ModelName::new("m"),
+                timestamp: chrono::Utc::now(),
+            }),
+            &make_ctx(),
+        );
         assert_eq!(actions.len(), 1);
-        let a = &actions[0];
-        assert!(!a.persist_conversation);
-        assert!(a.state_delta.is_empty());
+    }
+
+    struct HighPriority;
+    impl Hook for HighPriority {
+        fn name(&self) -> &str {
+            "high"
+        }
+        fn priority(&self) -> i32 {
+            -10
+        }
+        fn on_event(&self, _: &AgentEvent, _: &dyn HookContext) -> Vec<EventActions> {
+            vec![]
+        }
+    }
+
+    struct LowPriority;
+    impl Hook for LowPriority {
+        fn name(&self) -> &str {
+            "low"
+        }
+        fn priority(&self) -> i32 {
+            10
+        }
+        fn on_event(&self, _: &AgentEvent, _: &dyn HookContext) -> Vec<EventActions> {
+            vec![]
+        }
     }
 }

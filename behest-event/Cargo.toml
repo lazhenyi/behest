@@ -19,5 +19,7 @@ workspace = true
 [dependencies]
 behest-core.workspace = true
 behest-context.workspace = true
+chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+uuid.workspace = true
