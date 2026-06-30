@@ -256,6 +256,7 @@ tokio = { workspace = true, features = [
     "sync",
     "time",
     "signal",
+    "fs",
 ] }
 
 serde.workspace = true
