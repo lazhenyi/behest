@@ -1,0 +1,20 @@
+[package]
+name = "behest-event"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+description = "Event types, EventActions, and Hook system for the behest agent runtime"
+
+[dependencies]
+behest-core.workspace = true
+behest-context.workspace = true
+serde.workspace = true
+serde_json.workspace = true
