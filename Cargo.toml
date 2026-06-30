@@ -6,13 +6,17 @@ members = [
     "behest-event",
     "behest-memory",
     "behest-approval",
+    "behest-provider",
+    "behest-store",
+    "behest-adapter-openai",
+    "behest-adapter-anthropic",
     "behest-runtime",
     "behest",
 ]
 resolver = "3"
 
 [workspace.package]
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
@@ -44,6 +48,10 @@ behest-tool = { path = "behest-tool" }
 behest-event = { path = "behest-event" }
 behest-memory = { path = "behest-memory" }
 behest-approval = { path = "behest-approval" }
+behest-provider = { path = "behest-provider" }
+behest-store = { path = "behest-store", default-features = false }
+behest-adapter-openai = { path = "behest-adapter-openai", default-features = false }
+behest-adapter-anthropic = { path = "behest-adapter-anthropic", default-features = false }
 behest-runtime = { path = "behest-runtime" }
 behest = { path = "behest" }
 
@@ -55,4 +63,3 @@ unreachable_pub = { level = "deny", priority = 10 }
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
-pedantic = { level = "warn", priority = -1 }
