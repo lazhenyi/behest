@@ -13,6 +13,9 @@ categories.workspace = true
 
 description = "Tool trait, registry, and execution strategies for the behest agent runtime"
 
+[lints]
+workspace = true
+
 [dependencies]
 behest-core.workspace = true
 behest-context.workspace = true

@@ -13,6 +13,9 @@ categories.workspace = true
 
 description = "Layered context system for the behest agent runtime"
 
+[lints]
+workspace = true
+
 [dependencies]
 behest-core.workspace = true
 serde.workspace = true

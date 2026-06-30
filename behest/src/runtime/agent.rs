@@ -70,7 +70,15 @@ impl AgentRuntime {
     /// optional components (event publisher, snapshot store).
     #[must_use]
     pub fn new(extensions: Arc<Extensions>, policy: RuntimePolicy) -> Self {
-        let providers = crate::provider::ProviderRegistry::from_extensions(&extensions);
+        let mut providers = crate::provider::ProviderRegistry::new();
+        for (name, provider) in extensions.chat_providers.snapshot() {
+            let _ = name;
+            providers.register_chat_arc(provider);
+        }
+        for (name, provider) in extensions.embedding_providers.snapshot() {
+            let _ = name;
+            providers.register_embedding_arc(provider);
+        }
         let store = Arc::new(RuntimeStore::from_extensions(&extensions));
         let context = ContextPipeline::new();
         let tools = ToolRuntime::new(ToolRegistry::new(), policy.clone());

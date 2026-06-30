@@ -1,0 +1,38 @@
+[package]
+name = "behest-adapter-anthropic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+description = "Anthropic chat adapter for the behest agent runtime"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tls-rustls"]
+tls-rustls = ["reqwest/rustls"]
+tls-native = ["reqwest/default-tls"]
+
+[dependencies]
+behest-core.workspace = true
+behest-provider.workspace = true
+async-trait.workspace = true
+bytes = "1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "http2", "charset", "gzip", "brotli", "zstd", "deflate"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
+secrecy = "0.10"
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

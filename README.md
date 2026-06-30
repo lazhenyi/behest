@@ -17,7 +17,7 @@
 
 ## What this is
 
-`behest` provides provider-neutral contracts for chat, streaming, tool calling, embeddings, runtime execution, storage, queues, RAG, observability, and optional gRPC serving.
+`behest` provides provider-neutral contracts for chat, streaming, tool calling, embeddings, runtime execution, storage, queues, RAG, and observability.
 
 It is designed for systems that need explicit control over model providers, tool execution, persistence, and operational boundaries — instead of opaque "agent framework" magic.
 
@@ -42,7 +42,7 @@ The name `behest` deliberately avoids inflated metaphors like "brain / cognition
 - **Streaming-first runtime**: the agent loop is designed around streamed model events, with non-streaming fallback where appropriate.
 - **Typed tool boundary**: tools are described by JSON Schema and executed through explicit registries.
 - **Pluggable persistence**: memory by default, external stores behind feature flags.
-- **Operational surface**: event publishing, snapshots, session gates, compaction, retry policy, and optional gRPC server.
+- **Operational surface**: event publishing, snapshots, session gates, compaction, retry policy, and observability hooks.
 - **Small public API**: foundation primitives over framework sprawl.
 
 ## What's inside
@@ -65,8 +65,6 @@ The name `behest` deliberately avoids inflated metaphors like "brain / cognition
 | Context and RAG | context adapters, static/function adapters, optional RAG adapter |
 | Queues | optional event publishing through NATS or Redis Streams |
 | Configuration | builder, file-based config, environment variable loading, secret indirection |
-| gRPC transport | `GrpcTransport` wrapping tonic servers, `TransportHub::serve_all`, concurrent health probes |
-| Server | optional gRPC server binary behind `server` feature |
 | Observability | tracing and optional OpenTelemetry integration |
 
 ## Quick start
@@ -330,18 +328,17 @@ behest = { version = "0.4", features = ["openai", "anthropic"] }
 | `nats` | NATS event publisher |
 | `queue-all` | Enables `queue`, `nats`, and `redis` |
 
-**Server and observability:**
+**Observability:**
 
 | Feature | Description |
 |---|---|
-| `server` | gRPC server binary and protobuf service layer |
 | `otel` | OpenTelemetry tracing integration |
 
 **Convenience profile:**
 
 | Feature | Description |
 |---|---|
-| `full` | Opinionated full runtime profile: OpenAI, Anthropic, Redis, Redis Cluster, NATS, PostgreSQL, MongoDB, SurrealDB, OpenTelemetry, all RAG backends, all queue backends, and object storage. It intentionally does not enable `server`, `sqlx-mysql`, or `sqlx-sqlite`. |
+| `full` | Opinionated full runtime profile: OpenAI, Anthropic, Redis, Redis Cluster, NATS, PostgreSQL, MongoDB, SurrealDB, OpenTelemetry, all RAG backends, all queue backends, and object storage. It intentionally does not enable `sqlx-mysql` or `sqlx-sqlite`. |
 
 </details>
 

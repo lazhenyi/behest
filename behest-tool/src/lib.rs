@@ -19,7 +19,7 @@
 #![deny(missing_docs)]
 #![deny(unreachable_pub)]
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use behest_context::ToolContext;
@@ -318,66 +318,43 @@ impl ToolRegistry {
 
     /// Registers a tool, returning any previous tool with the same name.
     pub fn register<T: Tool + 'static>(&self, tool: T) -> Option<Arc<dyn Tool>> {
-        self.tools
-            .write()
-            .expect("ToolRegistry lock poisoned")
+        self.write_tools()
             .insert(tool.name().to_string(), Arc::new(tool))
     }
 
     /// Unregisters a tool by name.
     pub fn unregister(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools
-            .write()
-            .expect("ToolRegistry lock poisoned")
-            .remove(name)
+        self.write_tools().remove(name)
     }
 
     /// Gets a tool by name.
     #[must_use]
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
-        self.tools
-            .read()
-            .expect("ToolRegistry lock poisoned")
-            .get(name)
-            .cloned()
+        self.read_tools().get(name).cloned()
     }
 
     /// Returns all registered tool names.
     #[must_use]
     pub fn names(&self) -> Vec<String> {
-        self.tools
-            .read()
-            .expect("ToolRegistry lock poisoned")
-            .keys()
-            .cloned()
-            .collect()
+        self.read_tools().keys().cloned().collect()
     }
 
     /// Returns the number of registered tools.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.tools.read().expect("ToolRegistry lock poisoned").len()
+        self.read_tools().len()
     }
 
     /// Returns `true` if no tools are registered.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.tools
-            .read()
-            .expect("ToolRegistry lock poisoned")
-            .is_empty()
+        self.read_tools().is_empty()
     }
 
     /// Generates [`ToolSpec`]s for all registered tools, sorted by name.
     #[must_use]
     pub fn specs(&self) -> Vec<ToolSpec> {
-        let mut specs: Vec<_> = self
-            .tools
-            .read()
-            .expect("ToolRegistry lock poisoned")
-            .values()
-            .map(|t| t.to_spec())
-            .collect();
+        let mut specs: Vec<_> = self.read_tools().values().map(|t| t.to_spec()).collect();
         specs.sort_by(|a, b| a.name.cmp(&b.name));
         specs
     }
@@ -388,6 +365,22 @@ impl ToolRegistry {
             name: call.name.clone(),
         })?;
         tool.execute(ctx, call.arguments.clone()).await
+    }
+
+    fn read_tools(&self) -> RwLockReadGuard<'_, std::collections::HashMap<String, Arc<dyn Tool>>> {
+        match self.tools.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn write_tools(
+        &self,
+    ) -> RwLockWriteGuard<'_, std::collections::HashMap<String, Arc<dyn Tool>>> {
+        match self.tools.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
     }
 }
 
@@ -445,6 +438,25 @@ mod tests {
         assert_eq!(specs.len(), 2);
         assert_eq!(specs[0].name, "alpha");
         assert_eq!(specs[1].name, "zulu");
+    }
+
+    #[test]
+    fn tool_registry_recovers_from_poisoned_lock() {
+        let reg = Arc::new(ToolRegistry::new());
+        reg.register(make_tool("before", true));
+
+        let cloned = Arc::clone(&reg);
+        let _ = std::thread::spawn(move || {
+            let _guard = cloned.tools.write();
+            panic!("poison registry");
+        })
+        .join();
+
+        reg.register(make_tool("after", true));
+
+        assert_eq!(reg.len(), 2);
+        assert!(reg.get("before").is_some());
+        assert!(reg.get("after").is_some());
     }
 
     #[test]

@@ -13,6 +13,9 @@ categories.workspace = true
 
 description = "ConversationMemory, DemotionHook, Compactor, and ActiveWindow for the behest agent runtime"
 
+[lints]
+workspace = true
+
 [dependencies]
 behest-core.workspace = true
 behest-event.workspace = true

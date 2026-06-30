@@ -13,6 +13,9 @@ categories.workspace = true
 
 description = "Core types for the behest agent runtime: messages, errors, tool definitions, and sans-IO run state machine"
 
+[lints]
+workspace = true
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true

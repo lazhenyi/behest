@@ -13,6 +13,9 @@ categories.workspace = true
 
 description = "Human-in-the-loop tool approval for the behest agent runtime"
 
+[lints]
+workspace = true
+
 [dependencies]
 behest-core.workspace = true
 behest-event.workspace = true

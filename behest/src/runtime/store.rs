@@ -391,5 +391,6 @@ pub fn record_to_message(record: MessageRecord) -> Option<Message> {
             name: record.tool_name.unwrap_or_default(),
             content: record.content,
         }),
+        _ => None,
     }
 }

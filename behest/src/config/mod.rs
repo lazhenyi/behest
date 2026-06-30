@@ -424,7 +424,7 @@ impl AgentConfigBuilder {
         let runs = crate::runtime::memory::MemoryRunStore::new();
 
         // Build Extensions from components, then construct runtime from it.
-        let mut exts = crate::runtime::extensions::Extensions::new();
+        let exts = crate::runtime::extensions::Extensions::new();
 
         exts.session_stores
             .register_or_replace("default", std::sync::Arc::from(sessions));
@@ -433,9 +433,21 @@ impl AgentConfigBuilder {
         exts.run_stores
             .register_or_replace("default", std::sync::Arc::new(runs));
 
-        // Copy providers from registry into Extensions.
-        exts.chat_providers = registry.chat_extensions().clone();
-        exts.embedding_providers = registry.embedding_extensions().clone();
+        // Copy providers from the provider registry into runtime extensions.
+        for provider_id in registry.chat_ids() {
+            if let Some(provider) = registry.chat(&provider_id) {
+                let _ = exts
+                    .chat_providers
+                    .register_or_replace(provider_id.as_str(), provider);
+            }
+        }
+        for provider_id in registry.embedding_ids() {
+            if let Some(provider) = registry.embedding(&provider_id) {
+                let _ = exts
+                    .embedding_providers
+                    .register_or_replace(provider_id.as_str(), provider);
+            }
+        }
 
         let _store = std::sync::Arc::new(RuntimeStore::from_extensions(&exts));
 
@@ -570,15 +582,27 @@ impl AgentConfigBuilder {
         let runs = crate::runtime::memory::MemoryRunStore::new();
 
         // Build Extensions and populate from providers/stores.
-        let mut exts = crate::runtime::extensions::Extensions::new();
+        let exts = crate::runtime::extensions::Extensions::new();
         exts.session_stores
             .register_or_replace("default", std::sync::Arc::from(sessions));
         exts.execution_stores
             .register_or_replace("default", std::sync::Arc::from(executions));
         exts.run_stores
             .register_or_replace("default", std::sync::Arc::new(runs));
-        exts.chat_providers = provider_registry.chat_extensions().clone();
-        exts.embedding_providers = provider_registry.embedding_extensions().clone();
+        for provider_id in provider_registry.chat_ids() {
+            if let Some(provider) = provider_registry.chat(&provider_id) {
+                let _ = exts
+                    .chat_providers
+                    .register_or_replace(provider_id.as_str(), provider);
+            }
+        }
+        for provider_id in provider_registry.embedding_ids() {
+            if let Some(provider) = provider_registry.embedding(&provider_id) {
+                let _ = exts
+                    .embedding_providers
+                    .register_or_replace(provider_id.as_str(), provider);
+            }
+        }
 
         let _store = std::sync::Arc::new(RuntimeStore::from_extensions(&exts));
 

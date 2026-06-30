@@ -96,6 +96,7 @@ fn serialize_messages(messages: &[MessageRecord]) -> String {
             crate::store::MessageRole::User => "[User]",
             crate::store::MessageRole::Assistant => "[Assistant]",
             crate::store::MessageRole::Tool => "[Tool Result]",
+            _ => "[Message]",
         };
 
         buf.push_str(role_label);

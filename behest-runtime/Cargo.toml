@@ -13,6 +13,9 @@ categories.workspace = true
 
 description = "Async runtime glue connecting sans-IO state machine to real I/O for the behest agent runtime"
 
+[lints]
+workspace = true
+
 [dependencies]
 behest-core.workspace = true
 behest-context.workspace = true
@@ -20,7 +23,7 @@ behest-tool.workspace = true
 behest-event.workspace = true
 behest-memory.workspace = true
 behest-approval.workspace = true
-behest.workspace = true
+behest-provider.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }

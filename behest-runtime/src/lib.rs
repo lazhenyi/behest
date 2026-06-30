@@ -185,7 +185,7 @@ impl Runtime {
     /// the run is aborted.
     pub async fn run(
         &self,
-        provider: &(dyn behest::provider::ChatProvider + Sync),
+        provider: &(dyn behest_provider::ChatProvider + Sync),
         session_id: &str,
         user_id: &str,
         user_message: &str,
@@ -355,10 +355,10 @@ impl Runtime {
     /// Calls the model with retry logic.
     async fn call_model_with_retry(
         &self,
-        provider: &(dyn behest::provider::ChatProvider + Sync),
+        provider: &(dyn behest_provider::ChatProvider + Sync),
         request: &ChatRequest,
         cancel: &CancellationToken,
-    ) -> RuntimeResult<behest::provider::ChatResponse> {
+    ) -> RuntimeResult<behest_provider::ChatResponse> {
         let mut last_error = None;
 
         for attempt in 0..=self.config.max_retries {
@@ -388,7 +388,9 @@ impl Runtime {
                         provider: provider.id(),
                     });
                     if !self.config.retry_on_provider_error {
-                        return Err(RuntimeError::Provider(last_error.unwrap()));
+                        return Err(RuntimeError::Provider(ProviderError::Timeout {
+                            provider: provider.id(),
+                        }));
                     }
                 }
             }
@@ -659,16 +661,17 @@ async fn execute_single_tool(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
     /// A mock provider for testing.
     struct MockProvider {
-        responses: std::sync::Mutex<Vec<behest::provider::ChatResponse>>,
+        responses: std::sync::Mutex<Vec<behest_provider::ChatResponse>>,
     }
 
     impl MockProvider {
-        fn new(responses: Vec<behest::provider::ChatResponse>) -> Self {
+        fn new(responses: Vec<behest_provider::ChatResponse>) -> Self {
             Self {
                 responses: std::sync::Mutex::new(responses),
             }
@@ -676,7 +679,7 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl behest::provider::ChatProvider for MockProvider {
+    impl behest_provider::ChatProvider for MockProvider {
         fn id(&self) -> behest_core::id::ProviderId {
             behest_core::id::ProviderId::new("mock")
         }
@@ -693,7 +696,7 @@ mod tests {
         async fn complete(
             &self,
             _request: ChatRequest,
-        ) -> behest::provider::ProviderResult<behest::provider::ChatResponse> {
+        ) -> behest_provider::ProviderResult<behest_provider::ChatResponse> {
             let mut responses = self.responses.lock().unwrap();
             Ok(responses.remove(0))
         }
@@ -704,7 +707,7 @@ mod tests {
         let tools = Arc::new(ToolRegistry::new());
         let memory = Arc::new(behest_memory::InMemoryConversationMemory::new());
 
-        let provider = MockProvider::new(vec![behest::provider::ChatResponse {
+        let provider = MockProvider::new(vec![behest_provider::ChatResponse {
             provider: behest_core::id::ProviderId::new("mock"),
             model: behest_core::id::ModelName::new("mock"),
             message: Message::assistant_text("Hello! How can I help?"),
@@ -730,7 +733,7 @@ mod tests {
         let tools = Arc::new(ToolRegistry::new());
         let memory = Arc::new(behest_memory::InMemoryConversationMemory::new());
 
-        let provider = MockProvider::new(vec![behest::provider::ChatResponse {
+        let provider = MockProvider::new(vec![behest_provider::ChatResponse {
             provider: behest_core::id::ProviderId::new("mock"),
             model: behest_core::id::ModelName::new("mock"),
             message: Message::assistant_text("Done"),

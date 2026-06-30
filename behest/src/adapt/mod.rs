@@ -1,26 +1,15 @@
-//! Concrete provider adapters for model vendors.
-//!
-//! Each adapter is gated behind a Cargo feature flag and implements
-//! [`ChatProvider`](crate::provider::ChatProvider) and/or
-//! [`EmbeddingProvider`](crate::provider::EmbeddingProvider).
-//!
-//! # Available adapters
-//!
-//! | Feature | Adapter | Chat | Stream | Embedding | Tools |
-//! |---------|---------|------|--------|-----------|-------|
-//! | `openai` | [`openai::OpenAiChatAdapter`] | ✅ | ✅ | ✅ | ✅ |
-//! | `anthropic` | [`anthropic::AnthropicChatAdapter`] | ✅ | ✅ | ❌ | ✅ |
-//!
-//! Shared HTTP and SSE infrastructure lives in the private `http` and `sse`
-//! submodules and is compiled whenever at least one adapter feature is enabled.
-
-#[cfg(any(feature = "openai", feature = "anthropic"))]
-pub(crate) mod http;
-#[cfg(any(feature = "openai", feature = "anthropic"))]
-pub(crate) mod sse;
-
-#[cfg(feature = "openai")]
-pub mod openai;
+//! Concrete provider adapters.
 
 #[cfg(feature = "anthropic")]
-pub mod anthropic;
+pub mod anthropic {
+    //! Anthropic provider adapter.
+
+    pub use behest_adapter_anthropic::*;
+}
+
+#[cfg(feature = "openai")]
+pub mod openai {
+    //! OpenAI-compatible provider adapters.
+
+    pub use behest_adapter_openai::*;
+}

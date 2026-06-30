@@ -35,6 +35,7 @@ pub fn estimate_record_tokens(record: &MessageRecord) -> usize {
         | crate::store::MessageRole::User
         | crate::store::MessageRole::Assistant => 8,
         crate::store::MessageRole::Tool => 10,
+        _ => 8,
     };
 
     content_tokens + tool_call_tokens + tool_meta_tokens + role_overhead

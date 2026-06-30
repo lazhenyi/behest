@@ -47,7 +47,7 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::provider::ToolSpec;
 use crate::tool::{Tool, ToolRegistry};
@@ -332,10 +332,11 @@ impl ScopedToolRegistry {
         }
     }
 
-    // Lock helper — mutex poisoning is unrecoverable in this context.
-    #[allow(clippy::expect_used)]
-    fn lock_state_poison_safe(&self) -> std::sync::MutexGuard<'_, ScopeState> {
-        self.state.lock().expect("scope lock poisoned")
+    fn lock_state_poison_safe(&self) -> MutexGuard<'_, ScopeState> {
+        match self.state.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
     }
 }
 

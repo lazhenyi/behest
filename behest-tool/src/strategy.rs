@@ -147,7 +147,7 @@ impl ToolExecutionStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FunctionTool, ToolRegistry};
+    use crate::FunctionTool;
 
     fn make_ro_tool(name: &str) -> Arc<dyn Tool> {
         Arc::new(

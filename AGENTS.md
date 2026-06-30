@@ -1,6 +1,6 @@
 # AGENTS.md — agents crate
 
-`agents` — Rust-native cloud agent runtime library (edition 2024, MSRV 1.85).  
+`agents` — Rust-native cloud agent runtime library (edition 2024, MSRV 1.88).  
 License: MIT OR Apache-2.0.
 
 ## 不可违反约束

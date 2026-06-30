@@ -117,6 +117,7 @@ impl From<ProviderError> for ComponentError {
 // ---------------------------------------------------------------------------
 
 /// Generates a [`Component`] wrapper for a provider adapter.
+#[cfg(any(feature = "openai", feature = "anthropic"))]
 macro_rules! provider_component {
     (
         $(#[$outer:meta])*
@@ -309,49 +310,58 @@ impl Component for ContextPipelineComponent {
 /// - `"provider.anthropic.chat"`
 /// - `"provider.openai.embedding"`
 #[must_use]
-pub fn register_providers(mut registry: FactoryRegistry) -> FactoryRegistry {
-    macro_rules! register {
-        ($kind:literal, $Comp:ident, $Adapter:ty) => {
-            registry = registry.register($kind, |cfg, _ctx| {
-                let v: ProviderHttpComponentConfig =
-                    serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
-                        kind: $kind.into(),
-                        source: e,
-                    })?;
-                let http = v.into_provider_http_config();
-                let adapter = <$Adapter>::new(http)
-                    .map_err(|e| FactoryError::FactoryFailed($kind.into(), e.to_string()))?;
-                let comp = $Comp {
-                    inner: Arc::new(adapter),
-                };
-                Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
-            });
-        };
+pub fn register_providers(registry: FactoryRegistry) -> FactoryRegistry {
+    #[cfg(any(feature = "openai", feature = "anthropic"))]
+    {
+        let mut registry = registry;
+        macro_rules! register {
+            ($kind:literal, $Comp:ident, $Adapter:ty) => {
+                registry = registry.register($kind, |cfg, _ctx| {
+                    let v: ProviderHttpComponentConfig =
+                        serde_json::from_value(cfg).map_err(|e| FactoryError::InvalidConfig {
+                            kind: $kind.into(),
+                            source: e,
+                        })?;
+                    let http = v.into_provider_http_config();
+                    let adapter = <$Adapter>::new(http)
+                        .map_err(|e| FactoryError::FactoryFailed($kind.into(), e.to_string()))?;
+                    let comp = $Comp {
+                        inner: Arc::new(adapter),
+                    };
+                    Ok(Box::new(TypedAnyComponent::new(comp)) as Box<dyn AnyComponent>)
+                });
+            };
+        }
+
+        #[cfg(feature = "openai")]
+        {
+            register!(
+                "provider.openai.chat",
+                OpenAiChatComponent,
+                OpenAiChatAdapter
+            );
+            register!(
+                "provider.openai.embedding",
+                OpenAiEmbeddingComponent,
+                OpenAiEmbeddingAdapter
+            );
+        }
+        #[cfg(feature = "anthropic")]
+        {
+            register!(
+                "provider.anthropic.chat",
+                AnthropicChatComponent,
+                AnthropicChatAdapter
+            );
+        }
+
+        registry
     }
 
-    #[cfg(feature = "openai")]
+    #[cfg(not(any(feature = "openai", feature = "anthropic")))]
     {
-        register!(
-            "provider.openai.chat",
-            OpenAiChatComponent,
-            OpenAiChatAdapter
-        );
-        register!(
-            "provider.openai.embedding",
-            OpenAiEmbeddingComponent,
-            OpenAiEmbeddingAdapter
-        );
+        registry
     }
-    #[cfg(feature = "anthropic")]
-    {
-        register!(
-            "provider.anthropic.chat",
-            AnthropicChatComponent,
-            AnthropicChatAdapter
-        );
-    }
-
-    registry
 }
 
 /// Registers all memory-store factory invokers into a [`FactoryRegistry`].

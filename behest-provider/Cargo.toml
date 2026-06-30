@@ -1,0 +1,29 @@
+[package]
+name = "behest-provider"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+description = "Provider-neutral model contracts and registry for the behest agent runtime"
+
+[lints]
+workspace = true
+
+[dependencies]
+behest-core.workspace = true
+async-trait.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+serde.workspace = true
+serde_json.workspace = true
+secrecy = "0.10"
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "sync"] }

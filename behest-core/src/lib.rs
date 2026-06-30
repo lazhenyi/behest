@@ -1,11 +1,11 @@
 //! Core types for the behest agent runtime.
 //!
 //! This crate provides foundational types used across the behest ecosystem:
-//! - Strongly-typed identifiers ([`ProviderId`], [`ModelName`])
-//! - Error types ([`Error`], [`ProviderError`], [`ToolError`], etc.)
-//! - Provider-neutral message types ([`Message`], [`ChatRequest`], [`ChatResponse`])
+//! - Strongly-typed identifiers ([`id::ProviderId`], [`id::ModelName`])
+//! - Error types ([`error::Error`], [`error::ProviderError`], [`error::ToolError`], etc.)
+//! - Provider-neutral message types ([`message::Message`], [`message::ChatRequest`], [`message::ChatResponse`])
 //! - Tool and embedding types
-//! - Sans-IO run state machine ([`RunState`], [`RunInput`], [`RunAction`])
+//! - Sans-IO run state machine ([`run::RunState`], [`run::RunInput`], [`run::RunAction`])
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
