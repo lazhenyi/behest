@@ -107,6 +107,12 @@ impl ChatProvider for AnthropicChatAdapter {
             tool_calling: true,
             parallel_tool_calls: false,
             vision: true,
+            prompt_caching: true,
+            max_cache_breakpoints: Some(4),
+            cache_ttl_options: vec![
+                behest_core::cache::CacheTtl::FiveMinutes,
+                behest_core::cache::CacheTtl::OneHour,
+            ],
             ..ProviderCapabilities::empty()
         }
     }

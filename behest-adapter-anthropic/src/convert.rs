@@ -2,30 +2,32 @@
 
 use serde_json::{Value, json};
 
+use behest_core::cache::CacheControl;
 use behest_provider::{
     ChatRequest, ChatResponse, ContentPart, FinishReason, Message, ModelName, ProviderId,
     TokenUsage, ToolCall, ToolChoice, ToolSpec,
 };
 
 use super::types::{
-    AnthropicContentBlock, AnthropicMessage, AnthropicRequest, AnthropicResponse, AnthropicToolDef,
-    AnthropicToolResultContent,
+    AnthropicCacheControl, AnthropicContentBlock, AnthropicMessage, AnthropicRequest,
+    AnthropicResponse, AnthropicSystemBlock, AnthropicToolDef, AnthropicToolResultContent,
 };
 
 const DEFAULT_MAX_TOKENS: u32 = 4096;
 
 /// Converts a neutral [`ChatRequest`] into an [`AnthropicRequest`].
 ///
-/// Extracts system messages into the top-level `system` field, converts
-/// remaining messages to Anthropic wire format, and maps tool definitions.
-/// When `stream` is `true` the resulting request uses SSE streaming.
+/// Extracts system messages into the top-level `system` field as a list of
+/// content blocks (allowing per-block cache markers), converts remaining
+/// messages to Anthropic wire format, and maps tool definitions. When
+/// `stream` is `true` the resulting request uses SSE streaming.
 ///
 /// # Parameters
 ///
 /// * `request` — The neutral chat request to convert.
 /// * `stream` — Whether to enable SSE streaming for the Anthropic API.
 pub fn to_anthropic_request(request: &ChatRequest, stream: bool) -> AnthropicRequest {
-    let system = extract_system_text(&request.messages);
+    let system = extract_system_blocks(&request.messages);
     let messages = convert_messages(&request.messages);
 
     AnthropicRequest {
@@ -42,30 +44,49 @@ pub fn to_anthropic_request(request: &ChatRequest, stream: bool) -> AnthropicReq
     }
 }
 
-/// Extracts and joins all system message text content.
+/// Extracts system messages into a list of content blocks, each carrying
+/// its own optional cache marker.
 ///
-/// Concatenates system text parts with double-newline separators.
-/// Returns `None` when there are no system messages.
-fn extract_system_text(messages: &[Message]) -> Option<String> {
-    let system_parts: Vec<&str> = messages
-        .iter()
-        .filter_map(|m| match m {
-            Message::System { content } => Some(content),
-            _ => None,
-        })
-        .flat_map(|parts| {
-            parts.iter().filter_map(|p| match p {
-                ContentPart::Text { text } => Some(text.as_str()),
+/// System parts with no text payload are skipped. Multiple system messages
+/// become multiple blocks, joined with a double newline.
+fn extract_system_blocks(messages: &[Message]) -> Option<Vec<AnthropicSystemBlock>> {
+    let mut blocks = Vec::new();
+    for message in messages {
+        let Message::System { content } = message else {
+            continue;
+        };
+        let text: String = content
+            .iter()
+            .filter_map(|p| match p {
+                ContentPart::Text { text, .. } => Some(text.as_str()),
                 _ => None,
             })
-        })
-        .collect();
-
-    if system_parts.is_empty() {
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        if text.is_empty() {
+            continue;
+        }
+        let cache_control = content
+            .iter()
+            .rev()
+            .find_map(|p| p.cache_control())
+            .map(convert_cache_control);
+        blocks.push(AnthropicSystemBlock::Text {
+            text,
+            cache_control,
+        });
+    }
+    if blocks.is_empty() {
         None
     } else {
-        Some(system_parts.join("\n\n"))
+        Some(blocks)
     }
+}
+
+/// Translates a provider-neutral [`CacheControl`] into an
+/// [`AnthropicCacheControl`] wire marker.
+fn convert_cache_control(ctrl: CacheControl) -> AnthropicCacheControl {
+    AnthropicCacheControl::new(Some(ctrl.ttl_wire()))
 }
 
 /// Filters out system messages and converts the rest to Anthropic wire format.
@@ -115,6 +136,11 @@ fn convert_single_message(message: &Message) -> AnthropicMessage {
             content: vec![AnthropicContentBlock::ToolResult {
                 tool_use_id: tool_call_id.clone(),
                 content: convert_tool_result_content(content),
+                cache_control: content
+                    .iter()
+                    .rev()
+                    .find_map(|p| p.cache_control())
+                    .map(convert_cache_control),
             }],
         },
         // System messages are filtered by `convert_messages` before reaching here.
@@ -123,6 +149,7 @@ fn convert_single_message(message: &Message) -> AnthropicMessage {
             role: "user".to_owned(),
             content: vec![AnthropicContentBlock::Text {
                 text: "[unsupported message]".to_owned(),
+                cache_control: None,
             }],
         },
     }
@@ -133,11 +160,15 @@ fn convert_user_content(parts: &[ContentPart]) -> Vec<AnthropicContentBlock> {
     parts
         .iter()
         .map(|part| match part {
-            ContentPart::Text { text } => AnthropicContentBlock::Text { text: text.clone() },
-            ContentPart::Json { value } => AnthropicContentBlock::Text {
-                text: value.to_string(),
+            ContentPart::Text { text, .. } => AnthropicContentBlock::Text {
+                text: text.clone(),
+                cache_control: None,
             },
-            ContentPart::ImageUrl { url, mime_type } => AnthropicContentBlock::Image {
+            ContentPart::Json { value, .. } => AnthropicContentBlock::Text {
+                text: value.to_string(),
+                cache_control: None,
+            },
+            ContentPart::ImageUrl { url, mime_type, .. } => AnthropicContentBlock::Image {
                 source: super::types::AnthropicImageSource {
                     source_type: "url".to_owned(),
                     url: url.clone(),
@@ -146,6 +177,7 @@ fn convert_user_content(parts: &[ContentPart]) -> Vec<AnthropicContentBlock> {
             },
             _ => AnthropicContentBlock::Text {
                 text: "[unsupported content]".to_owned(),
+                cache_control: None,
             },
         })
         .collect()
@@ -159,11 +191,13 @@ fn convert_tool_result_content(parts: &[ContentPart]) -> Vec<AnthropicToolResult
     parts
         .iter()
         .map(|part| match part {
-            ContentPart::Text { text } => AnthropicToolResultContent::Text { text: text.clone() },
-            ContentPart::Json { value } => AnthropicToolResultContent::Text {
+            ContentPart::Text { text, .. } => {
+                AnthropicToolResultContent::Text { text: text.clone() }
+            }
+            ContentPart::Json { value, .. } => AnthropicToolResultContent::Text {
                 text: value.to_string(),
             },
-            ContentPart::ImageUrl { url, mime_type } => AnthropicToolResultContent::Image {
+            ContentPart::ImageUrl { url, mime_type, .. } => AnthropicToolResultContent::Image {
                 source: super::types::AnthropicImageSource {
                     source_type: "url".to_owned(),
                     url: url.clone(),
@@ -185,15 +219,21 @@ fn convert_assistant_content(parts: &[ContentPart]) -> Vec<AnthropicContentBlock
     parts
         .iter()
         .map(|part| match part {
-            ContentPart::Text { text } => AnthropicContentBlock::Text { text: text.clone() },
-            ContentPart::Json { value } => AnthropicContentBlock::Text {
+            ContentPart::Text { text, .. } => AnthropicContentBlock::Text {
+                text: text.clone(),
+                cache_control: None,
+            },
+            ContentPart::Json { value, .. } => AnthropicContentBlock::Text {
                 text: value.to_string(),
+                cache_control: None,
             },
             ContentPart::ImageUrl { .. } => AnthropicContentBlock::Text {
                 text: "[image]".to_owned(),
+                cache_control: None,
             },
             _ => AnthropicContentBlock::Text {
                 text: "[unsupported content]".to_owned(),
+                cache_control: None,
             },
         })
         .collect()
@@ -205,6 +245,7 @@ fn convert_tool_spec(spec: &ToolSpec) -> AnthropicToolDef {
         name: spec.name.clone(),
         description: spec.description.clone(),
         input_schema: spec.parameters_schema.clone(),
+        cache_control: spec.cache_control.map(convert_cache_control),
     }
 }
 
@@ -262,7 +303,7 @@ fn parse_content_blocks(blocks: &[AnthropicContentBlock]) -> (Vec<ContentPart>, 
 
     for block in blocks {
         match block {
-            AnthropicContentBlock::Text { text } => {
+            AnthropicContentBlock::Text { text, .. } => {
                 content_parts.push(ContentPart::text(text.clone()));
             }
             AnthropicContentBlock::ToolUse { id, name, input } => {
@@ -288,11 +329,15 @@ fn convert_stop_reason(reason: Option<&str>) -> FinishReason {
 
 /// Converts [`AnthropicUsage`] to neutral [`TokenUsage`].
 fn convert_usage(usage: &super::types::AnthropicUsage) -> TokenUsage {
-    TokenUsage::new(usage.input_tokens, usage.output_tokens)
+    TokenUsage::new(usage.input_tokens, usage.output_tokens).with_cache_stats(
+        usage.cache_creation_input_tokens,
+        usage.cache_read_input_tokens,
+        None,
+    )
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use serde_json::json;
@@ -320,21 +365,32 @@ mod tests {
     }
 
     #[test]
-    fn extract_system_text_should_join_system_messages() {
+    fn extract_system_blocks_should_join_system_messages() {
         let messages = vec![
             Message::system_text("You are helpful."),
             Message::user_text("Hi"),
             Message::system_text("Be concise."),
         ];
 
-        let system = extract_system_text(&messages);
-        assert_eq!(system, Some("You are helpful.\n\nBe concise.".to_owned()));
+        let blocks = extract_system_blocks(&messages).unwrap();
+        assert_eq!(blocks.len(), 2);
     }
 
     #[test]
-    fn extract_system_text_should_return_none_when_no_system() {
+    fn extract_system_blocks_should_return_none_when_no_system() {
         let messages = vec![Message::user_text("Hi")];
-        assert_eq!(extract_system_text(&messages), None);
+        assert_eq!(extract_system_blocks(&messages), None);
+    }
+
+    #[test]
+    fn extract_system_blocks_should_carry_cache_control_marker() {
+        let messages = vec![Message::system_text("You are helpful.").mark_cache_breakpoint()];
+        let blocks = extract_system_blocks(&messages).unwrap();
+        assert_eq!(blocks.len(), 1);
+        let AnthropicSystemBlock::Text { cache_control, .. } = &blocks[0];
+        assert!(cache_control.is_some());
+        assert_eq!(cache_control.as_ref().unwrap().kind, "ephemeral");
+        assert_eq!(cache_control.as_ref().unwrap().ttl.as_deref(), Some("5m"));
     }
 
     #[test]
@@ -358,10 +414,11 @@ mod tests {
 
         assert_eq!(converted.role, "user");
         assert_eq!(converted.content.len(), 1);
-        assert!(matches!(
-            &converted.content[0],
-            AnthropicContentBlock::ToolResult { tool_use_id, .. } if tool_use_id == "call_1"
-        ));
+        if let AnthropicContentBlock::ToolResult { tool_use_id, .. } = &converted.content[0] {
+            assert_eq!(tool_use_id, "call_1");
+        } else {
+            panic!("expected tool result");
+        }
     }
 
     #[test]
@@ -378,10 +435,11 @@ mod tests {
         let converted = convert_single_message(&msg);
         assert_eq!(converted.role, "assistant");
         assert_eq!(converted.content.len(), 2);
-        assert!(matches!(
-            &converted.content[1],
-            AnthropicContentBlock::ToolUse { name, .. } if name == "weather"
-        ));
+        if let AnthropicContentBlock::ToolUse { name, .. } = &converted.content[1] {
+            assert_eq!(name, "weather");
+        } else {
+            panic!("expected tool use block");
+        }
     }
 
     #[test]
@@ -408,11 +466,14 @@ mod tests {
             model: "claude-3-sonnet".to_owned(),
             content: vec![AnthropicContentBlock::Text {
                 text: "Hello!".to_owned(),
+                cache_control: None,
             }],
             stop_reason: Some("end_turn".to_owned()),
             usage: Some(super::super::types::AnthropicUsage {
                 input_tokens: 10,
                 output_tokens: 5,
+                cache_creation_input_tokens: None,
+                cache_read_input_tokens: None,
             }),
         };
 
@@ -423,6 +484,33 @@ mod tests {
         let usage = result.usage.unwrap();
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 5);
+        assert_eq!(usage.cache_creation_input_tokens, None);
+        assert_eq!(usage.cache_read_input_tokens, None);
+    }
+
+    #[test]
+    fn from_anthropic_response_should_extract_cache_stats() {
+        let provider = ProviderId::new("anthropic");
+        let response = super::super::types::AnthropicResponse {
+            id: "msg_2".to_owned(),
+            model: "claude-3-sonnet".to_owned(),
+            content: vec![AnthropicContentBlock::Text {
+                text: "Cached!".to_owned(),
+                cache_control: None,
+            }],
+            stop_reason: Some("end_turn".to_owned()),
+            usage: Some(super::super::types::AnthropicUsage {
+                input_tokens: 1000,
+                output_tokens: 50,
+                cache_creation_input_tokens: Some(800),
+                cache_read_input_tokens: Some(700),
+            }),
+        };
+
+        let result = from_anthropic_response(&provider, &response);
+        let usage = result.usage.unwrap();
+        assert_eq!(usage.cache_creation_input_tokens, Some(800));
+        assert_eq!(usage.cache_read_input_tokens, Some(700));
     }
 
     #[test]
@@ -465,5 +553,15 @@ mod tests {
             convert_stop_reason(Some("stop_sequence")),
             FinishReason::Stop
         );
+    }
+
+    #[test]
+    fn convert_tool_spec_passes_through_cache_control() {
+        let ctrl = CacheControl::ephemeral().with_ttl(behest_core::cache::CacheTtl::OneHour);
+        let spec = ToolSpec::new("echo", "Echo", json!({})).with_cache_control(ctrl);
+        let converted = convert_tool_spec(&spec);
+        let cc = converted.cache_control.expect("expected cache_control");
+        assert_eq!(cc.kind, "ephemeral");
+        assert_eq!(cc.ttl.as_deref(), Some("1h"));
     }
 }

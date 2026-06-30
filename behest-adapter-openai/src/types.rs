@@ -135,6 +135,19 @@ pub struct OpenAiUsage {
     pub completion_tokens: u64,
     /// Total token count.
     pub total_tokens: u64,
+    /// Optional breakdown of prompt tokens, including cached tokens.
+    #[serde(default)]
+    pub prompt_tokens_details: Option<OpenAiPromptTokensDetails>,
+}
+
+/// Breakdown of prompt tokens reported by OpenAI.
+///
+/// Populated when the API returns a `prompt_tokens_details` object.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct OpenAiPromptTokensDetails {
+    /// Number of input tokens served from the prompt cache.
+    #[serde(default)]
+    pub cached_tokens: Option<u64>,
 }
 
 // -- Streaming delta --

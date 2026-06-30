@@ -162,6 +162,7 @@ fn parse_event_block(block: &str) -> Option<SseEvent> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

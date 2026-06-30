@@ -95,7 +95,7 @@ fn convert_message(message: &Message) -> OpenAiMessage {
 /// non-text content are serialized as a JSON array of content blocks.
 fn serialize_content(parts: &[ContentPart]) -> Value {
     if parts.len() == 1
-        && let ContentPart::Text { text } = &parts[0]
+        && let ContentPart::Text { text, .. } = &parts[0]
     {
         return Value::String(text.clone());
     }
@@ -103,11 +103,13 @@ fn serialize_content(parts: &[ContentPart]) -> Value {
     let items: Vec<Value> = parts
         .iter()
         .map(|part| match part {
-            ContentPart::Text { text } => {
+            ContentPart::Text { text, .. } => {
                 json!({"type": "text", "text": text})
             }
-            ContentPart::Json { value } => value.clone(),
-            ContentPart::ImageUrl { url, mime_type: _ } => {
+            ContentPart::Json { value, .. } => value.clone(),
+            ContentPart::ImageUrl {
+                url, mime_type: _, ..
+            } => {
                 json!({"type": "image_url", "image_url": {"url": url}})
             }
             _ => Value::Null,
@@ -234,6 +236,7 @@ fn parse_content_value(content: Option<&Value>) -> Vec<ContentPart> {
         Some(Value::Array(items)) => items.iter().filter_map(parse_content_item).collect(),
         Some(other) => vec![ContentPart::Json {
             value: other.clone(),
+            cache_control: None,
         }],
     }
 }
@@ -255,6 +258,7 @@ fn parse_content_item(item: &Value) -> Option<ContentPart> {
         }
         _ => Some(ContentPart::Json {
             value: item.clone(),
+            cache_control: None,
         }),
     }
 }
@@ -297,7 +301,15 @@ fn convert_finish_reason(reason: Option<&str>) -> FinishReason {
 
 /// Converts [`OpenAiUsage`] to neutral [`TokenUsage`].
 fn convert_usage(usage: &super::types::OpenAiUsage) -> TokenUsage {
-    TokenUsage::new(usage.prompt_tokens, usage.completion_tokens)
+    let cached_input_tokens = usage
+        .prompt_tokens_details
+        .as_ref()
+        .and_then(|d| d.cached_tokens);
+    TokenUsage::new(usage.prompt_tokens, usage.completion_tokens).with_cache_stats(
+        None,
+        None,
+        cached_input_tokens,
+    )
 }
 
 #[cfg(test)]
@@ -434,6 +446,7 @@ mod tests {
                 prompt_tokens: 10,
                 completion_tokens: 5,
                 total_tokens: 15,
+                prompt_tokens_details: None,
             }),
         };
 
@@ -479,5 +492,31 @@ mod tests {
 
         let result = convert_response_tool_calls(&calls);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn convert_usage_maps_cached_tokens() {
+        let usage = super::super::types::OpenAiUsage {
+            prompt_tokens: 1000,
+            completion_tokens: 50,
+            total_tokens: 1050,
+            prompt_tokens_details: Some(super::super::types::OpenAiPromptTokensDetails {
+                cached_tokens: Some(800),
+            }),
+        };
+        let converted = convert_usage(&usage);
+        assert_eq!(converted.cached_input_tokens, Some(800));
+    }
+
+    #[test]
+    fn convert_usage_with_no_details_yields_none() {
+        let usage = super::super::types::OpenAiUsage {
+            prompt_tokens: 1000,
+            completion_tokens: 50,
+            total_tokens: 1050,
+            prompt_tokens_details: None,
+        };
+        let converted = convert_usage(&usage);
+        assert_eq!(converted.cached_input_tokens, None);
     }
 }

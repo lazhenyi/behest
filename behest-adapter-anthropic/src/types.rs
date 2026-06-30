@@ -3,6 +3,32 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Anthropic's `cache_control` block marker.
+///
+/// Serializes to `{"type": "ephemeral"}` or `{"type": "ephemeral", "ttl": "5m"}`.
+/// Always set on a content block to mark the prefix up to and including
+/// that block as eligible for caching.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnthropicCacheControl {
+    /// Always `"ephemeral"`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    /// Time-to-live. `"5m"` or `"1h"`. `None` defaults to 5 minutes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<String>,
+}
+
+impl AnthropicCacheControl {
+    /// Returns an ephemeral cache control with the given TTL string (e.g. `"5m"`, `"1h"`).
+    #[must_use]
+    pub fn new(ttl: Option<&str>) -> Self {
+        Self {
+            kind: "ephemeral".to_owned(),
+            ttl: ttl.map(str::to_owned),
+        }
+    }
+}
+
 /// Request body for `POST /v1/messages`.
 #[derive(Debug, Clone, Serialize)]
 pub struct AnthropicRequest {
@@ -10,9 +36,10 @@ pub struct AnthropicRequest {
     pub model: String,
     /// Maximum output tokens.
     pub max_tokens: u32,
-    /// System prompt, extracted from system messages.
+    /// System prompt as a sequence of content blocks. Multiple blocks
+    /// allow per-block cache markers.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub system: Option<String>,
+    pub system: Option<Vec<AnthropicSystemBlock>>,
     /// Conversation messages (excluding system).
     pub messages: Vec<AnthropicMessage>,
     /// Tool definitions.
@@ -34,6 +61,21 @@ pub struct AnthropicRequest {
     pub stream: bool,
 }
 
+/// A single system content block, supporting an optional cache marker.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum AnthropicSystemBlock {
+    /// Plain text block.
+    #[serde(rename = "text")]
+    Text {
+        /// Text payload.
+        text: String,
+        /// Optional cache marker.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_control: Option<AnthropicCacheControl>,
+    },
+}
+
 /// A single message in an Anthropic conversation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnthropicMessage {
@@ -52,6 +94,9 @@ pub enum AnthropicContentBlock {
     Text {
         /// Text payload.
         text: String,
+        /// Optional cache marker.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_control: Option<AnthropicCacheControl>,
     },
     /// Image content.
     #[serde(rename = "image")]
@@ -76,6 +121,9 @@ pub enum AnthropicContentBlock {
         tool_use_id: String,
         /// Result content (only text and image blocks are valid here).
         content: Vec<AnthropicToolResultContent>,
+        /// Optional cache marker.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cache_control: Option<AnthropicCacheControl>,
     },
 }
 
@@ -122,6 +170,9 @@ pub struct AnthropicToolDef {
     pub description: String,
     /// JSON schema for accepted input.
     pub input_schema: Value,
+    /// Optional cache marker applied to this tool's prefix.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<AnthropicCacheControl>,
 }
 
 /// Response body for `POST /v1/messages`.
@@ -146,6 +197,12 @@ pub struct AnthropicUsage {
     pub input_tokens: u64,
     /// Output token count.
     pub output_tokens: u64,
+    /// Number of input tokens written to cache by this call.
+    #[serde(default)]
+    pub cache_creation_input_tokens: Option<u64>,
+    /// Number of input tokens served from cache by this call.
+    #[serde(default)]
+    pub cache_read_input_tokens: Option<u64>,
 }
 
 /// Streaming event from Anthropic SSE.

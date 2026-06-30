@@ -98,6 +98,7 @@ impl ChatProvider for OpenAiChatAdapter {
             parallel_tool_calls: true,
             json_schema_output: true,
             vision: true,
+            prompt_caching: true,
             ..ProviderCapabilities::empty()
         }
     }
@@ -278,11 +279,12 @@ fn parse_chunk_event(
     if let Some(reason) = &choice.finish_reason {
         let finish_reason = convert_stream_finish(reason);
         if matches!(finish_reason, FinishReason::ToolCalls) {
-            events.extend(state.completed_tool_calls().into_iter().map(|call| {
-                Ok(ChatStreamEvent::ToolCallCompleted {
-                    call,
-                })
-            }));
+            events.extend(
+                state
+                    .completed_tool_calls()
+                    .into_iter()
+                    .map(|call| Ok(ChatStreamEvent::ToolCallCompleted { call })),
+            );
         }
         events.push(Ok(ChatStreamEvent::Finished {
             finish_reason,
