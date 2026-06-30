@@ -1,11 +1,12 @@
 //! OpenAI chat provider adapter implementing [`ChatProvider`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures_util::StreamExt as _;
 use reqwest::Client;
+use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::http::{build_client, parse_retry_after, status_to_error, with_bearer_auth};
@@ -13,7 +14,7 @@ use crate::sse::{SseEvent, SseStream};
 use behest_core::error::ProviderError;
 use behest_provider::{
     ChatProvider, ChatRequest, ChatResponse, ChatStream, ChatStreamEvent, FinishReason,
-    ProviderCapabilities, ProviderHttpConfig, ProviderId, ProviderResult, TokenUsage,
+    ProviderCapabilities, ProviderHttpConfig, ProviderId, ProviderResult, TokenUsage, ToolCall,
 };
 
 use super::convert::{from_openai_response, to_openai_request};
@@ -159,13 +160,15 @@ impl ChatProvider for OpenAiChatAdapter {
         };
 
         let state = Arc::new(Mutex::new(OpenAiStreamState::new(provider_id.clone())));
-        let mapped = sse_stream.filter_map(move |event| {
-            let state = Arc::clone(&state);
-            async move {
-                let mut st = state.lock().await;
-                map_sse_event(&mut st, event)
-            }
-        });
+        let mapped = sse_stream
+            .then(move |event| {
+                let state = Arc::clone(&state);
+                async move {
+                    let mut st = state.lock().await;
+                    map_sse_event(&mut st, event)
+                }
+            })
+            .flat_map(futures_util::stream::iter);
 
         let combined = futures_util::stream::once(async { Ok(started) }).chain(mapped);
         Ok(Box::pin(combined))
@@ -181,6 +184,7 @@ struct OpenAiStreamState {
     index_to_id: HashMap<usize, String>,
     index_to_name: HashMap<usize, String>,
     index_to_args: HashMap<usize, String>,
+    started_indices: HashSet<usize>,
 }
 
 impl OpenAiStreamState {
@@ -190,7 +194,44 @@ impl OpenAiStreamState {
             index_to_id: HashMap::new(),
             index_to_name: HashMap::new(),
             index_to_args: HashMap::new(),
+            started_indices: HashSet::new(),
         }
+    }
+
+    fn completed_tool_calls(&mut self) -> Vec<ToolCall> {
+        let mut indices: Vec<usize> = self
+            .index_to_id
+            .keys()
+            .chain(self.index_to_name.keys())
+            .chain(self.index_to_args.keys())
+            .copied()
+            .collect();
+        indices.sort_unstable();
+        indices.dedup();
+
+        let mut calls = Vec::new();
+        for index in indices {
+            let Some(name) = self.index_to_name.get(&index).cloned() else {
+                continue;
+            };
+            let id = self
+                .index_to_id
+                .get(&index)
+                .cloned()
+                .unwrap_or_else(|| format!("call_{index}"));
+            let arguments = self
+                .index_to_args
+                .get(&index)
+                .map_or(Value::Null, |raw| parse_tool_arguments(&name, raw));
+            calls.push(ToolCall::new(id, name, arguments));
+        }
+
+        self.index_to_id.clear();
+        self.index_to_name.clear();
+        self.index_to_args.clear();
+        self.started_indices.clear();
+
+        calls
     }
 }
 
@@ -201,10 +242,10 @@ impl OpenAiStreamState {
 fn map_sse_event(
     state: &mut OpenAiStreamState,
     event: Result<SseEvent, ProviderError>,
-) -> Option<Result<ChatStreamEvent, ProviderError>> {
+) -> Vec<Result<ChatStreamEvent, ProviderError>> {
     match event {
-        Err(e) => Some(Err(e)),
-        Ok(sse) if sse.is_openai_done() => None,
+        Err(e) => vec![Err(e)],
+        Ok(sse) if sse.is_openai_done() => Vec::new(),
         Ok(sse) => parse_chunk_event(state, &sse.data),
     }
 }
@@ -217,43 +258,55 @@ fn map_sse_event(
 fn parse_chunk_event(
     state: &mut OpenAiStreamState,
     data: &str,
-) -> Option<Result<ChatStreamEvent, ProviderError>> {
+) -> Vec<Result<ChatStreamEvent, ProviderError>> {
     let chunk: OpenAiStreamChunk = match serde_json::from_str(data) {
         Ok(c) => c,
         Err(e) => {
-            return Some(Err(ProviderError::Decode {
+            return vec![Err(ProviderError::Decode {
                 provider: state.provider.clone(),
                 message: e.to_string(),
-            }));
+            })];
         }
     };
 
-    let choice = chunk.choices.first()?;
+    let Some(choice) = chunk.choices.first() else {
+        return Vec::new();
+    };
+
+    let mut events = Vec::new();
 
     if let Some(reason) = &choice.finish_reason {
-        let finished = ChatStreamEvent::Finished {
-            finish_reason: convert_stream_finish(reason),
+        let finish_reason = convert_stream_finish(reason);
+        if matches!(finish_reason, FinishReason::ToolCalls) {
+            events.extend(state.completed_tool_calls().into_iter().map(|call| {
+                Ok(ChatStreamEvent::ToolCallCompleted {
+                    call,
+                })
+            }));
+        }
+        events.push(Ok(ChatStreamEvent::Finished {
+            finish_reason,
             usage: chunk
                 .usage
                 .as_ref()
                 .map(|u| TokenUsage::new(u.prompt_tokens, u.completion_tokens)),
-        };
-        return Some(Ok(finished));
+        }));
+        return events;
     }
 
     if let Some(text) = &choice.delta.content
         && !text.is_empty()
     {
-        return Some(Ok(ChatStreamEvent::TextDelta {
+        events.push(Ok(ChatStreamEvent::TextDelta {
             delta: text.clone(),
         }));
     }
 
     if let Some(calls) = &choice.delta.tool_calls {
-        return convert_tool_call_deltas(state, calls);
+        events.extend(convert_tool_call_deltas(state, calls));
     }
 
-    None
+    events
 }
 
 /// Converts an OpenAI stream finish reason string to the neutral [`FinishReason`].
@@ -276,44 +329,63 @@ fn convert_stream_finish(reason: &str) -> FinishReason {
 fn convert_tool_call_deltas(
     state: &mut OpenAiStreamState,
     calls: &[OpenAiToolCall],
-) -> Option<Result<ChatStreamEvent, ProviderError>> {
-    let call = calls.first()?;
-    let index = call.index.unwrap_or(0);
+) -> Vec<Result<ChatStreamEvent, ProviderError>> {
+    let mut events = Vec::new();
 
-    if let Some(id) = &call.id {
-        state.index_to_id.insert(index, id.clone());
+    for call in calls {
+        let index = call.index.unwrap_or(0);
+
+        if let Some(id) = &call.id {
+            state.index_to_id.insert(index, id.clone());
+        }
+        if let Some(name) = &call.function.name {
+            state.index_to_name.insert(index, name.clone());
+        }
+
+        if let (Some(id), Some(name)) = (
+            state.index_to_id.get(&index),
+            state.index_to_name.get(&index),
+        ) && !id.is_empty()
+            && !name.is_empty()
+            && state.started_indices.insert(index)
+        {
+            events.push(Ok(ChatStreamEvent::ToolCallStarted {
+                id: id.clone(),
+                name: name.clone(),
+            }));
+        }
+
+        if let Some(args) = &call.function.arguments {
+            state.index_to_args.entry(index).or_default().push_str(args);
+
+            let call_id = state
+                .index_to_id
+                .get(&index)
+                .cloned()
+                .unwrap_or_else(|| format!("call_{index}"));
+
+            events.push(Ok(ChatStreamEvent::ToolCallArgumentsDelta {
+                id: call_id,
+                delta: args.clone(),
+            }));
+        }
     }
-    if let Some(name) = &call.function.name {
-        state.index_to_name.insert(index, name.clone());
+
+    events
+}
+
+fn parse_tool_arguments(tool_name: &str, raw: &str) -> Value {
+    match serde_json::from_str(raw) {
+        Ok(value) => value,
+        Err(e) => {
+            tracing::warn!(
+                tool_name = %tool_name,
+                error = %e,
+                "failed to parse tool call arguments, falling back to null"
+            );
+            Value::Null
+        }
     }
-
-    if let Some(id) = call.id.as_deref()
-        && let Some(name) = call.function.name.as_deref()
-        && !id.is_empty()
-        && !name.is_empty()
-    {
-        return Some(Ok(ChatStreamEvent::ToolCallStarted {
-            id: id.to_owned(),
-            name: name.to_owned(),
-        }));
-    }
-
-    if let Some(args) = &call.function.arguments {
-        state.index_to_args.entry(index).or_default().push_str(args);
-
-        let call_id = state
-            .index_to_id
-            .get(&index)
-            .cloned()
-            .unwrap_or_else(|| format!("call_{index}"));
-
-        return Some(Ok(ChatStreamEvent::ToolCallArgumentsDelta {
-            id: call_id,
-            delta: args.clone(),
-        }));
-    }
-
-    None
 }
 
 /// Wraps a [`reqwest::Error`] from JSON deserialization into [`ProviderError::Decode`].
@@ -321,5 +393,121 @@ fn decode_error(provider_id: &ProviderId, error: &reqwest::Error) -> ProviderErr
     ProviderError::Decode {
         provider: provider_id.clone(),
         message: error.to_string(),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn chunk_events(state: &mut OpenAiStreamState, data: &str) -> Vec<ChatStreamEvent> {
+        parse_chunk_event(state, data)
+            .into_iter()
+            .map(Result::unwrap)
+            .collect()
+    }
+
+    #[test]
+    fn stream_chunk_emits_tool_start_and_arguments_from_same_delta() {
+        let mut state = OpenAiStreamState::new(ProviderId::new("openai"));
+
+        let events = chunk_events(
+            &mut state,
+            r#"{
+                "id": "chunk_1",
+                "model": "gpt-test",
+                "choices": [{
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [{
+                            "index": 0,
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "weather",
+                                "arguments": "{\"city\":\"London\"}"
+                            }
+                        }]
+                    },
+                    "finish_reason": null
+                }],
+                "usage": null
+            }"#,
+        );
+
+        assert_eq!(
+            events,
+            vec![
+                ChatStreamEvent::ToolCallStarted {
+                    id: "call_1".to_owned(),
+                    name: "weather".to_owned(),
+                },
+                ChatStreamEvent::ToolCallArgumentsDelta {
+                    id: "call_1".to_owned(),
+                    delta: "{\"city\":\"London\"}".to_owned(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn stream_finish_tool_calls_emits_completed_before_finished() {
+        let mut state = OpenAiStreamState::new(ProviderId::new("openai"));
+        let _ = chunk_events(
+            &mut state,
+            r#"{
+                "id": "chunk_1",
+                "model": "gpt-test",
+                "choices": [{
+                    "index": 0,
+                    "delta": {
+                        "tool_calls": [{
+                            "index": 0,
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "weather",
+                                "arguments": "{\"city\":\"London\"}"
+                            }
+                        }]
+                    },
+                    "finish_reason": null
+                }],
+                "usage": null
+            }"#,
+        );
+
+        let events = chunk_events(
+            &mut state,
+            r#"{
+                "id": "chunk_2",
+                "model": "gpt-test",
+                "choices": [{
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "tool_calls"
+                }],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 2,
+                    "total_tokens": 3
+                }
+            }"#,
+        );
+
+        assert_eq!(
+            events,
+            vec![
+                ChatStreamEvent::ToolCallCompleted {
+                    call: ToolCall::new("call_1", "weather", json!({"city": "London"})),
+                },
+                ChatStreamEvent::Finished {
+                    finish_reason: FinishReason::ToolCalls,
+                    usage: Some(TokenUsage::new(1, 2)),
+                },
+            ]
+        );
     }
 }
