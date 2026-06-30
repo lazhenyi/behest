@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::runtime::policy::PromptCacheConfig;
 use crate::runtime::{CompactionConfig, RuntimePolicy};
 
 /// Runtime configuration covering policy, context limits, and event channel.
@@ -93,21 +94,14 @@ impl Default for RuntimePolicyConfig {
 
 impl From<RuntimePolicyConfig> for RuntimePolicy {
     fn from(config: RuntimePolicyConfig) -> Self {
-        Self {
-            max_iterations: config.max_iterations,
-            max_tokens: config.max_tokens,
-            max_tool_concurrency: config.max_tool_concurrency,
-            tool_timeout: Duration::from_secs(config.tool_timeout_secs),
-            provider_timeout: Duration::from_secs(config.provider_timeout_secs),
-            continue_on_tool_failure: config.continue_on_tool_failure,
-            retry_on_provider_error: config.retry_on_provider_error,
-            max_retries: config.max_retries,
-            compaction: CompactionConfig::default(),
-            tool_output: crate::tool_output::ToolOutputConfig::default(),
-            doom_loop: crate::runtime::doom_loop::DoomLoopConfig::default(),
-            input_admission: crate::runtime::input::InputAdmissionConfig::default(),
-            max_output_recovery_attempts: 3,
-        }
+        RuntimePolicy::new()
+            .with_max_iterations(config.max_iterations)
+            .with_tool_timeout(Duration::from_secs(config.tool_timeout_secs))
+            .with_provider_timeout(Duration::from_secs(config.provider_timeout_secs))
+            .with_continue_on_tool_failure(config.continue_on_tool_failure)
+            .with_retry_on_provider_error(config.retry_on_provider_error)
+            .with_max_retries(config.max_retries)
+            .with_max_output_recovery_attempts(3)
     }
 }
 

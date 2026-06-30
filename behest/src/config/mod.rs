@@ -818,11 +818,9 @@ async fn build_session_store(config: &StoreConfig) -> Result<Box<dyn crate::stor
                 "MongoDB session store requires the 'mongodb' feature".to_owned(),
             ))
         }
-        StoreBackend::Surreal => {
-            Err(Error::Config(
-                "SurrealDB session store is not supported by this build".to_owned(),
-            ))
-        }
+        StoreBackend::Surreal => Err(Error::Config(
+            "SurrealDB session store is not supported by this build".to_owned(),
+        )),
     }
 }
 

@@ -31,6 +31,10 @@ name = "agent_registry"
 path = "../examples/agent_registry.rs"
 
 [[example]]
+name = "cache_dashboard"
+path = "../examples/cache_dashboard.rs"
+
+[[example]]
 name = "config_from_toml"
 path = "../examples/config_from_toml.rs"
 
@@ -233,7 +237,13 @@ object_store = ["behest-store/object_store"]
 [dependencies]
 behest-core.workspace = true
 behest-provider.workspace = true
+behest-event.workspace = true
+behest-context.workspace = true
+behest-tool.workspace = true
+behest-memory.workspace = true
+behest-approval.workspace = true
 behest-store.workspace = true
+behest-runtime.workspace = true
 behest-adapter-openai = { workspace = true, optional = true }
 behest-adapter-anthropic = { workspace = true, optional = true }
 tokio = { workspace = true, features = [
