@@ -737,8 +737,8 @@ struct ControlInner {
 /// is cooperative: [`RuntimeInvocation::emit`] checks [`Control::is_cancelled`]
 /// before invoking the closure and before calling [`AgentRuntime::run`]; the
 /// underlying runtime does not yet support hard cancellation. Timeout and
-/// concurrency limit are stored as hints for transport adapters — the core
-/// runtime does not enforce them.
+/// concurrency limit are enforced by event listeners spawned through
+/// [`RuntimeInvocation::on`].
 ///
 /// ## Type-erased data
 ///
@@ -794,7 +794,7 @@ impl Control {
 
     /// Sets a concurrency limit hint.
     pub fn set_concurrency_limit(&self, limit: usize) {
-        *lock_or_recover(&self.inner.concurrency_limit) = Some(limit);
+        *lock_or_recover(&self.inner.concurrency_limit) = Some(limit.max(1));
     }
 
     /// Returns the configured concurrency limit hint, if any.
@@ -1057,16 +1057,19 @@ where
                         run_id: Some(run_id),
                         store: Arc::clone(&store),
                     };
+                    let permit = if let Some(sem) = semaphore.clone() {
+                        match sem.acquire_owned().await {
+                            Ok(permit) => Some(permit),
+                            Err(_) => break,
+                        }
+                    } else {
+                        None
+                    };
                     let h = Arc::clone(&handler);
                     let c = control.clone();
-                    let sem = semaphore.clone();
                     tokio::spawn(async move {
-                        if let Some(s) = sem {
-                            let _permit = s.acquire().await;
-                            h(envelope, session, c).await;
-                        } else {
-                            h(envelope, session, c).await;
-                        }
+                        let _permit = permit;
+                        h(envelope, session, c).await;
                     });
                 }
                 Err(broadcast::error::RecvError::Closed) => break,
@@ -1085,9 +1088,9 @@ mod tests {
     use crate::runtime::event::{RunCompleted, RunStarted, TextDelta};
     use chrono::Utc;
     use serde_json::json;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Duration;
-    use tokio::sync::broadcast;
+    use tokio::sync::{Notify, broadcast};
     use uuid::Uuid;
 
     #[test]
@@ -1267,6 +1270,81 @@ mod tests {
             counter.load(Ordering::SeqCst),
             1,
             "only the matching TextDelta event should be handled"
+        );
+        handle.abort();
+    }
+
+    #[test]
+    fn control_set_concurrency_limit_clamps_zero_to_one() {
+        let control = Control::new();
+
+        control.set_concurrency_limit(0);
+
+        assert_eq!(control.concurrency_limit(), Some(1));
+    }
+
+    #[tokio::test]
+    async fn listener_applies_concurrency_backpressure_before_spawning_handlers() {
+        let (tx, rx) = broadcast::channel::<AgentEvent>(1);
+        let handled = Arc::new(AtomicUsize::new(0));
+        let first_started = Arc::new(Notify::new());
+        let release_first = Arc::new(Notify::new());
+        let released = Arc::new(AtomicBool::new(false));
+
+        let h_handled = Arc::clone(&handled);
+        let h_first_started = Arc::clone(&first_started);
+        let h_release_first = Arc::clone(&release_first);
+        let h_released = Arc::clone(&released);
+        let handler = move |_, _, _| {
+            let handled = Arc::clone(&h_handled);
+            let first_started = Arc::clone(&h_first_started);
+            let release_first = Arc::clone(&h_release_first);
+            let released = Arc::clone(&h_released);
+            async move {
+                let current = handled.fetch_add(1, Ordering::SeqCst) + 1;
+                if current == 1 {
+                    first_started.notify_waiters();
+                    release_first.notified().await;
+                    released.store(true, Ordering::SeqCst);
+                    return;
+                }
+
+                if !released.load(Ordering::SeqCst) {
+                    release_first.notified().await;
+                }
+            }
+        };
+        let session_map = Arc::new(Mutex::new(HashMap::new()));
+        let store: Arc<dyn SessionDataStore> = Arc::new(MemorySessionDataStore::new());
+        let control = Control::new();
+        control.set_concurrency_limit(1);
+        let handle = spawn_listener(rx, EventKind::TextDelta, control, session_map, store, handler);
+
+        let _ = tx.send(AgentEvent::TextDelta(TextDelta {
+            run_id: RunId::new(),
+            delta: "first".into(),
+            timestamp: Utc::now(),
+        }));
+        tokio::time::timeout(Duration::from_millis(100), first_started.notified())
+            .await
+            .expect("first handler should start");
+
+        for idx in 0..20 {
+            let _ = tx.send(AgentEvent::TextDelta(TextDelta {
+                run_id: RunId::new(),
+                delta: format!("queued-{idx}"),
+                timestamp: Utc::now(),
+            }));
+            tokio::task::yield_now().await;
+        }
+
+        assert_eq!(handled.load(Ordering::SeqCst), 1);
+        release_first.notify_waiters();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        assert!(
+            handled.load(Ordering::SeqCst) <= 3,
+            "listener should not pre-spawn handlers while the limit is saturated"
         );
         handle.abort();
     }
