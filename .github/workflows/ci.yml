@@ -9,9 +9,13 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
 jobs:
-  rust:
-    name: Rust
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -20,22 +24,89 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+          components: rustfmt
 
       - name: Check formatting
         run: cargo fmt --all --check
 
-      - name: Check all targets
-        run: cargo check --all-targets --all-features --locked
+  check:
+    name: Check (default features)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Lint
-        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Test
-        run: cargo test --all-features --locked
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check workspace
+        run: cargo check --workspace --all-targets --locked
+
+  check-all-features:
+    name: Check (all features)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check workspace (all features)
+        run: cargo check --workspace --all-targets --all-features --locked
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Lint workspace
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test workspace
+        run: cargo test --workspace --all-features --locked
+
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
       - name: Build docs
-        run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps --locked
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
