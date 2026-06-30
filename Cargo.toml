@@ -16,7 +16,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.5.5"
+version = "0.5.6"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
@@ -42,18 +42,18 @@ async-trait = "0.1"
 tracing = "0.1"
 
 # Internal crate references
-behest-core = { path = "behest-core", version = "0.5.5" }
-behest-context = { path = "behest-context", version = "0.5.5" }
-behest-tool = { path = "behest-tool", version = "0.5.5" }
-behest-event = { path = "behest-event", version = "0.5.5" }
-behest-memory = { path = "behest-memory", version = "0.5.5" }
-behest-approval = { path = "behest-approval", version = "0.5.5" }
-behest-provider = { path = "behest-provider", version = "0.5.5" }
-behest-store = { path = "behest-store", default-features = false, version = "0.5.5" }
-behest-adapter-openai = { path = "behest-adapter-openai", default-features = false, version = "0.5.5" }
-behest-adapter-anthropic = { path = "behest-adapter-anthropic", default-features = false, version = "0.5.5" }
-behest-runtime = { path = "behest-runtime", version = "0.5.5" }
-behest = { path = "behest", version = "0.5.5" }
+behest-core = { path = "behest-core", version = "0.5.6" }
+behest-context = { path = "behest-context", version = "0.5.6" }
+behest-tool = { path = "behest-tool", version = "0.5.6" }
+behest-event = { path = "behest-event", version = "0.5.6" }
+behest-memory = { path = "behest-memory", version = "0.5.6" }
+behest-approval = { path = "behest-approval", version = "0.5.6" }
+behest-provider = { path = "behest-provider", version = "0.5.6" }
+behest-store = { path = "behest-store", default-features = false, version = "0.5.6" }
+behest-adapter-openai = { path = "behest-adapter-openai", default-features = false, version = "0.5.6" }
+behest-adapter-anthropic = { path = "behest-adapter-anthropic", default-features = false, version = "0.5.6" }
+behest-runtime = { path = "behest-runtime", version = "0.5.6" }
+behest = { path = "behest", version = "0.5.6" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
