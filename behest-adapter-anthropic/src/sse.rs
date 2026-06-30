@@ -105,8 +105,8 @@ fn find_event_boundary(buffer: &str) -> Option<EventBoundary> {
             }
             b'\r'
                 if i + 3 < bytes.len()
-                    && bytes[i + 1] == b'\r'
-                    && bytes[i + 2] == b'\n'
+                    && bytes[i + 1] == b'\n'
+                    && bytes[i + 2] == b'\r'
                     && bytes[i + 3] == b'\n' =>
             {
                 return Some(EventBoundary { end: i + 4 });
@@ -149,4 +149,27 @@ fn parse_event_block(block: &str) -> Option<SseEvent> {
         event: event_name,
         data: data_lines.join("\n"),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_event_boundary_accepts_lf_lf() {
+        let boundary = find_event_boundary("data: hello\n\n").expect("boundary");
+        assert_eq!(boundary.end, "data: hello\n\n".len());
+    }
+
+    #[test]
+    fn find_event_boundary_accepts_crlf_crlf() {
+        let boundary = find_event_boundary("data: hello\r\n\r\n").expect("boundary");
+        assert_eq!(boundary.end, "data: hello\r\n\r\n".len());
+    }
+
+    #[test]
+    fn find_event_boundary_accepts_cr_cr() {
+        let boundary = find_event_boundary("data: hello\r\r").expect("boundary");
+        assert_eq!(boundary.end, "data: hello\r\r".len());
+    }
 }
