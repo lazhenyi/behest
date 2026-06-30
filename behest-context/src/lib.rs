@@ -38,7 +38,12 @@ use behest_core::tool_types::ToolCall;
 use serde_json::Value;
 use tokio::sync::watch;
 
+mod factory;
 mod impls;
+pub use factory::{
+    ContextAdapter, ContextFactory, ContextInput, ContextOutput, ContextResult, FunctionAdapter,
+    StaticAdapter,
+};
 pub use impls::{
     AppContext, HookContextImpl, MemoryContextImpl, RunContextImpl, SessionContextImpl,
     ToolContextImpl,

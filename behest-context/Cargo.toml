@@ -18,9 +18,11 @@ workspace = true
 
 [dependencies]
 behest-core.workspace = true
+behest-provider.workspace = true
+async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["sync", "time"] }
+tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
 tokio-util = { workspace = true, features = ["rt"] }
 uuid.workspace = true
 chrono.workspace = true
