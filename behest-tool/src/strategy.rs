@@ -152,7 +152,7 @@ mod tests {
     fn make_ro_tool(name: &str) -> Arc<dyn Tool> {
         Arc::new(
             FunctionTool::new(name, format!("{name} tool"), serde_json::json!({}), |_| {
-                Box::pin(async { Ok(crate::ToolOutput::text("ok")) })
+                Box::pin(async { Ok(serde_json::Value::String("ok".to_string())) })
             })
             .read_only(),
         )
@@ -163,7 +163,7 @@ mod tests {
             name,
             format!("{name} tool"),
             serde_json::json!({}),
-            |_| Box::pin(async { Ok(crate::ToolOutput::text("ok")) }),
+            |_| Box::pin(async { Ok(serde_json::Value::String("ok".to_string())) }),
         ))
     }
 

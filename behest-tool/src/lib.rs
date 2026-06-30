@@ -23,13 +23,17 @@ use std::sync::{Arc, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use behest_context::ToolContext;
-use behest_core::error::ToolError;
 use behest_core::tool_types::{ToolCall, ToolSpec};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 mod strategy;
 pub use strategy::{ExecutionPlan, ToolExecutionStrategy};
+
+/// Canonical tool error type. Aliased here so that downstream callers
+/// can write `behest_tool::ToolError` without taking a direct
+/// dependency on `behest_core`.
+pub use behest_core::error::ToolError;
 
 /// Alias for a tool execution result.
 pub type ToolResult<T = ToolOutput> = std::result::Result<T, ToolError>;
@@ -89,6 +93,9 @@ impl SideEffects {
 }
 
 /// An executable tool that can be called by an LLM.
+///
+/// Implementations must provide at minimum: `name()`, `description()`,
+/// `parameters_schema()`, and `execute()`.
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Returns the tool's name (visible to the model).
@@ -105,8 +112,20 @@ pub trait Tool: Send + Sync {
         None
     }
 
-    /// Executes the tool with the given context and arguments.
-    async fn execute(&self, ctx: &dyn ToolContext, args: Value) -> ToolResult<ToolOutput>;
+    /// Executes the tool with the given arguments.
+    async fn execute(&self, args: Value) -> ToolResult<ToolOutput>;
+
+    /// Executes the tool with the given [`ToolContext`] and arguments.
+    ///
+    /// Defaults to calling [`Self::execute`] without context. Override
+    /// to consume the context (e.g., for memory / cancellation / sink).
+    async fn execute_with_ctx(
+        &self,
+        _ctx: &dyn ToolContext,
+        args: Value,
+    ) -> ToolResult<ToolOutput> {
+        self.execute(args).await
+    }
 
     /// Returns `true` if the tool is read-only (no side effects).
     fn is_read_only(&self) -> bool {
@@ -151,7 +170,11 @@ pub trait Tool: Send + Sync {
 }
 
 /// Type alias for the async handler function used by [`FunctionTool`].
-pub type ToolHandler = dyn Fn(Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolResult<ToolOutput>> + Send>>
+///
+/// The handler returns a JSON [`Value`] (not a [`ToolOutput`]); the
+/// wrapper internally converts it to a [`ToolOutput`]. This matches
+/// the long-standing convention from the facade's `FunctionTool::new`.
+pub type ToolHandler = dyn Fn(Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = ToolResult<Value>> + Send>>
     + Send
     + Sync;
 
@@ -180,6 +203,9 @@ impl std::fmt::Debug for FunctionTool {
 
 impl FunctionTool {
     /// Creates a new function-based tool.
+    ///
+    /// The handler is expected to return a JSON [`Value`]; the
+    /// implementation wraps it in a [`ToolOutput`].
     #[must_use]
     pub fn new<F, Fut>(
         name: impl Into<String>,
@@ -189,7 +215,7 @@ impl FunctionTool {
     ) -> Self
     where
         F: Fn(Value) -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = ToolResult<ToolOutput>> + Send + 'static,
+        Fut: std::future::Future<Output = ToolResult<Value>> + Send + 'static,
     {
         Self {
             name: name.into(),
@@ -258,8 +284,9 @@ impl Tool for FunctionTool {
         self.parameters_schema.clone()
     }
 
-    async fn execute(&self, _ctx: &dyn ToolContext, args: Value) -> ToolResult<ToolOutput> {
-        (self.handler)(args).await
+    async fn execute(&self, args: Value) -> ToolResult<ToolOutput> {
+        let value = (self.handler)(args).await?;
+        Ok(ToolOutput::new(value))
     }
 
     fn is_read_only(&self) -> bool {
@@ -307,6 +334,17 @@ impl Default for ToolRegistry {
     }
 }
 
+impl Clone for ToolRegistry {
+    fn clone(&self) -> Self {
+        // `RwLock` doesn't implement `Clone`, but the inner map is
+        // cheaply cloneable. We take a read lock to snapshot.
+        let map = self.read_tools().clone();
+        Self {
+            tools: std::sync::RwLock::new(map),
+        }
+    }
+}
+
 impl ToolRegistry {
     /// Creates an empty tool registry.
     #[must_use]
@@ -320,6 +358,12 @@ impl ToolRegistry {
     pub fn register<T: Tool + 'static>(&self, tool: T) -> Option<Arc<dyn Tool>> {
         self.write_tools()
             .insert(tool.name().to_string(), Arc::new(tool))
+    }
+
+    /// Registers an already-shared tool, returning any previous tool
+    /// with the same name.
+    pub fn register_arc(&self, tool: Arc<dyn Tool>) -> Option<Arc<dyn Tool>> {
+        self.write_tools().insert(tool.name().to_string(), tool)
     }
 
     /// Unregisters a tool by name.
@@ -364,7 +408,7 @@ impl ToolRegistry {
         let tool = self.get(&call.name).ok_or_else(|| ToolError::NotFound {
             name: call.name.clone(),
         })?;
-        tool.execute(ctx, call.arguments.clone()).await
+        tool.execute_with_ctx(ctx, call.arguments.clone()).await
     }
 
     fn read_tools(&self) -> RwLockReadGuard<'_, std::collections::HashMap<String, Arc<dyn Tool>>> {
@@ -396,7 +440,7 @@ mod tests {
             serde_json::json!({"type": "object", "properties": {}}),
             move |_args| {
                 let n = n.clone();
-                Box::pin(async move { Ok(ToolOutput::text(format!("{n} done"))) })
+                Box::pin(async move { Ok(serde_json::Value::String(format!("{n} done"))) })
             },
         )
         .let_ro(read_only)
