@@ -685,6 +685,14 @@ impl AgentRuntime {
         if caps.chat_stream {
             match self.call_streaming(provider, request.clone(), run_id).await {
                 Ok(result) => return Ok(result),
+                Err(e)
+                    if matches!(
+                        e,
+                        RuntimeError::Provider(crate::error::ProviderError::Timeout { .. })
+                    ) =>
+                {
+                    return Err(e);
+                }
                 Err(e) => {
                     warn!(error = %e, "streaming failed, falling back to complete");
                 }
@@ -715,7 +723,14 @@ impl AgentRuntime {
 
         tokio::pin!(stream);
 
-        while let Some(event_result) = stream.next().await {
+        while let Some(event_result) = timeout(self.policy.provider_timeout, stream.next())
+            .await
+            .map_err(|_| {
+                RuntimeError::Provider(crate::error::ProviderError::Timeout {
+                    provider: provider.id(),
+                })
+            })?
+        {
             let event = event_result.map_err(RuntimeError::from)?;
 
             match &event {

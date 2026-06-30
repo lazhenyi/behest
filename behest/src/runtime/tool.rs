@@ -50,6 +50,8 @@ impl ToolRuntime {
     /// Creates a new tool runtime wrapping the given registry.
     #[must_use]
     pub fn new(registry: ToolRegistry, policy: RuntimePolicy) -> Self {
+        let mut policy = policy;
+        policy.max_tool_concurrency = policy.max_tool_concurrency.max(1);
         let semaphore = Arc::new(Semaphore::new(policy.max_tool_concurrency));
         Self {
             registry: Arc::new(ScopedToolRegistry::new(registry)),
@@ -158,7 +160,7 @@ impl ToolRuntime {
                                 continue_on_failure,
                                 &truncation_config,
                             )
-                            .await;
+                            .await?;
                             Ok::<(usize, ToolExecutionOutcome), RuntimeError>((idx, outcome))
                         }
                     })
@@ -193,7 +195,7 @@ impl ToolRuntime {
                 self.policy.continue_on_tool_failure,
                 &self.policy.tool_output,
             )
-            .await;
+            .await?;
 
             if let Some(store) = execution_store {
                 Self::record_execution(store, session_id, message_id, &call, &outcome).await;
@@ -214,47 +216,40 @@ impl ToolRuntime {
         tool_timeout: std::time::Duration,
         continue_on_failure: bool,
         truncation_config: &ToolOutputConfig,
-    ) -> ToolExecutionOutcome {
+    ) -> RuntimeResult<ToolExecutionOutcome> {
         let Some(tool) = registry.get(&call.name) else {
             let error_msg = format!("tool not found: {}", call.name);
             warn!(tool = %call.name, "tool not found");
-            return ToolExecutionOutcome {
+            let error = ToolError::NotFound {
+                name: call.name.clone(),
+            };
+            if !continue_on_failure {
+                return Err(error.into());
+            }
+
+            return Ok(ToolExecutionOutcome {
                 call: call.clone(),
-                output: Err(ToolError::NotFound {
-                    name: call.name.clone(),
-                }),
+                output: Err(error),
                 message: Message::tool_text(
                     call.id.clone(),
                     call.name.clone(),
                     format!("{{\"error\":\"{error_msg}\"}}"),
                 ),
-            };
+            });
         };
 
         if let Err(validation_error) =
             Self::validate_arguments(&tool.parameters_schema(), &call.arguments)
         {
             debug!(tool = %call.name, error = %validation_error, "schema validation failed");
-            if !continue_on_failure {
-                let err = ToolError::InvalidArguments {
-                    name: call.name.clone(),
-                    message: validation_error.clone(),
-                };
-                return ToolExecutionOutcome {
-                    call: call.clone(),
-                    output: Err(err),
-                    message: Message::tool_text(
-                        call.id.clone(),
-                        call.name.clone(),
-                        format!("{{\"error\":\"{validation_error}\"}}"),
-                    ),
-                };
-            }
             let err = ToolError::InvalidArguments {
                 name: call.name.clone(),
                 message: validation_error.clone(),
             };
-            return ToolExecutionOutcome {
+            if !continue_on_failure {
+                return Err(err.into());
+            }
+            return Ok(ToolExecutionOutcome {
                 call: call.clone(),
                 output: Err(err),
                 message: Message::tool_text(
@@ -262,7 +257,7 @@ impl ToolRuntime {
                     call.name.clone(),
                     format!("{{\"error\":\"{validation_error}\"}}"),
                 ),
-            };
+            });
         }
 
         let start = Instant::now();
@@ -274,17 +269,21 @@ impl ToolRuntime {
                 let truncated =
                     tool_output::truncate_output(&raw_text, truncation_config, Some(&call.name));
                 let msg = Message::tool_text(call.id.clone(), call.name.clone(), truncated.text);
-                ToolExecutionOutcome {
+                Ok(ToolExecutionOutcome {
                     call: call.clone(),
                     output: Ok(output),
                     message: msg,
-                }
+                })
             }
             Ok(Err(tool_error)) => {
                 let duration = start.elapsed();
                 let error_msg = tool_error.to_string();
                 warn!(tool = %call.name, ?duration, error = %error_msg, "tool execution failed");
-                ToolExecutionOutcome {
+                if !continue_on_failure {
+                    return Err(tool_error.into());
+                }
+
+                Ok(ToolExecutionOutcome {
                     call: call.clone(),
                     output: Err(tool_error),
                     message: Message::tool_text(
@@ -292,12 +291,18 @@ impl ToolRuntime {
                         call.name.clone(),
                         format!("{{\"error\":\"{error_msg}\"}}"),
                     ),
-                }
+                })
             }
             Err(_) => {
                 let error_msg = format!("tool execution timeout after {tool_timeout:?}");
                 warn!(tool = %call.name, "tool execution timed out");
-                ToolExecutionOutcome {
+                if !continue_on_failure {
+                    return Err(RuntimeError::ToolTimeout {
+                        tool: call.name.clone(),
+                    });
+                }
+
+                Ok(ToolExecutionOutcome {
                     call: call.clone(),
                     output: Err(ToolError::Execution {
                         name: call.name.clone(),
@@ -308,7 +313,7 @@ impl ToolRuntime {
                         call.name.clone(),
                         format!("{{\"error\":\"{error_msg}\"}}"),
                     ),
-                }
+                })
             }
         }
     }
@@ -656,5 +661,60 @@ mod tests {
         // Results must be in original call order: a first, then b
         assert_eq!(outcomes[0].call.name, "a");
         assert_eq!(outcomes[1].call.name, "b");
+    }
+
+    #[tokio::test]
+    async fn execute_batch_should_propagate_tool_failure_when_continue_disabled() {
+        let registry = ToolRegistry::new();
+        registry.register(failing_tool());
+        let policy = RuntimePolicy::new().with_continue_on_tool_failure(false);
+        let runtime = ToolRuntime::new(registry, policy);
+
+        let calls = vec![ToolCall::new("call_1", "fail", json!({}))];
+        let session_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+        let result = runtime
+            .execute_batch(calls, session_id, message_id, None)
+            .await;
+
+        assert!(matches!(result, Err(RuntimeError::Tool(_))));
+    }
+
+    #[tokio::test]
+    async fn execute_batch_should_propagate_invalid_arguments_when_continue_disabled() {
+        let registry = ToolRegistry::new();
+        registry.register(echo_tool());
+        let policy = RuntimePolicy::new().with_continue_on_tool_failure(false);
+        let runtime = ToolRuntime::new(registry, policy);
+
+        let calls = vec![ToolCall::new("call_1", "echo", json!({"message": 123}))];
+        let session_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+        let result = runtime
+            .execute_batch(calls, session_id, message_id, None)
+            .await;
+
+        assert!(matches!(result, Err(RuntimeError::Tool(_))));
+    }
+
+    #[tokio::test]
+    async fn execute_batch_with_zero_concurrency_should_not_hang() {
+        let registry = ToolRegistry::new();
+        registry.register(echo_tool());
+        let policy = RuntimePolicy::new().with_max_tool_concurrency(0);
+        let runtime = ToolRuntime::new(registry, policy);
+
+        let calls = vec![ToolCall::new("call_1", "echo", json!({"message": "hello"}))];
+        let session_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            runtime.execute_batch(calls, session_id, message_id, None),
+        )
+        .await;
+
+        let outcomes = result.expect("tool runtime should not hang").unwrap();
+        assert_eq!(outcomes.len(), 1);
+        assert!(outcomes[0].output.is_ok());
     }
 }

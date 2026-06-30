@@ -230,7 +230,7 @@ impl RuntimePolicy {
     /// Sets the maximum tool concurrency.
     #[must_use]
     pub fn with_max_tool_concurrency(mut self, max_tool_concurrency: usize) -> Self {
-        self.max_tool_concurrency = max_tool_concurrency;
+        self.max_tool_concurrency = max_tool_concurrency.max(1);
         self
     }
 
