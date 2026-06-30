@@ -42,18 +42,18 @@ async-trait = "0.1"
 tracing = "0.1"
 
 # Internal crate references
-behest-core = { path = "behest-core" }
-behest-context = { path = "behest-context" }
-behest-tool = { path = "behest-tool" }
-behest-event = { path = "behest-event" }
-behest-memory = { path = "behest-memory" }
-behest-approval = { path = "behest-approval" }
-behest-provider = { path = "behest-provider" }
-behest-store = { path = "behest-store", default-features = false }
-behest-adapter-openai = { path = "behest-adapter-openai", default-features = false }
-behest-adapter-anthropic = { path = "behest-adapter-anthropic", default-features = false }
-behest-runtime = { path = "behest-runtime" }
-behest = { path = "behest" }
+behest-core = { path = "behest-core", version = "0.5.1" }
+behest-context = { path = "behest-context", version = "0.5.1" }
+behest-tool = { path = "behest-tool", version = "0.5.1" }
+behest-event = { path = "behest-event", version = "0.5.1" }
+behest-memory = { path = "behest-memory", version = "0.5.1" }
+behest-approval = { path = "behest-approval", version = "0.5.1" }
+behest-provider = { path = "behest-provider", version = "0.5.1" }
+behest-store = { path = "behest-store", default-features = false, version = "0.5.1" }
+behest-adapter-openai = { path = "behest-adapter-openai", default-features = false, version = "0.5.1" }
+behest-adapter-anthropic = { path = "behest-adapter-anthropic", default-features = false, version = "0.5.1" }
+behest-runtime = { path = "behest-runtime", version = "0.5.1" }
+behest = { path = "behest", version = "0.5.1" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
