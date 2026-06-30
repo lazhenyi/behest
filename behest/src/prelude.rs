@@ -41,7 +41,10 @@ pub use crate::token::{
     estimate_content_part_tokens, estimate_message_tokens, estimate_messages_tokens,
     estimate_record_tokens, estimate_records_tokens, estimate_tokens,
 };
-pub use crate::tool::{ExternalTool, FunctionTool, Tool, ToolOutput, ToolRegistry, ToolResult};
+pub use crate::tool::{
+    ExecutionPlan, FunctionTool, SideEffects, Tool, ToolExecutionStrategy, ToolOutput,
+    ToolRegistry, ToolResult,
+};
 pub use crate::tool_output::{ToolOutputConfig, TruncationResult, truncate_output};
 
 #[cfg(feature = "openai")]

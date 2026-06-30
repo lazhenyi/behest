@@ -190,11 +190,7 @@ mod tests {
                 provider: self.id(),
                 model: ModelName::new("stub-model"),
                 embeddings: vec![Embedding::new(0, self.vector.clone())],
-                usage: Some(TokenUsage {
-                    input_tokens: 0,
-                    output_tokens: 0,
-                    total_tokens: 0,
-                }),
+                usage: Some(TokenUsage::new(0, 0)),
                 raw: None,
             })
         }
@@ -256,7 +252,7 @@ mod tests {
                 let text = content
                     .iter()
                     .filter_map(|p| match p {
-                        crate::provider::ContentPart::Text { text } => Some(text.as_str()),
+                        crate::provider::ContentPart::Text { text, .. } => Some(text.as_str()),
                         _ => None,
                     })
                     .collect::<Vec<_>>()

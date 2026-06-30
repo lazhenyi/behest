@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
-#![deny(missing_docs)]
-#![deny(unreachable_pub)]
+//! behest runtime kernel (facade re-exports).
+//! temporarily allow during migration
+#![warn(missing_docs)]
+// Temporarily allow during migration
+#![warn(unreachable_pub)]
 #![warn(rust_2018_idioms)]
 
 //! Building blocks for Rust-native AI agent runtimes.
@@ -94,6 +97,7 @@ pub mod runtime;
 pub mod store;
 pub mod token;
 pub mod tool;
+/// Tool output configuration (re-exported from behest_runtime).
 pub mod tool_output;
 pub mod tool_scope;
 
@@ -106,22 +110,22 @@ pub mod queue;
 pub use crate::error::{ContextError, Error, ProviderError, Result, StorageError, ToolError};
 pub use crate::health::HealthStatus;
 pub use crate::runtime::{
-    AgentEvent, AgentRuntime, AnyComponent, AnyComponentError, CompactionResult, CompactionService,
-    Component, ComponentContext, ComponentDescriptor, ComponentError, ComponentFactory,
-    ComponentRegistry, ComponentState, ContextPipelineComponent, ContextPipelineConfig, Control,
-    EmitRequest, EventKind, ExtensionError, ExtensionPoint, Extensions, FactoryError, FactoryFn,
-    FactoryRegistry, FileSessionDataStore, FileSnapshotStore, InvocationError, InvocationEvent,
-    InvocationHandle, InvocationSession, ManagedError, ManagedRuntime,
-    MemoryArtifactStoreComponent, MemoryEmbeddingStoreComponent, MemoryExecutionStoreComponent,
-    MemoryRunStoreComponent, MemorySessionDataStore, MemorySessionStoreComponent, ModelRouter,
-    ProviderHttpComponentConfig, RegistryError, RunId, RunOutput, RunRequest, RunStatus,
-    RuntimeError, RuntimeEventBridge, RuntimeEventBridgeError, RuntimeEventBridgeHandle,
-    RuntimeEventEnvelope, RuntimeEventId, RuntimeEventStore, RuntimeEventStoreError,
-    RuntimeInvocation, RuntimePolicy, RuntimeRoom, RuntimeStreamAdapter, RuntimeStreamError,
-    RuntimeSubscription, RuntimeSubscriptionError, RuntimeSubscriptionHub, SessionDataError,
-    SessionDataStore, ShutdownToken, Snapshot, SnapshotStore, TypedAnyComponent, TypedFactory,
-    default_factory_registry, register_context_pipeline, register_memory_stores,
-    register_providers,
+    AgentEvent, AgentRuntime, AnyComponent, AnyComponentError, CacheStats, CompactionResult,
+    CompactionService, Component, ComponentContext, ComponentDescriptor, ComponentError,
+    ComponentFactory, ComponentRegistry, ComponentState, ContextPipelineComponent,
+    ContextPipelineConfig, Control, EmitRequest, EventKind, ExtensionError, ExtensionPoint,
+    Extensions, FactoryError, FactoryFn, FactoryRegistry, FileSessionDataStore, FileSnapshotStore,
+    InvocationError, InvocationEvent, InvocationHandle, InvocationSession, ManagedError,
+    ManagedRuntime, MemoryArtifactStoreComponent, MemoryEmbeddingStoreComponent,
+    MemoryExecutionStoreComponent, MemoryRunStoreComponent, MemorySessionDataStore,
+    MemorySessionStoreComponent, ModelRouter, PromptCacheConfig, ProviderHttpComponentConfig,
+    RegistryError, RunId, RunOutput, RunRequest, RunStatus, RuntimeError, RuntimeEventBridge,
+    RuntimeEventBridgeError, RuntimeEventBridgeHandle, RuntimeEventEnvelope, RuntimeEventId,
+    RuntimeEventStore, RuntimeEventStoreError, RuntimeInvocation, RuntimePolicy, RuntimeRoom,
+    RuntimeStreamAdapter, RuntimeStreamError, RuntimeSubscription, RuntimeSubscriptionError,
+    RuntimeSubscriptionHub, SessionDataError, SessionDataStore, ShutdownToken, Snapshot,
+    SnapshotStore, TypedAnyComponent, TypedFactory, default_factory_registry,
+    register_context_pipeline, register_memory_stores, register_providers,
 };
 
 #[cfg(feature = "openai")]
