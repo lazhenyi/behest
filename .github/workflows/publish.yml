@@ -69,16 +69,13 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish -p behest-approval --locked
 
-      - name: Wait for rate limit
-        run: sleep 60
-
       - name: Publish behest-provider
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish -p behest-provider --locked
 
       - name: Wait for rate limit
-        run: sleep 30
+        run: sleep 120
 
       - name: Publish behest-store
         env:
@@ -86,7 +83,7 @@ jobs:
         run: cargo publish -p behest-store --locked
 
       - name: Wait for rate limit
-        run: sleep 30
+        run: sleep 120
 
       - name: Publish behest-adapter-openai
         env:
@@ -94,7 +91,7 @@ jobs:
         run: cargo publish -p behest-adapter-openai --locked
 
       - name: Wait for rate limit
-        run: sleep 30
+        run: sleep 120
 
       - name: Publish behest-adapter-anthropic
         env:
@@ -102,7 +99,7 @@ jobs:
         run: cargo publish -p behest-adapter-anthropic --locked
 
       - name: Wait for rate limit
-        run: sleep 30
+        run: sleep 120
 
       - name: Publish behest-runtime
         env:
@@ -110,7 +107,7 @@ jobs:
         run: cargo publish -p behest-runtime --locked
 
       - name: Wait for rate limit
-        run: sleep 30
+        run: sleep 60
 
       - name: Publish behest
         env:
