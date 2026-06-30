@@ -99,16 +99,7 @@ impl SessionStore for RedisSessionStore {
 
     async fn list_sessions(&self) -> StoreResult<Vec<Session>> {
         let mut conn = self.conn().await?;
-
-        let keys: Vec<String> = redis::cmd("KEYS")
-            .arg("session:*")
-            .query_async(&mut conn)
-            .await
-            .map_err(|e| StorageError::BackendError {
-                backend: "redis".to_owned(),
-                message: e.to_string(),
-                source: Some(Box::new(e)),
-            })?;
+        let keys = scan_session_keys(&mut conn).await?;
 
         let mut sessions = Vec::new();
         for key in keys {
@@ -318,6 +309,37 @@ impl SessionStore for RedisSessionStore {
 
         Ok(())
     }
+}
+
+async fn scan_session_keys(
+    conn: &mut redis::aio::MultiplexedConnection,
+) -> StoreResult<Vec<String>> {
+    let mut cursor = 0_u64;
+    let mut keys = Vec::new();
+
+    loop {
+        let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
+            .cursor_arg(cursor)
+            .arg("MATCH")
+            .arg("session:*")
+            .arg("COUNT")
+            .arg(100)
+            .query_async(conn)
+            .await
+            .map_err(|e| StorageError::BackendError {
+                backend: "redis".to_owned(),
+                message: e.to_string(),
+                source: Some(Box::new(e)),
+            })?;
+
+        keys.extend(batch);
+        if next_cursor == 0 {
+            break;
+        }
+        cursor = next_cursor;
+    }
+
+    Ok(keys)
 }
 
 async fn load_session_from_redis(
