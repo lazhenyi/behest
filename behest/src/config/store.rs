@@ -15,7 +15,7 @@ pub enum StoreBackend {
     Sql,
     /// MongoDB.
     Mongo,
-    /// SurrealDB.
+    /// Legacy SurrealDB selector. Current builds return a configuration error.
     Surreal,
 }
 
@@ -58,19 +58,19 @@ pub struct StoreConfig {
     #[serde(default)]
     pub mongo_url: Option<String>,
 
-    /// SurrealDB connection URL. Required when any backend is [`StoreBackend::Surreal`].
+    /// Legacy SurrealDB connection URL retained for config compatibility.
     #[serde(default)]
     pub surreal_url: Option<String>,
 
-    /// Qdrant gRPC URL for the embedding store.
+    /// Legacy Qdrant gRPC URL retained for config compatibility.
     #[serde(default)]
     pub qdrant_url: Option<String>,
 
-    /// Qdrant collection name. Default: `""`.
+    /// Legacy Qdrant collection name. Default: `""`.
     #[serde(default = "default_qdrant_collection")]
     pub qdrant_collection: String,
 
-    /// Qdrant vector dimensions. Default: 1536.
+    /// Legacy Qdrant vector dimensions. Default: 1536.
     #[serde(default = "default_qdrant_dimensions")]
     pub qdrant_dimensions: u64,
 }

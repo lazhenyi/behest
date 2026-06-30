@@ -819,26 +819,8 @@ async fn build_session_store(config: &StoreConfig) -> Result<Box<dyn crate::stor
             ))
         }
         StoreBackend::Surreal => {
-            #[cfg(feature = "surrealdb")]
-            {
-                let url = config.surreal_url.as_deref().ok_or_else(|| {
-                    Error::Config("surreal_url is required for SurrealDB session store".to_owned())
-                })?;
-                let db = surrealdb::engine::any::connect(url)
-                    .await
-                    .map_err(|e| Error::Config(format!("failed to connect to SurrealDB: {e}")))?;
-                db.use_ns("behest").use_db("behest").await.map_err(|e| {
-                    Error::Config(format!(
-                        "failed to select SurrealDB namespace/database: {e}"
-                    ))
-                })?;
-                Ok(Box::new(
-                    crate::store::surrealdb::SurrealdbSessionStore::new(db),
-                ))
-            }
-            #[cfg(not(feature = "surrealdb"))]
             Err(Error::Config(
-                "SurrealDB session store requires the 'surrealdb' feature".to_owned(),
+                "SurrealDB session store is not supported by this build".to_owned(),
             ))
         }
     }

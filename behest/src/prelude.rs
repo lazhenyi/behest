@@ -63,17 +63,11 @@ pub use crate::store::sql::SqlEmbeddingStore;
 #[cfg(feature = "mongodb")]
 pub use crate::store::mongodb::MongodbSessionStore;
 
-#[cfg(feature = "surrealdb")]
-pub use crate::store::surrealdb::SurrealdbSessionStore;
-
 #[cfg(feature = "redis")]
 pub use crate::store::redis::RedisSessionStore;
 
 #[cfg(feature = "redis")]
 pub use crate::runtime::RedisSessionDataStore;
-
-#[cfg(feature = "qdrant")]
-pub use crate::store::qdrant::QdrantEmbeddingStore;
 
 #[cfg(feature = "object_store")]
 pub use crate::store::object::{DiskArtifactStore, S3ArtifactStore};

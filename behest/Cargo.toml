@@ -121,7 +121,6 @@ full = [
     "nats",
     "sqlx-postgres",
     "mongodb",
-    "surrealdb",
     "otel",
     "rag-all",
     "queue-all",
@@ -137,13 +136,11 @@ storage-all = [
     "sqlx-mysql",
     "sqlx-sqlite",
     "mongodb",
-    "surrealdb",
 ]
 
 rag = []
 rag-all = [
     "rag",
-    "qdrant",
     "tantivy",
 ]
 
@@ -223,21 +220,11 @@ mongodb = [
     "dep:mongodb",
 ]
 
-surrealdb = [
-    "behest-store/surrealdb",
-    "dep:surrealdb",
-    "dep:surrealdb-types",
-]
-
 otel = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
     "dep:tracing-opentelemetry",
-]
-
-qdrant = [
-    "behest-store/qdrant",
 ]
 
 tantivy = []
@@ -293,8 +280,6 @@ redis = { version = "1.3", default-features = false, optional = true }
 async-nats = { version = "0.49", optional = true }
 sqlx = { version = "0.9", default-features = false, optional = true }
 mongodb = { version = "3.7", optional = true }
-surrealdb = { version = "3.1", optional = true }
-surrealdb-types = { version = "3.1", optional = true }
 
 opentelemetry = { version = "0.32", optional = true }
 opentelemetry_sdk = { version = "0.32", optional = true, features = ["rt-tokio"] }
@@ -312,4 +297,4 @@ tracing-test = "0.2"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]
-features = ["openai", "anthropic", "redis", "redis-cluster", "nats", "sqlx-postgres", "mongodb", "surrealdb", "otel", "rag-all", "queue-all", "object_store"]
+features = ["openai", "anthropic", "redis", "redis-cluster", "nats", "sqlx-postgres", "mongodb", "otel", "rag-all", "queue-all", "object_store"]
