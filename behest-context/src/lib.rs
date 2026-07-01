@@ -40,6 +40,7 @@ use tokio::sync::watch;
 
 mod factory;
 mod impls;
+pub mod skills;
 pub use factory::{
     ContextAdapter, ContextFactory, ContextInput, ContextOutput, ContextResult, FunctionAdapter,
     StaticAdapter,
