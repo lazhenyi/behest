@@ -234,7 +234,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "behest"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "async-nats",
  "async-trait",
@@ -283,7 +283,7 @@ dependencies = [
 
 [[package]]
 name = "behest-adapter-anthropic"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "async-trait",
  "behest-core",
@@ -300,7 +300,7 @@ dependencies = [
 
 [[package]]
 name = "behest-adapter-openai"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "async-trait",
  "behest-core",
@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "behest-approval"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "behest-core",
  "behest-event",
@@ -327,7 +327,7 @@ dependencies = [
 
 [[package]]
 name = "behest-context"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "async-trait",
  "behest-core",
@@ -342,7 +342,7 @@ dependencies = [
 
 [[package]]
 name = "behest-core"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "chrono",
  "serde",
@@ -353,7 +353,7 @@ dependencies = [
 
 [[package]]
 name = "behest-event"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "behest-context",
  "behest-core",
@@ -365,7 +365,7 @@ dependencies = [
 
 [[package]]
 name = "behest-memory"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "async-trait",
  "behest-core",
@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "behest-provider"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "async-trait",
  "behest-core",
@@ -390,7 +390,7 @@ dependencies = [
 
 [[package]]
 name = "behest-runtime"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "async-nats",
  "async-trait",
@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "behest-store"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "async-trait",
  "base64",
@@ -448,7 +448,7 @@ dependencies = [
 
 [[package]]
 name = "behest-tool"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "async-trait",
  "behest-context",

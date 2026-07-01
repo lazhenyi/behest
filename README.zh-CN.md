@@ -21,7 +21,7 @@
 
 当你需要显式控制模型 provider、工具执行、运行时状态、持久化和运维边界，而不是把 agent loop 藏在不透明框架里时，`behest` 更适合。
 
-> 状态：早期基础 crate。公共 API 刻意保持紧凑、强类型、有文档。当前 crate 版本：`0.5.8`。
+> 状态：早期基础 crate。公共 API 刻意保持紧凑、强类型、有文档。当前 crate 版本：`0.5.9`。
 
 ## 为什么使用 behest
 
@@ -35,7 +35,7 @@
 
 ```toml
 [dependencies]
-behest = "0.5.8"
+behest = "0.5.9"
 ```
 
 创建一个 provider-neutral 的对话请求：
@@ -265,7 +265,7 @@ api_key = "env:OPENAI_API_KEY"
 
 ```toml
 [dependencies]
-behest = { version = "0.5.8", features = ["openai", "anthropic"] }
+behest = { version = "0.5.9", features = ["openai", "anthropic"] }
 ```
 
 ## Feature Flags
@@ -342,7 +342,7 @@ behest = { version = "0.5.8", features = ["openai", "anthropic"] }
 ```toml
 [dependencies]
 behest = {
-    version = "0.5.8",
+    version = "0.5.9",
     default-features = false,
     features = ["tls-rustls", "openai", "anthropic", "redis", "queue", "nats"]
 }

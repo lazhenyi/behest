@@ -21,7 +21,7 @@
 
 Use it when you need explicit control over model providers, tool execution, runtime state, persistence, and operational boundaries — without hiding the agent loop behind opaque framework magic.
 
-> Status: early foundation crate. Public APIs are intentionally compact, strongly typed, and documented. Current crate version: `0.5.8`.
+> Status: early foundation crate. Public APIs are intentionally compact, strongly typed, and documented. Current crate version: `0.5.9`.
 
 ## Why use behest
 
@@ -35,7 +35,7 @@ Use it when you need explicit control over model providers, tool execution, runt
 
 ```toml
 [dependencies]
-behest = "0.5.8"
+behest = "0.5.9"
 ```
 
 Create a provider-neutral chat request:
@@ -265,7 +265,7 @@ Enable adapters:
 
 ```toml
 [dependencies]
-behest = { version = "0.5.8", features = ["openai", "anthropic"] }
+behest = { version = "0.5.9", features = ["openai", "anthropic"] }
 ```
 
 ## Feature flags
@@ -342,7 +342,7 @@ Example with selected features:
 ```toml
 [dependencies]
 behest = {
-    version = "0.5.8",
+    version = "0.5.9",
     default-features = false,
     features = ["tls-rustls", "openai", "anthropic", "redis", "queue", "nats"]
 }
