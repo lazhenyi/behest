@@ -19,6 +19,7 @@ pub mod error;
 pub mod events;
 pub mod health;
 pub mod id;
+pub mod journal;
 pub mod message;
 pub mod run;
 pub mod token;
