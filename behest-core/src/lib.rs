@@ -22,5 +22,6 @@ pub mod id;
 pub mod journal;
 pub mod message;
 pub mod run;
+pub mod sub_engine;
 pub mod token;
 pub mod tool_types;
