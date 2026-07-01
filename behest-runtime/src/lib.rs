@@ -44,6 +44,7 @@ pub mod stream;
 pub mod stream_adapter;
 pub mod subscription;
 pub mod token;
+pub mod tool_dispatch;
 pub mod tool_output;
 pub mod tool_runtime;
 pub mod tool_scope;
