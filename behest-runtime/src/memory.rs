@@ -183,7 +183,7 @@ impl RunStore for MemoryRunStore {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::event::{AgentEvent, RunStarted as RunStartedEvent};
+    use crate::event::{AgentEvent, RunStarted as RunStartedEvent, UsageRecorded};
     use behest_provider::{ModelName, ProviderId};
     use serde_json::Value;
 

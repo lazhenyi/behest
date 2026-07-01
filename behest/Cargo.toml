@@ -131,8 +131,8 @@ full = [
     "object_store",
 ]
 
-openai = ["dep:behest-adapter-openai"]
-anthropic = ["dep:behest-adapter-anthropic"]
+openai = ["dep:behest-adapter-openai", "behest-runtime/openai"]
+anthropic = ["dep:behest-adapter-anthropic", "behest-runtime/anthropic"]
 
 storage-all = [
     "redis",
@@ -148,7 +148,7 @@ rag-all = [
     "tantivy",
 ]
 
-queue = []
+queue = ["behest-runtime/queue"]
 queue-all = [
     "queue",
     "nats",
@@ -173,6 +173,7 @@ tls-native = [
 
 redis = [
     "behest-store/redis",
+    "behest-runtime/redis",
     "dep:redis",
     "redis/aio",
     "redis/tokio-comp",
@@ -187,6 +188,7 @@ redis-cluster = [
 ]
 
 nats = [
+    "behest-runtime/nats",
     "dep:async-nats",
 ]
 
@@ -204,6 +206,7 @@ sqlx = [
 sqlx-postgres = [
     "sqlx",
     "behest-store/sqlx-postgres",
+    "behest-runtime/sqlx-postgres",
     "sqlx/postgres",
 ]
 

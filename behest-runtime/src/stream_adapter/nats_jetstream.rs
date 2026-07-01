@@ -226,9 +226,9 @@ mod tests {
 
     use super::*;
     use crate::event::{AgentEvent, RunStarted};
-    use crate::provider::{ModelName, ProviderId};
     use crate::run::RunId;
     use crate::stream::RuntimeEventId;
+    use behest_provider::{ModelName, ProviderId};
     use chrono::Utc;
     use futures_util::StreamExt;
     use std::time::Duration;

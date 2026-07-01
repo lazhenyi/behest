@@ -6,7 +6,7 @@
 //!
 //! This adapter is best-effort only: Redis Pub/Sub is fire-and-forget with
 //! no replay. Durability and replay are the responsibility of
-//! [`RuntimeEventStore`](crate::runtime::event_store::RuntimeEventStore).
+//! [`RuntimeEventStore`](crate::event_store::RuntimeEventStore).
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -175,9 +175,9 @@ mod tests {
 
     use super::*;
     use crate::event::{AgentEvent, RunStarted};
-    use crate::provider::{ModelName, ProviderId};
     use crate::run::RunId;
     use crate::stream::RuntimeEventId;
+    use behest_provider::{ModelName, ProviderId};
     use chrono::Utc;
     use futures_util::StreamExt;
     use std::time::Duration;

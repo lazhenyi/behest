@@ -12,11 +12,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::PgPool;
 
-use super::event::AgentEvent;
-use super::run::RunId;
-use super::stream::{RuntimeEventEnvelope, RuntimeEventId};
-
-use super::event_store::{RuntimeEventStore, RuntimeEventStoreError};
+use crate::event::AgentEvent;
+use crate::event_store::{RuntimeEventStore, RuntimeEventStoreError};
+use crate::run::RunId;
+use crate::stream::{RuntimeEventEnvelope, RuntimeEventId};
 
 /// PostgreSQL-backed [`RuntimeEventStore`].
 ///
@@ -208,8 +207,8 @@ struct EventRow {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-    use super::event::RunStarted;
     use super::*;
+    use crate::event::RunStarted;
     use behest_provider::{ModelName, ProviderId};
     use uuid::Uuid;
 

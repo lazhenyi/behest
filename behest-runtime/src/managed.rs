@@ -65,9 +65,8 @@ pub enum ManagedError {
 /// Unified container orchestrating [`AgentRuntime`],
 /// [`ComponentRegistry`], and a root [`ShutdownToken`].
 ///
-/// Construct via
-/// [`AgentConfigBuilder::build_managed`](behest::config::AgentConfigBuilder::build_managed)
-/// or [`ManagedRuntime::new`].
+/// Construct via the facade `AgentConfigBuilder::build_managed` helper or
+/// [`ManagedRuntime::new`].
 ///
 /// # Lifecycle
 ///

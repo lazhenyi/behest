@@ -96,6 +96,13 @@ impl EventPublisher for NoOpPublisher {
     }
 }
 
+#[async_trait]
+impl crate::runtime::RuntimeEventPublisher for NoOpPublisher {
+    async fn publish(&self, _event: AgentEvent) -> Result<(), crate::runtime::EventPublishError> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

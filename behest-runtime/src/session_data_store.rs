@@ -20,8 +20,8 @@ use super::invocation::{SessionDataError, SessionDataStore};
 ///
 /// ```rust,no_run
 /// # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
-/// use behest::runtime::RedisSessionDataStore;
-/// use behest::runtime::SessionDataStore;
+/// use behest_runtime::session_data_store::RedisSessionDataStore;
+/// use behest_runtime::invocation::SessionDataStore;
 /// use serde_json::json;
 /// use uuid::Uuid;
 ///

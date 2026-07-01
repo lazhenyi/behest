@@ -60,6 +60,9 @@ pub use components::{
 #[cfg(feature = "openai")]
 pub use components::{OpenAiChatComponent, OpenAiEmbeddingComponent};
 
+pub use behest_runtime::event_publisher::{
+    EventPublishError, EventPublisher as RuntimeEventPublisher,
+};
 pub use cache_stats::CacheStats;
 #[cfg(feature = "anthropic")]
 pub use components::AnthropicChatComponent;

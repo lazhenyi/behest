@@ -925,7 +925,7 @@ async fn build_embedding_store(
 #[allow(clippy::unused_async)]
 async fn build_event_publisher(
     config: &queue::QueueConfig,
-) -> Result<Box<dyn crate::queue::EventPublisher>> {
+) -> Result<Box<dyn crate::runtime::RuntimeEventPublisher>> {
     match config.backend {
         queue::QueueBackend::Nats => {
             #[cfg(feature = "nats")]

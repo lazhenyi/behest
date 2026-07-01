@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 #[cfg(feature = "queue")]
-use behest_store::EventPublisher;
+use crate::event_publisher::EventPublisher;
 
 use chrono::Utc;
 use tokio::sync::broadcast;
@@ -473,6 +473,16 @@ impl AgentRuntime {
     pub(super) fn emit(&self, event: &AgentEvent) {
         if let Err(e) = self.event_tx.send(event.clone()) {
             warn!(lag = ?e, "event channel full, consumer too slow — event dropped");
+        }
+        #[cfg(feature = "queue")]
+        if let Some(publisher) = &self.event_publisher {
+            let publisher = Arc::clone(publisher);
+            let event = event.clone();
+            tokio::spawn(async move {
+                if let Err(e) = publisher.publish(event).await {
+                    warn!(error = %e, "failed to publish runtime event");
+                }
+            });
         }
     }
 

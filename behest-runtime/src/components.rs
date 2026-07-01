@@ -16,8 +16,12 @@ use schemars::JsonSchema;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 
-use crate::component::AnyComponent;
 use super::memory::MemoryRunStore;
+use crate::component::AnyComponent;
+use crate::component::{Component, ComponentContext};
+use crate::context::ContextPipeline;
+use crate::factory_registry::{FactoryError, FactoryRegistry};
+use crate::registry::TypedAnyComponent;
 #[cfg(feature = "anthropic")]
 use behest_adapter_anthropic::chat::AnthropicChatAdapter;
 #[cfg(feature = "openai")]
@@ -31,10 +35,6 @@ use behest_provider::ChatProvider;
 use behest_provider::EmbeddingProvider;
 use behest_provider::config::{DEFAULT_CONNECT_TIMEOUT, DEFAULT_TIMEOUT};
 use behest_provider::{ProviderHttpConfig, ProviderId};
-use crate::component::{Component, ComponentContext};
-use crate::context::ContextPipeline;
-use crate::factory_registry::{FactoryError, FactoryRegistry};
-use crate::registry::TypedAnyComponent;
 use behest_store::memory::{
     MemoryArtifactStore, MemoryEmbeddingStore, MemoryExecutionStore, MemorySessionStore,
 };

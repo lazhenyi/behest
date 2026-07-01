@@ -297,7 +297,7 @@ impl ContextFactory {
     /// Builds a [`ChatRequest`] with context and optional tool specs.
     ///
     /// Pass the tool specs slice (e.g. from
-    /// [`behest_tool::ToolRegistry::specs`]) instead of a typed registry
+    /// `behest_tool::ToolRegistry::specs`) instead of a typed registry
     /// reference to keep `behest-context` free of a `behest-tool` dependency.
     ///
     /// # Errors

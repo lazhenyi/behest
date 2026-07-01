@@ -2,7 +2,7 @@
 
 # behest
 
-**Rust 原生的生产级 AI Agent 运行时构建库**
+**Rust AI Agent 运行时基础库，覆盖类型化工具、provider-neutral LLM、流式传输、存储和可观测性**
 
 <img src="assets/banner.webp" alt="behest — Rust 原生 Agent 运行时" width="100%">
 
@@ -17,61 +17,25 @@
 
 ## 项目简介
 
-`behest` 提供 provider-neutral 的契约，涵盖对话、流式传输、工具调用、嵌入、运行时执行、存储、队列、RAG 和可观测性。
+`behest` 是用于构建生产级 AI Agent 运行时的 Rust 原生工具库。它提供强类型契约，覆盖 LLM provider、流式对话、工具调用、嵌入、运行时执行、存储、队列、RAG 和可观测性。
 
-它为需要显式控制模型提供商、工具执行、持久化和运维边界而设计——而非不透明的「agent 框架」魔法。
+当你需要显式控制模型 provider、工具执行、运行时状态、持久化和运维边界，而不是把 agent loop 藏在不透明框架里时，`behest` 更适合。
 
-> 状态：早期基础 crate。公共 API 刻意保持紧凑、强类型、有文档。
+> 状态：早期基础 crate。公共 API 刻意保持紧凑、强类型、有文档。当前 crate 版本：`0.5.8`。
 
-## 为什么叫 behest
+## 为什么使用 behest
 
-**behest** /bɪˈhest/ — *名词* 一个人的命令或指令。
-
-> At the **behest** of the user, the agent acts.
-
-Agent 运行时的核心不是「自主意识」，而是受控的委托执行：用户下达意图，系统在明确边界内组合上下文、调用模型、执行工具、持久化状态、发布事件——可审计、可恢复、可限制、可替换。
-
-`behest` 这个名字刻意避开 "brain / cognition / intelligence" 这类膨胀隐喻。它只陈述一个工程事实：
-
-> tool-calling, streaming, memory, queue, RAG, snapshot — 所有机制的存在，都是因为有人下达了命令。
-
-## 设计目标
-
-- **Rust 原生优先**：类型化 API、显式错误、无隐藏运行时假设。
-- **Provider-neutral 核心**：OpenAI、Anthropic、本地模型、代理或内部 provider 均可实现相同契约。
-- **流式优先运行时**：agent 循环围绕流式模型事件设计，非流式作为降级方案。
-- **类型化工具边界**：工具通过 JSON Schema 描述，通过显式注册表执行。
-- **可插拔持久化**：默认内存，外部存储通过 feature flag 启用。
-- **运维表面**：事件发布、快照、会话门控、压缩、重试策略和可观测性钩子。
-- **精简公共 API**：基础原语优于框架膨胀。
-
-## 功能概览
-
-| 领域 | 能力 |
-|---|---|
-| Provider 契约 | `ChatProvider`、`EmbeddingProvider`、请求/响应模型、流事件、provider 能力 |
-| Provider 注册表 | 对话和嵌入 provider 的内存路由 |
-| 对话模型类型 | 消息、内容部件、工具调用、响应格式、token 用量、结束原因 |
-| 工具运行时 | `Tool`、`FunctionTool`、`ExternalTool`、`ToolRegistry`、schema 生成、执行分发 |
-| Agent 运行时 | 上下文构建、模型调用、工具循环、会话持久化、事件发射 |
-| Managed 运行时 | `ManagedRuntime` 统一容器、协调生命周期、类型化组件访问、热重载 |
-| 热重载 | 排空感知的组件替换，支持 pre/post 钩子 |
-| Drain 辅助 | `DrainGuard<T>` 引用计数守卫，跟踪未释放的 Arc 引用 |
-| 健康聚合 | `HealthStatus::aggregate`、`healthz_response`、就绪门控 |
-| 运行时调用 | `RuntimeInvocation`、`EmitRequest`、`EventKind`、`Control`，传输中立的 emit/on 门面 |
-| 运行时流 | `RuntimeEventStore`、`RuntimeStreamAdapter`、`RuntimeSubscriptionHub`，重放 + 实时广播 |
-| 运行时安全 | 会话门控、运行时策略、输入准入、死循环检测、工具输出截断 |
-| 存储 | 内存存储、Redis、SQLx、MongoDB、对象存储、Qdrant 嵌入 |
-| 上下文与 RAG | 上下文适配器、静态/函数适配器、可选 RAG 适配器 |
-| 队列 | 通过 NATS 或 Redis Streams 的可选事件发布 |
-| 配置 | 构建器、基于文件的配置、环境变量加载、secret 间接引用 |
-| 可观测性 | tracing 和可选 OpenTelemetry 集成 |
+- **Rust 原生运行时核心**：edition 2024、严格 lint、类型化 API、显式错误、无隐藏运行时假设。
+- **Provider-neutral LLM 层**：OpenAI、Anthropic、本地模型、代理或内部 provider 均可实现相同契约。
+- **类型化工具边界**：工具通过 JSON Schema 声明，通过显式注册表执行。
+- **流式优先 agent loop**：模型事件、工具调用、持久化和运行时事件都是一等路径。
+- **生产级运维表面**：会话门控、快照、压缩、重试策略、队列、存储后端、健康检查、tracing 和可选 OpenTelemetry。
 
 ## 快速开始
 
 ```toml
 [dependencies]
-behest = "0.4"
+behest = "0.5.8"
 ```
 
 创建一个 provider-neutral 的对话请求：
@@ -100,6 +64,38 @@ let provider_id = ProviderId::new("my-provider");
 ```
 
 更多示例见 [`examples/`](examples/)。
+
+## 为什么叫 behest
+
+**behest** /bɪˈhest/ — *名词* 一个人的命令或指令。
+
+> At the **behest** of the user, the agent acts.
+
+Agent 运行时的核心不是「自主意识」，而是受控的委托执行：用户下达意图，系统在明确边界内组合上下文、调用模型、执行工具、持久化状态、发布事件——可审计、可恢复、可限制、可替换。
+
+`behest` 这个名字刻意避开 "brain / cognition / intelligence" 这类膨胀隐喻。它只陈述一个工程事实：tool-calling、streaming、memory、queue、RAG、snapshot 的存在，都是因为有人下达了命令。
+
+## 功能概览
+
+| 领域 | 能力 |
+|---|---|
+| Provider 契约 | `ChatProvider`、`EmbeddingProvider`、请求/响应模型、流事件、provider 能力 |
+| Provider 注册表 | 对话和嵌入 provider 的内存路由 |
+| 对话模型类型 | 消息、内容部件、工具调用、响应格式、token 用量、结束原因 |
+| 工具运行时 | `Tool`、`FunctionTool`、`ExternalTool`、`ToolRegistry`、schema 生成、执行分发 |
+| Agent 运行时 | 上下文构建、模型调用、工具循环、会话持久化、事件发射 |
+| Managed 运行时 | `ManagedRuntime` 统一容器、协调生命周期、类型化组件访问、热重载 |
+| 热重载 | 排空感知的组件替换，支持 pre/post 钩子 |
+| Drain 辅助 | `DrainGuard<T>` 引用计数守卫，跟踪未释放的 Arc 引用 |
+| 健康聚合 | `HealthStatus::aggregate`、`healthz_response`、就绪门控 |
+| 运行时调用 | `RuntimeInvocation`、`EmitRequest`、`EventKind`、`Control`，传输中立的 emit/on 门面 |
+| 运行时流 | `RuntimeEventStore`、`RuntimeStreamAdapter`、`RuntimeSubscriptionHub`，重放 + 实时广播 |
+| 运行时安全 | 会话门控、运行时策略、输入准入、死循环检测、工具输出截断 |
+| 存储 | 内存存储、Redis、SQLx、MongoDB、对象存储、Qdrant 嵌入 |
+| 上下文与 RAG | 上下文适配器、静态/函数适配器、可选 RAG 适配器 |
+| 队列 | 通过 NATS 或 Redis Streams 的可选事件发布 |
+| 配置 | 构建器、基于文件的配置、环境变量加载、secret 间接引用 |
+| 可观测性 | tracing 和可选 OpenTelemetry 集成 |
 
 ## 实现自定义 Provider
 
@@ -157,7 +153,7 @@ let tool = FunctionTool::new(
         "required": ["message"]
     }),
     |args: Value| async move {
-        Ok(args.get("message").cloned().unwrap_or(Value::Null))
+        Ok(args.get("message").cloned().unwrap_or_else(|| Value::Null))
     },
 )
 .read_only()
@@ -269,7 +265,7 @@ api_key = "env:OPENAI_API_KEY"
 
 ```toml
 [dependencies]
-behest = { version = "0.4", features = ["openai", "anthropic"] }
+behest = { version = "0.5.8", features = ["openai", "anthropic"] }
 ```
 
 ## Feature Flags
@@ -346,7 +342,7 @@ behest = { version = "0.4", features = ["openai", "anthropic"] }
 ```toml
 [dependencies]
 behest = {
-    version = "0.4",
+    version = "0.5.8",
     default-features = false,
     features = ["tls-rustls", "openai", "anthropic", "redis", "queue", "nats"]
 }

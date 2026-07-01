@@ -17,11 +17,10 @@ use redis::aio::ConnectionManager;
 use redis::streams::{StreamMaxlen, StreamRangeReply};
 use serde_json;
 
-use super::event::AgentEvent;
-use super::run::RunId;
-use super::stream::{RuntimeEventEnvelope, RuntimeEventId};
-
-use super::event_store::{RuntimeEventStore, RuntimeEventStoreError};
+use crate::event::AgentEvent;
+use crate::event_store::{RuntimeEventStore, RuntimeEventStoreError};
+use crate::run::RunId;
+use crate::stream::{RuntimeEventEnvelope, RuntimeEventId};
 
 /// Redis Streams event store key prefix.
 const STREAM_KEY_PREFIX: &str = "run";
@@ -182,8 +181,8 @@ impl RuntimeEventStore for RedisRuntimeEventStore {
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-    use super::event::RunStarted;
     use super::*;
+    use crate::event::RunStarted;
     use behest_provider::{ModelName, ProviderId};
     use chrono::Utc;
     use uuid::Uuid;

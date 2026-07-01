@@ -19,6 +19,7 @@ pub mod context;
 pub mod doom_loop;
 pub mod error;
 pub mod event;
+pub mod event_publisher;
 pub mod event_store;
 pub mod extension;
 pub mod extensions;

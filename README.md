@@ -2,7 +2,7 @@
 
 # behest
 
-**Rust-native building blocks for production AI agent runtimes**
+**Rust AI agent runtime primitives for typed tools, provider-neutral LLMs, streaming, storage, and observability**
 
 <img src="assets/banner.webp" alt="behest — Rust-native agent runtime" width="100%">
 
@@ -17,61 +17,25 @@
 
 ## What this is
 
-`behest` provides provider-neutral contracts for chat, streaming, tool calling, embeddings, runtime execution, storage, queues, RAG, and observability.
+`behest` is a Rust-native toolkit for building production AI agent runtimes. It provides strongly typed contracts for LLM providers, streaming chat, tool calling, embeddings, runtime execution, storage, queues, RAG, and observability.
 
-It is designed for systems that need explicit control over model providers, tool execution, persistence, and operational boundaries — instead of opaque "agent framework" magic.
+Use it when you need explicit control over model providers, tool execution, runtime state, persistence, and operational boundaries — without hiding the agent loop behind opaque framework magic.
 
-> Status: early foundation crate. Public APIs are intentionally compact, strongly typed, and documented.
+> Status: early foundation crate. Public APIs are intentionally compact, strongly typed, and documented. Current crate version: `0.5.8`.
 
-## Why behest
+## Why use behest
 
-**behest** /bɪˈhest/ — *n.* a person's orders or command.
-
-> At the **behest** of the user, the agent acts.
-
-The core of an agent runtime is not "autonomous consciousness" but controlled delegation: the user issues an intent, and the system composes context, invokes models, executes tools, persists state, publishes events within explicit boundaries — auditable, recoverable, constrainable, and replaceable.
-
-The name `behest` deliberately avoids inflated metaphors like "brain / cognition / intelligence". It only states an engineering fact:
-
-> tool-calling, streaming, memory, queue, RAG, snapshot — all mechanisms exist because someone gave an order.
-
-## Design goals
-
-- **Rust-native first**: typed APIs, explicit errors, no hidden runtime assumptions.
-- **Provider-neutral core**: OpenAI, Anthropic, local models, proxies, or internal providers can implement the same contracts.
-- **Streaming-first runtime**: the agent loop is designed around streamed model events, with non-streaming fallback where appropriate.
-- **Typed tool boundary**: tools are described by JSON Schema and executed through explicit registries.
-- **Pluggable persistence**: memory by default, external stores behind feature flags.
-- **Operational surface**: event publishing, snapshots, session gates, compaction, retry policy, and observability hooks.
-- **Small public API**: foundation primitives over framework sprawl.
-
-## What's inside
-
-| Area | Capability |
-|---|---|
-| Provider contracts | `ChatProvider`, `EmbeddingProvider`, request / response models, stream events, provider capabilities |
-| Provider registry | In-memory routing for chat and embedding providers |
-| Chat model types | messages, content parts, tool calls, response formats, token usage, finish reasons |
-| Tool runtime | `Tool`, `FunctionTool`, `ExternalTool`, `ToolRegistry`, schema generation, execution dispatch |
-| Agent runtime | context building, model calls, tool loop, session persistence, event emission |
-| Managed runtime | `ManagedRuntime` unified container, coordinated lifecycle, typed component access, hot-reload |
-| Hot-swap reload | drain-aware component replacement with pre/post hooks |
-| Drain helper | `DrainGuard<T>` reference-counted guard for tracking outstanding Arc references |
-| Health aggregation | `HealthStatus::aggregate`, `healthz_response`, readiness gates |
-| Runtime invocation | `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, transport-neutral emit/on facade |
-| Runtime stream | `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub`, replay + live fanout |
-| Runtime safety | session gate, runtime policy, input admission, doom-loop detection, tool output truncation |
-| Storage | memory stores, Redis, SQLx, MongoDB, object storage, Qdrant embeddings |
-| Context and RAG | context adapters, static/function adapters, optional RAG adapter |
-| Queues | optional event publishing through NATS or Redis Streams |
-| Configuration | builder, file-based config, environment variable loading, secret indirection |
-| Observability | tracing and optional OpenTelemetry integration |
+- **Rust-native runtime core**: edition 2024, strict linting, typed APIs, explicit errors, and no hidden runtime assumptions.
+- **Provider-neutral LLM layer**: OpenAI, Anthropic, local models, proxies, or internal providers can implement the same contracts.
+- **Typed tool boundary**: tools are declared with JSON Schema and executed through explicit registries.
+- **Streaming-first agent loop**: model events, tool calls, persistence, and runtime events are modeled as first-class paths.
+- **Production surfaces**: session gates, snapshots, compaction, retry policy, queues, storage backends, health checks, tracing, and optional OpenTelemetry.
 
 ## Quick start
 
 ```toml
 [dependencies]
-behest = "0.4"
+behest = "0.5.8"
 ```
 
 Create a provider-neutral chat request:
@@ -100,6 +64,38 @@ let provider_id = ProviderId::new("my-provider");
 ```
 
 More examples in [`examples/`](examples/).
+
+## Why behest
+
+**behest** /bɪˈhest/ — *n.* a person's orders or command.
+
+> At the **behest** of the user, the agent acts.
+
+The core of an agent runtime is not "autonomous consciousness" but controlled delegation: the user issues an intent, and the system composes context, invokes models, executes tools, persists state, publishes events within explicit boundaries — auditable, recoverable, constrainable, and replaceable.
+
+The name `behest` deliberately avoids inflated metaphors like "brain / cognition / intelligence". It only states an engineering fact: tool-calling, streaming, memory, queue, RAG, and snapshots exist because someone gave an order.
+
+## What's inside
+
+| Area | Capability |
+|---|---|
+| Provider contracts | `ChatProvider`, `EmbeddingProvider`, request / response models, stream events, provider capabilities |
+| Provider registry | In-memory routing for chat and embedding providers |
+| Chat model types | messages, content parts, tool calls, response formats, token usage, finish reasons |
+| Tool runtime | `Tool`, `FunctionTool`, `ExternalTool`, `ToolRegistry`, schema generation, execution dispatch |
+| Agent runtime | context building, model calls, tool loop, session persistence, event emission |
+| Managed runtime | `ManagedRuntime` unified container, coordinated lifecycle, typed component access, hot-reload |
+| Hot-swap reload | drain-aware component replacement with pre/post hooks |
+| Drain helper | `DrainGuard<T>` reference-counted guard for tracking outstanding Arc references |
+| Health aggregation | `HealthStatus::aggregate`, `healthz_response`, readiness gates |
+| Runtime invocation | `RuntimeInvocation`, `EmitRequest`, `EventKind`, `Control`, transport-neutral emit/on facade |
+| Runtime stream | `RuntimeEventStore`, `RuntimeStreamAdapter`, `RuntimeSubscriptionHub`, replay + live fanout |
+| Runtime safety | session gate, runtime policy, input admission, doom-loop detection, tool output truncation |
+| Storage | memory stores, Redis, SQLx, MongoDB, object storage, Qdrant embeddings |
+| Context and RAG | context adapters, static/function adapters, optional RAG adapter |
+| Queues | optional event publishing through NATS or Redis Streams |
+| Configuration | builder, file-based config, environment variable loading, secret indirection |
+| Observability | tracing and optional OpenTelemetry integration |
 
 ## Implement a custom provider
 
@@ -157,7 +153,7 @@ let tool = FunctionTool::new(
         "required": ["message"]
     }),
     |args: Value| async move {
-        Ok(args.get("message").cloned().unwrap_or(Value::Null))
+        Ok(args.get("message").cloned().unwrap_or_else(|| Value::Null))
     },
 )
 .read_only()
@@ -269,7 +265,7 @@ Enable adapters:
 
 ```toml
 [dependencies]
-behest = { version = "0.4", features = ["openai", "anthropic"] }
+behest = { version = "0.5.8", features = ["openai", "anthropic"] }
 ```
 
 ## Feature flags
@@ -346,7 +342,7 @@ Example with selected features:
 ```toml
 [dependencies]
 behest = {
-    version = "0.4",
+    version = "0.5.8",
     default-features = false,
     features = ["tls-rustls", "openai", "anthropic", "redis", "queue", "nats"]
 }

@@ -1,2 +1,1 @@
-//! Re-exported from behest_runtime.
-pub use behest_runtime::run_loop::*;
+//! Private runtime loop implementation is provided by `behest_runtime`.

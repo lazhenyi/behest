@@ -18,7 +18,12 @@ workspace = true
 
 [features]
 default = []
-redis = ["dep:redis"]
+openai = []
+anthropic = []
+queue = []
+redis = ["dep:redis", "redis/streams"]
+nats = ["dep:async-nats"]
+sqlx-postgres = ["dep:sqlx", "sqlx/runtime-tokio", "sqlx/postgres", "sqlx/chrono", "sqlx/uuid", "sqlx/json"]
 
 [dependencies]
 behest-core.workspace = true
@@ -47,9 +52,10 @@ jsonschema = "0.46"
 indexmap = { version = "2", features = ["serde"] }
 secrecy = "0.10"
 redis = { version = "0.27", optional = true, default-features = false, features = ["tokio-comp", "aio", "connection-manager"] }
+async-nats = { version = "0.49", optional = true }
+sqlx = { version = "0.9", default-features = false, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "rt-multi-thread"] }
 tokio-test = "0.4"
 tempfile = "3"
-

@@ -392,6 +392,7 @@ dependencies = [
 name = "behest-runtime"
 version = "0.5.8"
 dependencies = [
+ "async-nats",
  "async-trait",
  "behest-adapter-anthropic",
  "behest-adapter-openai",
@@ -413,6 +414,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "sqlx",
  "tempfile",
  "thiserror",
  "tokio",

@@ -43,7 +43,7 @@ use behest_provider::{ChatProvider, EmbeddingProvider};
 use behest_store::{ArtifactStore, EmbeddingStore, ExecutionStore, SessionStore};
 
 #[cfg(feature = "queue")]
-use behest_store::EventPublisher;
+use crate::event_publisher::EventPublisher;
 
 use super::event_store::RuntimeEventStore;
 use super::invocation::SessionDataStore;

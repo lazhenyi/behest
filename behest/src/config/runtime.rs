@@ -4,8 +4,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::runtime::policy::PromptCacheConfig;
-use crate::runtime::{CompactionConfig, RuntimePolicy};
+use crate::runtime::RuntimePolicy;
 
 /// Runtime configuration covering policy, context limits, and event channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -82,3 +82,14 @@ impl EventPublisher for NatsEventPublisher {
         Ok(())
     }
 }
+
+#[async_trait]
+impl crate::runtime::RuntimeEventPublisher for NatsEventPublisher {
+    async fn publish(&self, event: AgentEvent) -> Result<(), crate::runtime::EventPublishError> {
+        <Self as EventPublisher>::publish(self, event)
+            .await
+            .map_err(|e| crate::runtime::EventPublishError::PublishFailed {
+                message: e.to_string(),
+            })
+    }
+}

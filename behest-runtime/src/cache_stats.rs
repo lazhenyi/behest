@@ -1,7 +1,7 @@
 //! Aggregated prompt cache statistics for a run or a window of events.
 //!
 //! [`CacheStats`] reduces a sequence of [`AgentEvent`] values (typically
-//! replayed from a [`RuntimeEventStore`](super::RuntimeEventStore)) into
+//! replayed from a [`RuntimeEventStore`](crate::event_store::RuntimeEventStore)) into
 //! the totals needed to evaluate cache effectiveness:
 //!
 //! - Total input / output tokens consumed
@@ -105,7 +105,7 @@ impl CacheStats {
 
     /// Computes aggregate stats from a slice of [`RuntimeEventEnvelope`]
     /// values (the shape returned by
-    /// [`RuntimeEventStore::list_after`](super::RuntimeEventStore::list_after)).
+    /// [`RuntimeEventStore::list_after`](crate::event_store::RuntimeEventStore::list_after)).
     #[must_use]
     pub fn from_envelopes(envelopes: &[RuntimeEventEnvelope]) -> Self {
         let events: Vec<&AgentEvent> = envelopes.iter().map(|e| &e.event).collect();
