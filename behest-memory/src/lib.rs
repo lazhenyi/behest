@@ -21,6 +21,8 @@
 #![deny(missing_docs)]
 #![deny(unreachable_pub)]
 
+pub mod compaction;
+
 use async_trait::async_trait;
 use behest_core::message::Message;
 use behest_core::token::estimate_messages_tokens;
