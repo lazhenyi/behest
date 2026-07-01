@@ -22,6 +22,7 @@ behest-event.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 async-trait.workspace = true
+regex = "1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }

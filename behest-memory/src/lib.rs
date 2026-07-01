@@ -22,6 +22,7 @@
 #![deny(unreachable_pub)]
 
 pub mod compaction;
+pub mod facts;
 
 use async_trait::async_trait;
 use behest_core::message::Message;
