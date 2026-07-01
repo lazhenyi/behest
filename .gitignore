@@ -13,6 +13,7 @@ Cargo.lock.orig
 .DS_Store
 *.swp
 *.swo
+.mimocode
 
 # Generated reports
 coverage/

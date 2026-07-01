@@ -370,6 +370,7 @@ dependencies = [
  "async-trait",
  "behest-core",
  "behest-event",
+ "regex",
  "serde",
  "serde_json",
  "tokio",
@@ -457,6 +458,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
