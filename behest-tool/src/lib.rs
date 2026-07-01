@@ -30,6 +30,8 @@ use serde_json::Value;
 mod strategy;
 pub use strategy::{ExecutionPlan, ToolExecutionStrategy};
 
+pub mod tool_runtime;
+
 /// Canonical tool error type. Aliased here so that downstream callers
 /// can write `behest_tool::ToolError` without taking a direct
 /// dependency on `behest_core`.
@@ -157,6 +159,38 @@ pub trait Tool: Send + Sync {
         None
     }
 
+    /// Returns the tool's maximum execution time.
+    ///
+    /// `None` means the tool has no self-declared timeout (the runtime
+    /// may still impose one via [`ToolRuntimeLimits`]).
+    fn timeout(&self) -> Option<std::time::Duration> {
+        None
+    }
+
+    /// Returns the sandbox profile this tool requires.
+    ///
+    /// Defaults to [`Inherited`](behest_core::tool_types::SandboxProfile::Inherited)
+    /// — the runtime's `max_sandbox` determines actual enforcement.
+    fn sandbox_profile(&self) -> behest_core::tool_types::SandboxProfile {
+        behest_core::tool_types::SandboxProfile::Inherited
+    }
+
+    /// Returns `true` when this tool is safe to execute in parallel with
+    /// other tools.  Defaults to [`is_concurrency_safe`](Tool::is_concurrency_safe).
+    fn allows_parallel(&self) -> bool {
+        self.is_concurrency_safe()
+    }
+
+    /// Returns the tool's source tag — `Server` (runtime-executed) or
+    /// `Client` (caller-executed).
+    ///
+    /// Defaults to [`Server`](behest_core::tool_types::ToolSource::Server).
+    /// The agent dispatch loop reads this tag to decide whether to consume
+    /// the result internally or to surface the call to the caller.
+    fn tool_source(&self) -> behest_core::tool_types::ToolSource {
+        behest_core::tool_types::ToolSource::Server
+    }
+
     /// Returns the scopes required to use this tool.
     fn required_scopes(&self) -> &[&str] {
         &[]
@@ -189,6 +223,9 @@ pub struct FunctionTool {
     side_effects: SideEffects,
     approval_required: bool,
     approval_reason: Option<String>,
+    timeout: Option<std::time::Duration>,
+    sandbox_profile: behest_core::tool_types::SandboxProfile,
+    tool_source: behest_core::tool_types::ToolSource,
     handler: Box<ToolHandler>,
 }
 
@@ -227,6 +264,9 @@ impl FunctionTool {
             side_effects: SideEffects::default(),
             approval_required: false,
             approval_reason: None,
+            timeout: None,
+            sandbox_profile: behest_core::tool_types::SandboxProfile::Inherited,
+            tool_source: behest_core::tool_types::ToolSource::Server,
             handler: Box::new(move |args| Box::pin(handler(args))),
         }
     }
@@ -266,6 +306,37 @@ impl FunctionTool {
     pub fn requires_approval(mut self, reason: impl Into<String>) -> Self {
         self.approval_required = true;
         self.approval_reason = Some(reason.into());
+        self
+    }
+
+    /// Sets the tool's maximum execution time.
+    #[must_use]
+    pub fn timeout(mut self, duration: std::time::Duration) -> Self {
+        self.timeout = Some(duration);
+        self
+    }
+
+    /// Sets the sandbox profile this tool requires.
+    #[must_use]
+    pub fn sandbox(mut self, profile: behest_core::tool_types::SandboxProfile) -> Self {
+        self.sandbox_profile = profile;
+        self
+    }
+
+    /// Marks this tool as a `Server` tool — the runtime executes it and
+    /// consumes the result internally (default behavior).
+    #[must_use]
+    pub fn server_tool(mut self) -> Self {
+        self.tool_source = behest_core::tool_types::ToolSource::Server;
+        self
+    }
+
+    /// Marks this tool as a `Client` tool — the dispatch loop surfaces the
+    /// call to the caller and pauses. The caller executes it and resumes
+    /// the loop with the results.
+    #[must_use]
+    pub fn client_tool(mut self) -> Self {
+        self.tool_source = behest_core::tool_types::ToolSource::Client;
         self
     }
 }
@@ -311,6 +382,18 @@ impl Tool for FunctionTool {
 
     fn approval_reason(&self) -> Option<String> {
         self.approval_reason.clone()
+    }
+
+    fn timeout(&self) -> Option<std::time::Duration> {
+        self.timeout
+    }
+
+    fn sandbox_profile(&self) -> behest_core::tool_types::SandboxProfile {
+        self.sandbox_profile
+    }
+
+    fn tool_source(&self) -> behest_core::tool_types::ToolSource {
+        self.tool_source
     }
 }
 
