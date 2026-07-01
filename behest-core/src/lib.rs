@@ -21,6 +21,7 @@ pub mod health;
 pub mod id;
 pub mod journal;
 pub mod message;
+pub mod recovery;
 pub mod run;
 pub mod sub_engine;
 pub mod token;
