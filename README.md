@@ -7,6 +7,11 @@
 <img src="assets/banner.webp" alt="behest — Rust-native agent runtime" width="100%">
 
 [![CI](https://github.com/lazhenyi/behest/actions/workflows/ci.yml/badge.svg)](https://github.com/lazhenyi/behest/actions/workflows/ci.yml)
+[![Publish](https://github.com/lazhenyi/behest/actions/workflows/publish.yml/badge.svg)](https://github.com/lazhenyi/behest/actions/workflows/publish.yml)
+[![Crates.io](https://img.shields.io/crates/v/behest.svg)](https://crates.io/crates/behest)
+[![Docs.rs](https://docs.rs/behest/badge.svg)](https://docs.rs/behest)
+[![MSRV 1.88](https://img.shields.io/badge/MSRV-1.88-blue.svg)](Cargo.toml)
+[![Rust 2024](https://img.shields.io/badge/rust-2024-orange.svg)](Cargo.toml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 **English** · [简体中文](README.zh-CN.md)

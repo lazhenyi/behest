@@ -39,77 +39,68 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Publish behest-core
+      - name: Publish crates
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-core --locked
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Publish behest-context
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-context --locked
+          version="${GITHUB_REF_NAME#v}"
+          packages=(
+            behest-core
+            behest-provider
+            behest-context
+            behest-event
+            behest-tool
+            behest-memory
+            behest-approval
+            behest-store
+            behest-adapter-openai
+            behest-adapter-anthropic
+            behest-runtime
+            behest
+          )
 
-      - name: Publish behest-event
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-event --locked
+          crate_version_exists() {
+            local crate="$1"
+            curl --silent --fail "https://crates.io/api/v1/crates/${crate}/${version}" >/dev/null
+          }
 
-      - name: Publish behest-tool
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-tool --locked
+          publish_one() {
+            local crate="$1"
+            local log_file
+            log_file="$(mktemp)"
 
-      - name: Publish behest-memory
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-memory --locked
+            for attempt in {1..20}; do
+              if crate_version_exists "$crate"; then
+                echo "${crate} ${version} already exists on crates.io; skipping"
+                return 0
+              fi
 
-      - name: Publish behest-approval
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-approval --locked
+              echo "Publishing ${crate} ${version} (attempt ${attempt})"
+              if cargo publish -p "$crate" --locked 2>&1 | tee "$log_file"; then
+                return 0
+              fi
 
-      - name: Publish behest-provider
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-provider --locked
+              if grep -Eiq "already uploaded|already exists|previously uploaded" "$log_file"; then
+                echo "${crate} ${version} was already uploaded; continuing"
+                return 0
+              fi
 
-      - name: Wait for rate limit
-        run: sleep 180
+              if grep -Eiq "failed to select a version|no matching package named|required by package" "$log_file"; then
+                echo "crates.io index has not caught up for ${crate}; retrying"
+                sleep 30
+                continue
+              fi
 
-      - name: Publish behest-store
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-store --locked
+              return 1
+            done
 
-      - name: Wait for rate limit
-        run: sleep 180
+            echo "failed to publish ${crate} ${version} after retries" >&2
+            return 1
+          }
 
-      - name: Publish behest-adapter-openai
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-adapter-openai --locked
-
-      - name: Wait for rate limit
-        run: sleep 180
-
-      - name: Publish behest-adapter-anthropic
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-adapter-anthropic --locked
-
-      - name: Wait for rate limit
-        run: sleep 180
-
-      - name: Publish behest-runtime
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest-runtime --locked
-
-      - name: Wait for rate limit
-        run: sleep 60
-
-      - name: Publish behest
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p behest --locked
+          for crate in "${packages[@]}"; do
+            publish_one "$crate"
+          done
