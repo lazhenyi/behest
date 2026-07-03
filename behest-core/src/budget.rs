@@ -191,7 +191,7 @@ pub struct BudgetState {
 
 // ── Pure computation helpers ──
 
-/// Computes the effective context window, clamping to [`MIN_EFFECTIVE_WINDOW`].
+/// Computes the effective context window, clamping to `MIN_EFFECTIVE_WINDOW`.
 #[must_use]
 pub fn effective_context_window(context_window: usize, reserved_output: usize) -> usize {
     let reserved = effective_reserved_output(context_window, reserved_output);
@@ -201,7 +201,7 @@ pub fn effective_context_window(context_window: usize, reserved_output: usize) -
 }
 
 /// Computes the effective reserved output, ensuring at least half the
-/// context window (or [`MIN_PROMPT_BUDGET`]) is available for the prompt.
+/// context window (or `MIN_PROMPT_BUDGET`) is available for the prompt.
 #[must_use]
 pub fn effective_reserved_output(context_window: usize, reserved_output: usize) -> usize {
     let context_window = context_window.max(1);

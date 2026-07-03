@@ -162,7 +162,7 @@ pub trait Tool: Send + Sync {
     /// Returns the tool's maximum execution time.
     ///
     /// `None` means the tool has no self-declared timeout (the runtime
-    /// may still impose one via [`ToolRuntimeLimits`]).
+    /// may still impose one via [`ToolRuntimeLimits`](behest_core::tool_types::ToolRuntimeLimits)).
     fn timeout(&self) -> Option<std::time::Duration> {
         None
     }

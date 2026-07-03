@@ -1,6 +1,6 @@
 //! ToolRuntime — optional enforcement of runtime limits, hooks, and scoping.
 //!
-//! Unlike [`ToolRegistry`], which is a bare lookup table, [`ToolRuntime`]
+//! Unlike [`ToolRegistry`](crate::ToolRegistry), which is a bare lookup table, [`ToolRuntime`]
 //! enforces the configured [`ToolRuntimeLimits`] and runs registered hooks.
 //! Use [`ToolRuntime::scoped`] to create filtered views with allow/deny lists.
 //!
