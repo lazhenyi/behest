@@ -51,7 +51,7 @@ schemars = "1.0"
 jsonschema = "0.46"
 indexmap = { version = "2", features = ["serde"] }
 secrecy = "0.10"
-redis = { version = "0.27", optional = true, default-features = false, features = ["tokio-comp", "aio", "connection-manager"] }
+redis = { version = "1.3", optional = true, default-features = false, features = ["tokio-comp", "aio", "connection-manager"] }
 async-nats = { version = "0.49", optional = true }
 sqlx = { version = "0.9", default-features = false, optional = true }
 
