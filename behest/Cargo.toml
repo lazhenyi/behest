@@ -268,7 +268,7 @@ async-trait.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 
 schemars = { version = "1.2", features = ["derive"] }
-jsonschema = "0.46"
+jsonschema = "0.47"
 
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", default-features = false, features = [
